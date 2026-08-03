@@ -1,0 +1,75 @@
+name: Scheduled failure alert
+
+# The consumer a scheduled run does not otherwise have.
+#
+# A pull request that goes red has an author looking at it. A cron run has
+# nobody: on 2026-07-27 the nightly pip-audit failed with
+# `externally-managed-environment` (run 30266490213) and the failure sat
+# unnoticed, because the same job skipped itself on every pull request and so
+# nothing else was ever red. A red run with no reader is a log line, not an alarm.
+#
+# Called by the scheduled workflows in this repo with `if: failure()`. It keeps
+# exactly ONE open issue per title and comments on it thereafter, so a week of
+# red nights is one thread instead of seven issues.
+#
+# Runs on GitHub-hosted ubuntu-latest, never a self-hosted runner: an alarm must
+# not depend on the machine whose failure it reports, and the token GitHub hands
+# a hosted job is already enough to open and comment on an issue in the calling
+# repository.
+
+on:
+  workflow_call:
+    inputs:
+      issue_title:
+        description: >-
+          The issue title. This is the dedupe key, so it must be constant across
+          runs — changing it abandons the existing thread and opens a new one.
+        required: true
+        type: string
+      what_failed:
+        description: One line naming what went red, written for whoever opens the issue.
+        required: true
+        type: string
+
+jobs:
+  alert:
+    name: Open or append the alert issue
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Open or append the alert issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_TITLE: ${{ inputs.issue_title }}
+          WHAT_FAILED: ${{ inputs.what_failed }}
+        run: |
+          set -euo pipefail
+          RUN_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          cat > alert-body.md <<BODY
+          A scheduled run of this repository's CI went red.
+
+          - **What failed:** $WHAT_FAILED
+          - **Workflow:** \`$GITHUB_WORKFLOW\`
+          - **Commit:** \`$GITHUB_SHA\` on \`$GITHUB_REF_NAME\`
+          - **Run:** $RUN_URL
+
+          Open the run above and read the failing job's log. Close this issue once
+          the scheduled run is green again — the next failure comments here rather
+          than filing a second issue, so an open issue means "still red" and a
+          closed one means "was fixed".
+          BODY
+
+          # Dedupe on the exact title: comment when the thread exists, create when
+          # it does not. The `--search` is a fuzzy prefilter, so the jq step
+          # re-checks for an exact title match before reusing a number.
+          EXISTING=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
+            --search "in:title \"$ISSUE_TITLE\"" --json number,title \
+            -q "[.[] | select(.title == \"$ISSUE_TITLE\")][0].number" 2>/dev/null || true)
+
+          if [ -n "$EXISTING" ] && [ "$EXISTING" != "null" ]; then
+            gh issue comment "$EXISTING" --repo "$GITHUB_REPOSITORY" --body-file alert-body.md
+            echo "Commented on existing alert issue #$EXISTING (deduped)."
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$ISSUE_TITLE" --body-file alert-body.md
+            echo "Opened a new alert issue."
+          fi

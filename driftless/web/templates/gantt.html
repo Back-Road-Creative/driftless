@@ -1,0 +1,51 @@
+{# Bars from the approved baseline's planned windows, progress as fill LENGTH plus a
+   printed percent (never hue), milestones as marks on the same scale, the as-of as the
+   dashed rule. The table repeats every bar and mark as text — a reader gets nothing
+   from a <rect>. The planned window is edged in --gridline (3.23:1 light / 3.38:1 dark
+   against the page), not --rule: --rule is exempt from every contrast floor as a
+   decorative box edge, and at 1.45:1 it made a task at 0% complete — which has no
+   progress fill at all — a ghost, when the <rect> IS where its start and finish are.
+   Every fill is a base.html token; this template spells no colour. #}
+{% extends "base.html" %}
+{% block title %}Schedule — {{ project.name }}{% endblock %}
+{% block content %}
+{% import "_empty.html" as empty %}
+{% import "_scroll.html" as scroll %}
+<h1>Schedule — {{ project.name }}</h1>
+<p><em>As of {{ as_of }}</em> · <a href="/projects/{{ project.id }}/hub?as_of={{ as_of }}">Project hub</a> ·
+   <a href="/projects/{{ project.id }}/status?as_of={{ as_of }}">Weekly status</a></p>
+{% if view %}
+<figure style="margin:0 0 1rem">
+  <svg viewBox="0 0 320 {{ view.height }}" width="320" height="{{ view.height }}" font-size="9" role="img"
+       aria-label="Schedule of the approved baseline: one bar per task, sized by its planned window and filled by its progress, milestones marked at their target dates, the as-of rule at {{ as_of }}. The table below carries the same rows as text.">
+    <line data-today="{{ as_of }}" x1="{{ view.today }}" x2="{{ view.today }}" y1="12" y2="{{ view.height }}" stroke="var(--gridline)" stroke-width="1" stroke-dasharray="4 3"/>
+    <text x="{{ view.today }}" y="9" fill="var(--muted-ink)" text-anchor="middle">{{ as_of }}</text>
+    {% for bar in view.bars %}{% set done = (bar.width * bar.line.task.percent_complete / 100)|round(1) %}
+    <text x="0" y="{{ bar.y + 9 }}" fill="var(--ink)">{{ bar.line.task.name|truncate(15, true, "…") }}</text>
+    <rect data-task="{{ bar.line.task.name }}" data-bar="planned" x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.width }}" height="11" fill="var(--muted-bg)" stroke="var(--gridline)"/>
+    <rect data-task="{{ bar.line.task.name }}" data-bar="progress" x="{{ bar.x }}" y="{{ bar.y }}" width="{{ done }}" height="11" fill="var(--muted-ink)"/>
+    <text x="{{ bar.x + bar.width + 4 }}" y="{{ bar.y + 9 }}" fill="var(--muted-ink)">{{ bar.line.task.percent_complete }}%</text>
+    {% endfor %}
+    {% for mark in view.marks %}
+    <polygon data-milestone="{{ mark.milestone.name }}" points="{{ mark.points }}" fill="var(--ink)"/>
+    {% endfor %}
+  </svg>
+</figure>
+{% call scroll.wide("Schedule as text") %}
+<table>
+<caption class="sr-only">The same schedule as text: each task's planned window and progress, then each milestone's target date and status</caption>
+<tr><th scope="col">Item</th><th scope="col">Start</th><th scope="col">Finish or target</th><th scope="col">Progress</th></tr>
+{% for bar in view.bars %}
+<tr><td>{{ bar.line.task.name }}</td><td>{{ bar.line.planned_start }}</td><td>{{ bar.line.planned_finish }}</td><td>{{ bar.line.task.percent_complete }}% complete</td></tr>
+{% endfor %}
+{% for mark in view.marks %}
+<tr><td>{{ mark.milestone.name }} (milestone)</td><td>—</td><td>{{ mark.milestone.target_date }}</td><td>{{ mark.milestone.status|humanize }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No approved baseline yet — there is no schedule to draw", id="gantt-empty") %}
+Draft a baseline, add its lines, then approve it (<code>POST /baselines</code>, <code>POST /baseline-lines</code>, <code>PATCH /baselines/&lt;id&gt;</code> — approval freezes the plan, so the lines go in first); the <a href="/projects/{{ project.id }}/wizard?as_of={{ as_of }}">wizard</a> can produce the approved plan for you, and the bars appear here as soon as the approved version has lines.
+{% endcall %}
+{% endif %}
+{% endblock %}

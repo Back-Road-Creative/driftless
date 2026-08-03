@@ -1,0 +1,9 @@
+{# The designed error shell: same nav, tokens and card idiom as every other page,
+   with nothing about the exception on it — the text is fixed in web/errors.py. #}
+{% extends "base.html" %}
+{% block title %}{{ status }} — driftless{% endblock %}
+{% block content %}
+<h1>{{ status }} — {{ title }}</h1>
+<div class="card"><p>{{ message }}</p>
+<p>Try the <a href="/">dashboard</a>, the <a href="/threats">threat board</a>, or the <a href="/org/departments">department list</a>.</p></div>
+{% endblock %}

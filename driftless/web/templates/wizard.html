@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Wizard — {{ project.name }}{% endblock %}
+{% block content %}
+<h1>Onboarding — {{ project.name }}</h1>
+<p><em>As of {{ as_of }}</em> ·
+   <a href="/projects/{{ project.id }}/process-map">Process map</a></p>
+{% if error %}<p class="card sev-red" role="alert">{{ error }}</p>{% endif %}
+{% if done %}
+  <p>Onboarding complete: every process the store can help with is produced, signed off or waived.</p>
+{% else %}
+  <div class="card">
+    <h2>Next: {{ step.process_id }} {{ step.name }}</h2>
+    <p><strong>{{ step.group }}</strong> / {{ step.area }} — currently <em>{{ step.state }}</em>.</p>
+    <h3>Inputs</h3>
+    <ul>
+      {% for i in step.inputs %}
+      <li>{{ i.kind }} — {% if i.present %}present{% else %}missing{% endif %}</li>
+      {% endfor %}
+    </ul>
+    <h3>Tools &amp; techniques</h3>
+    <p>{{ step.tools_techniques | join(", ") }}</p>
+    <h3>Produce an output</h3>
+    <form method="post" action="/projects/{{ project.id }}/wizard/apply" data-swap>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="as_of" value="{{ as_of }}">
+      <input type="hidden" name="origin_process_id" value="{{ step.process_id }}">
+      <select name="kind" aria-label="Output to produce for {{ step.process_id }} {{ step.name }}">
+        {% for kind in step.producible %}
+        <option value="{{ kind }}">{{ kind }}</option>
+        {% endfor %}
+      </select>
+      {% for f in field_asks %}
+      <p><label>{{ f.name | humanize }}:<br>
+        {% if f.choices %}
+        <select name="{{ f.name }}"{% if f.required %} required{% endif %}>
+          {% for choice in f.choices %}
+          <option{% if choice == f.value %} selected{% endif %}>{{ choice }}</option>
+          {% endfor %}
+        </select>
+        {% else %}
+        <input type="{{ f.type }}" name="{{ f.name }}" value="{{ f.value }}"
+          {% if f.type == "number" %}step="any" {% endif %}{% if f.required %}required{% endif %}>
+        {% endif %}
+      </label></p>
+      {% endfor %}
+      {% if body_kinds %}
+      <p><label>Prose for {{ body_kinds | map("humanize") | join(", ") }}:<br>
+        <textarea name="body" rows="6" cols="50" maxlength="{{ body_max }}"
+          {% if body_required %}required{% endif %}>{{ body }}</textarea></label></p>
+      {% endif %}
+      <button type="submit">Produce &amp; advance</button>
+    </form>
+  </div>
+{% endif %}
+{% endblock %}

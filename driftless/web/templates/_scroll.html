@@ -1,0 +1,9 @@
+{# The ONE way a too-wide surface is written, so a scroll box that a keyboard cannot
+   reach or a reader cannot announce is impossible to write rather than merely caught:
+   tabindex="0" makes the box focusable, so arrow keys scroll it; role="region" plus
+   the name makes it a landmark a reader lands on and reads out. Hiding or dropping a
+   column at a narrow width is never the alternative — the content is all still here,
+   it just moves sideways. ``label`` names the surface in the page's own words. #}
+{% macro wide(label) %}
+<div class="scroll-x" role="region" tabindex="0" aria-label="{{ label }} (scrolls sideways)">{{ caller() }}</div>
+{% endmacro %}

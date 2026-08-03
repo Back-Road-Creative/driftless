@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Process map — {{ project.name }}{% endblock %}
+{% block content %}
+{% import "_scroll.html" as scroll %}
+{% import "_signoff.html" as signoff %}
+<h1>Process map — {{ project.name }}</h1>
+<p><em>As of {{ as_of }}</em> — completeness <strong>{{ completeness }}</strong> over {{ count }} processes.
+   <a href="/projects/{{ project.id }}/wizard">Onboarding wizard</a> ·
+   <a href="/projects/{{ project.id }}/status">Weekly status</a></p>
+<dl class="legend">
+  {% for st, rank, mark in legend %}
+  {# the chip is the <dd> beside it drawn in colour AND in the mark its cells print,
+     so a reader that announced it would read the same term twice over: hide the
+     duplicate, keep the words. The mark is what carries the state where the colour
+     cannot — greyscale, print, colour blindness — so the chip is never blank. #}
+  <dt aria-hidden="true"><span class="badge st-{{ rank }}" title="{{ st }}">&nbsp;{{ mark }}&nbsp;</span></dt>
+  <dd>{{ st | humanize }}</dd>
+  {% endfor %}
+</dl>
+{% call scroll.wide(project.name ~ " process grid") %}
+<table>
+  <caption class="sr-only">{{ project.name }}'s processes as of {{ as_of }}, knowledge area by row and process group by column</caption>
+  <tr>
+    <th scope="col">Knowledge area</th>
+    {% for g in groups %}<th scope="col">{{ g | humanize }}</th>{% endfor %}
+  </tr>
+  {% for area in areas %}
+  <tr>
+    <th scope="row">
+      {% set frac = rings[area] %}
+      {# Completion ring: same rule as state.completeness, per area (drift-free).
+         A circumference-100 circle (r=15.9155) makes the arc length the percent
+         directly; offset 25 starts it at 12 o'clock. None -> muted n/a, no arc.
+         0% -> track only: a zero-length round-capped dash renders as a dot that
+         reads as a sliver of progress, so the arc is drawn only when p > 0.
+         The arc is currentColor, NOT --rag-green: completion is a quantity and the
+         RAG tokens are reserved for status, so 5% complete must not read all-clear.
+         The same ink the percentage below prints in, over the 15%-opacity track. #}
+      <svg class="ring" viewBox="0 0 36 36" width="34" height="34" role="img"
+           aria-label="{{ area | humanize }} completion {{ ring_labels[area] }}"
+           style="vertical-align:middle;margin-right:.35em">
+        <circle cx="18" cy="18" r="15.9155" fill="none" stroke="currentColor"
+                stroke-opacity="0.15" stroke-width="3.5"/>
+        {% if frac is not none %}
+        {% set p = (frac * 100) | round | int %}
+        {% if p > 0 %}
+        <circle cx="18" cy="18" r="15.9155" fill="none" stroke="currentColor"
+                stroke-width="3.5" stroke-linecap="round"
+                stroke-dasharray="{{ p }} {{ 100 - p }}" stroke-dashoffset="25"/>
+        {% endif %}
+        {% endif %}
+        <text x="18" y="18" text-anchor="middle" dominant-baseline="central"
+              font-size="10" fill="currentColor">{{ ring_labels[area] }}</text>
+      </svg>{{ area | humanize }}</th>
+    {% for g in groups %}
+    <td>
+      {% for cell in grid[area][g] %}
+      {# Three carriers, and the state survives losing any one: the trailing MARK the
+         legend above names (visible, so it reads in greyscale and in print), the wash in
+         colour, and the sr-only span in words. aria-hidden on the mark — the span beside
+         it already says the state, and a reader announcing "black circle" would not.
+         The link carries the project and the as-of, so the drill lands on THIS project's
+         reading of the process — its live artifacts, its assessment, its threats — rather
+         than on the theory page, dropping both at the first click.
+         A cell with no MARK is one the store tracks no output of (pages._cell_state): it
+         is in no state, so it prints its word visibly instead — a legend chip explains a
+         mark, and there is no mark here to explain. #}
+      <a href="/pmbok/{{ cell.id }}?project={{ project.id }}&amp;as_of={{ as_of }}"><span class="badge st-{{ cell.rank }}" title="{{ cell.state }}">{{ cell.id }} {{ cell.name }} {% if cell.mark %}<span aria-hidden="true">{{ cell.mark }}</span><span class="sr-only"> — {{ cell.state | humanize }}</span>{% else %}— {{ cell.state | humanize }}{% endif %}</span></a><br>
+      {% endfor %}
+    </td>
+    {% endfor %}
+  </tr>
+  {% endfor %}
+</table>
+{% endcall %}
+{# The control the legend above has always needed. It sits BELOW the grid, as one
+   picker, rather than a form in each of the 49 cells: the grid is already the widest
+   table in the product and sideways-scrolling, and 49 selects plus 49 buttons inside it
+   would double its width and put ~98 tab stops inside a scroll region. Each option
+   carries its process's current state, so the picker says the same thing the cell does.
+   ``ref`` is built in pages.py by state.process_subject_ref — never here. #}
+<h2>Sign off or waive a process</h2>
+<p>Signing off records the process as approved-done; waiving tailors it out, dropping it
+   from every completeness figure above. Both are ledger entries, signed by whoever is
+   signed in — a reversal is a new decision, never an edit.</p>
+<form class="inline" method="post" action="/sign-off">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="subject_kind" value="process">
+  <input type="hidden" name="project_id" value="{{ project.id }}">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label for="process-subject">Process</label>
+  <select id="process-subject" name="subject_ref">
+    {% for p in processes %}<option value="{{ p.ref }}">{{ p.id }} {{ p.name }} — {{ p.state | humanize }}</option>{% endfor %}
+  </select>
+  {{ signoff.decision("Decision for the selected process") }}
+  <button type="submit">Record decision</button>
+</form>
+{% endblock %}

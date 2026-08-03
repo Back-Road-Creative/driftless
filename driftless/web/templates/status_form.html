@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}Weekly status — {{ project.name }}{% endblock %}
+{% block content %}
+{% import "_scroll.html" as scroll %}
+{% import "_empty.html" as empty %}
+<h1>Weekly status — {{ project.name }}</h1>
+<p><em>As of {{ as_of }}</em> ·
+   <a href="/projects/{{ project.id }}/process-map">Process map</a></p>
+<p>Percent complete is <strong>{{ percent }}%</strong>, stamped from the tasks — it is
+   not entered here, so the reading can never disagree with the work done.</p>
+
+{# Weekly status trend. Plots percent_complete over taken_on straight from the
+   append-only StatusSnapshot series (the source of truth): it stores nothing new and
+   computes every SVG coordinate from stored rows, so the line can never drift. x is
+   pt.at — the point's position along the ELAPSED span, computed in pages.trend_series
+   — never the loop index: snapshots are one per DATE, not one per week, so an ordinal
+   axis drew three daily readings and one three months later evenly spaced and the
+   slope lied about the rate. The axis ends carry the two dates it is drawn between.
+   Points are RAG-coloured from the shared --rag-* tokens in base.html, never fresh
+   hex, and that colour is never the only carrier: the twin below prints each RAG as
+   a word beside its date, since adjacent RAG hues sit 1.01-1.31:1 apart. The dots
+   carry NO <title>: role="img" makes this SVG one node and prunes everything under
+   it, so a per-point tooltip read as a text alternative while reaching a mouse and
+   nothing else — the label and the twin ARE that alternative, and they carry the RAG
+   the tooltip never did. The role is right on both charts here: neither holds a link
+   for it to prune. #}
+{% if series %}
+<figure class="trend" style="margin:0 0 1rem">
+  <svg viewBox="0 0 320 140" width="320" height="140" role="img"
+       aria-label="Percent-complete trend from {{ series[0].taken_on }} to {{ series[-1].taken_on }}. The table below carries every snapshot as text.">
+    {% for gy in [0, 50, 100] %}
+    <line x1="34" x2="308" y1="{{ 12 + (100 - gy) / 100 * 104 }}"
+          y2="{{ 12 + (100 - gy) / 100 * 104 }}" stroke="var(--gridline)" stroke-width="1"/>
+    <text x="4" y="{{ 12 + (100 - gy) / 100 * 104 + 3 }}" font-size="9" fill="var(--muted-ink)">{{ gy }}</text>
+    {% endfor %}
+    <polyline fill="none" stroke="var(--muted-ink)" stroke-width="1.5" points="{% for pt in series %}{{ (34 + pt.at * 274)|round(1) }},{{ (12 + (100 - pt.percent) / 100 * 104)|round(1) }} {% endfor %}"/>
+    {% for pt in series %}
+    <circle cx="{{ (34 + pt.at * 274)|round(1) }}"
+            cy="{{ (12 + (100 - pt.percent) / 100 * 104)|round(1) }}"
+            r="3.5" class="{{ pt.rag }}" fill="currentColor"/>
+    {% endfor %}
+    <text x="34" y="132" font-size="9" fill="var(--muted-ink)">{{ series[0].taken_on }}</text>
+    {% if series|length > 1 %}<text x="308" y="132" font-size="9" text-anchor="end" fill="var(--muted-ink)">{{ series[-1].taken_on }}</text>{% endif %}
+  </svg>
+  {% call scroll.wide("Status history as text") %}
+  <table>
+  <caption class="sr-only">The same trend as text: the date, percent complete and RAG of every snapshot, earliest first</caption>
+  <tr><th scope="col">Date</th><th scope="col">Percent</th><th scope="col">RAG</th></tr>
+  {% for pt in series %}
+  <tr><td>{{ pt.taken_on }}</td><td>{{ pt.percent }}%</td><td>{{ pt.rag }}</td></tr>
+  {% endfor %}
+  </table>
+  {% endcall %}
+</figure>
+{% else %}
+{% call empty.state("No status history yet — there is no dated series to draw a trend through", id="trend-empty") %}
+Save this week's RAG in the <a href="#save-snapshot">form at the foot of this page</a> (or <code>POST /status-snapshots</code>) and it becomes the first point; the line gains a slope from the second reading, since a rate needs two dates to be read between.
+{% endcall %}
+{% endif %}
+
+{# Earned-value S-curve (audit "Wow shortlist" #1). Two genuinely time-phased
+   lines swept in-memory from the newest baseline and the dated costs: PV(t)
+   (planned value) and AC(t) (actual cost), against a flat BAC reference. The
+   EV / CPI / SPI / EAC figures below are the CURRENT as-of position shown as
+   text — never a swept line, because the model keeps only each task's current
+   percent, so a swept EV would be a flat, misleading fiction. Every coordinate
+   is a pure function of stored rows; the page stores nothing new. NO series is told
+   apart by hue: PV is solid --muted-ink, AC dashed --ink, the budget reference dashed
+   --gridline at another rhythm, and each legend key is drawn exactly as its series is,
+   so the pair survives greyscale — the two colours it used to rely on sat 1.14:1 apart
+   (1.08:1 dark), and --rag-red drew a project's actual cost in the alarm colour whether
+   or not anything was wrong. The table repeats every plotted point in order; it carries
+   no date because evm_curve returns none and the chart draws no date axis either. Every
+   stroke and label reuses a base.html token, so this page spells no colour. #}
+{% if evm.points %}
+{% set n = evm.points|length %}
+{% set span = (n - 1) if n > 1 else 1 %}
+{% set vals = (evm.points|map(attribute='pv')|list) + (evm.points|map(attribute='ac')|list) + [evm.bac] %}
+{% set vmax = (vals|max) or 1 %}
+<figure class="evm" style="margin:0 0 1rem">
+  <figcaption style="font-size:.8rem;color:var(--muted-ink);margin-bottom:.2rem">
+    Planned value (PV) vs actual cost (AC); earned value shown as the current
+    position — per-task progress history is not retained.
+  </figcaption>
+  <svg viewBox="0 0 320 160" width="320" height="160" role="img"
+       aria-label="Planned-vs-actual cost S-curve">
+    <line data-series="bac" x1="40" x2="310" y1="{{ (12 + (1 - evm.bac / vmax) * 118)|round(1) }}"
+          y2="{{ (12 + (1 - evm.bac / vmax) * 118)|round(1) }}"
+          stroke="var(--gridline)" stroke-width="1" stroke-dasharray="4 3"/>
+    <polyline data-series="pv" fill="none" stroke="var(--muted-ink)" stroke-width="1.5" points="{% for p in evm.points %}{{ (40 + loop.index0 / span * 270)|round(1) }},{{ (12 + (1 - p.pv / vmax) * 118)|round(1) }} {% endfor %}"/>
+    <polyline data-series="ac" fill="none" stroke="var(--ink)" stroke-width="1.5" stroke-dasharray="7 3" points="{% for p in evm.points %}{{ (40 + loop.index0 / span * 270)|round(1) }},{{ (12 + (1 - p.ac / vmax) * 118)|round(1) }} {% endfor %}"/>
+    <g font-size="9" fill="var(--muted-ink)">
+      <line data-series-key="pv" x1="40" x2="56" y1="150" y2="150" stroke="var(--muted-ink)" stroke-width="1.5"/><text x="60" y="153">PV</text>
+      <line data-series-key="ac" x1="92" x2="108" y1="150" y2="150" stroke="var(--ink)" stroke-width="1.5" stroke-dasharray="7 3"/><text x="112" y="153">AC</text>
+      <line data-series-key="bac" x1="144" x2="160" y1="150" y2="150" stroke="var(--gridline)" stroke-width="1" stroke-dasharray="4 3"/><text x="164" y="153">Budget</text>
+    </g>
+  </svg>
+  <p style="font-size:.85rem;margin:.2rem 0">
+    EV <strong>{{ evm.current.ev }}</strong> ·
+    CPI <strong>{{ evm.current.cpi if evm.current.cpi is not none else 'n/a' }}</strong> ·
+    SPI <strong>{{ evm.current.spi if evm.current.spi is not none else 'n/a' }}</strong> ·
+    EAC <strong>{{ evm.current.eac if evm.current.eac is not none else 'n/a' }}</strong> ·
+    Budget <strong>{{ evm.bac }}</strong>
+  </p>
+  {% call scroll.wide("Cost S-curve as text") %}
+  <table>
+  <caption class="sr-only">The same S-curve as text: planned value and actual cost at each sampled point, in plot order, earliest first</caption>
+  <tr><th scope="col">Point</th><th scope="col">Planned (PV)</th><th scope="col">Actual (AC)</th></tr>
+  {% for p in evm.points %}
+  <tr><td>{{ loop.index }}</td><td>{{ "{:,.0f}".format(p.pv) }}</td><td>{{ "{:,.0f}".format(p.ac) }}</td></tr>
+  {% endfor %}
+  </table>
+  {% endcall %}
+</figure>
+{% else %}
+{% call empty.state("No cost baseline yet — there is no planned curve to draw the spend against", id="evm-empty") %}
+Draft a baseline, add its lines, then approve it (<code>POST /baselines</code>, <code>POST /baseline-lines</code>, <code>PATCH /baselines/&lt;id&gt;</code> — approval freezes the plan, so the lines go in first), then record spend (<code>POST /cost-entries</code>); the <a href="/projects/{{ project.id }}/wizard?as_of={{ as_of }}">wizard</a> can produce the approved plan for you, and both curves appear here as soon as the approved version has lines.
+{% endcall %}
+{% endif %}
+
+{# id="save-snapshot": the trend's empty state links here, so its next step is one the
+   reader can reach, not merely one it describes. data-target="#main": a saved snapshot
+   changes the percent line, the trend and both charts, so the swap script lifts the
+   whole fresh #main (base.html's content landmark) out of the full re-render. #}
+<form id="save-snapshot" method="post" action="/projects/{{ project.id }}/status" data-swap data-target="#main">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label>RAG:
+    <select name="rag_status">
+      {% for r in rags %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
+    </select>
+  </label>
+  <p><label>Note:<br><textarea name="note" rows="3" cols="50"></textarea></label></p>
+  <button type="submit">Save snapshot</button>
+</form>
+{% endblock %}

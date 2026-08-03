@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "disable_existing_loggers": false,
+  "formatters": {
+    "request": {
+      "format": "%(message)s"
+    },
+    "stamped": {
+      "format": "%(asctime)s %(levelname)s %(name)s %(message)s",
+      "datefmt": "%Y-%m-%dT%H:%M:%S%z"
+    }
+  },
+  "handlers": {
+    "request": {
+      "class": "logging.StreamHandler",
+      "stream": "ext://sys.stdout",
+      "formatter": "request"
+    },
+    "stamped": {
+      "class": "logging.StreamHandler",
+      "stream": "ext://sys.stderr",
+      "formatter": "stamped"
+    }
+  },
+  "loggers": {
+    "driftless.request": {
+      "level": "INFO",
+      "handlers": ["request"],
+      "propagate": false
+    },
+    "driftless": {
+      "level": "INFO",
+      "handlers": ["stamped"],
+      "propagate": false
+    },
+    "uvicorn": {
+      "level": "INFO",
+      "handlers": ["stamped"],
+      "propagate": false
+    },
+    "uvicorn.error": {
+      "level": "INFO"
+    },
+    "uvicorn.access": {
+      "level": "WARNING"
+    }
+  },
+  "root": {
+    "level": "WARNING",
+    "handlers": ["stamped"]
+  }
+}

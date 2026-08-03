@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}driftless{% endblock %}</title>
+  <script src="/static/driftless.js" defer></script>
+  <style>
+    /* Single source of truth for the palette — RAG, surface, ink, every state wash, every
+       rule and gridline. This block is the ONLY place in driftless/web/templates a colour
+       literal may be written: tests/test_web_a11y.py fails any other template that spells
+       one (findings #11 / #21), so no colour can exist that it has not computed a WCAG
+       ratio for, in the light set and the dark re-point alike. */
+    :root {
+      --rag-green: #1a7a3c;
+      --rag-amber: #9a6400;
+      --rag-red: #b3261e;
+      --rag-unknown: #6b6b6b;
+      --background: #ffffff; --ink: #1a1a1a; --muted-ink: #666666; --badge-ink: #ffffff; --focus: #0b4fd4;
+      --ok-bg: #e8f6ec; --warn-bg: #fdf3e2; --bad-bg: #fbeceb; --muted-bg: #f0f0f0; --signed-bg: #cfe8e8; --signed-ink: #145454;
+      --rule: #d6d6d6; --gridline: #8f8f8f;
+    }
+    body { font-family: system-ui, sans-serif; margin: 2rem; background: var(--background); color: var(--ink); }
+    h1 { font-size: 1.4rem; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid var(--rule); padding: 0.4rem 0.6rem; text-align: left; font-size: 0.9rem; }
+    /* The rollup table's PAINT, once: names left, figures right, RAG centred as a word, and
+       one indent step per level of the hierarchy. home.html and drill.html render the same
+       rollup, so these live here rather than as two copies free to drift apart on alignment
+       or padding — the ownership gate covers containment only and would not have seen it. */
+    .rollup th, .rollup td { text-align: right; }
+    .rollup th:first-child, .rollup td:first-child { text-align: left; }
+    .rollup td.rag { text-align: center; font-size: .75rem; text-transform: uppercase; font-weight: 600; }
+    .rollup tr.business td { font-weight: 700; } .rollup tr.portfolio td { font-weight: 600; }
+    .rollup tr.program td:first-child { padding-left: 2rem; font-style: italic; }
+    .rollup tr.project td:first-child { padding-left: 2rem; }
+    .rollup tr.project.nested td:first-child { padding-left: 4rem; }
+    .card { border: 1px solid var(--rule); border-radius: 6px; padding: 0.8rem; margin: 0.6rem 0; }
+    /* One rule per member of calc's RagStatus vocabulary, never per severity that happens
+       to reach a card today: green and unknown had none, so the rail's two data-signal
+       items (severity "unknown") drew no stripe and "no severity shown" read exactly like
+       "not a severity we style". tests/test_web_a11y.py walks RAG_SEVERITY, not this list. */
+    .sev-red { border-left: 6px solid var(--rag-red); }
+    .sev-amber { border-left: 6px solid var(--rag-amber); }
+    .sev-green { border-left: 6px solid var(--rag-green); }
+    .sev-unknown { border-left: 6px solid var(--rag-unknown); }
+    .st-ok { background: var(--ok-bg); }
+    .st-signed { background: var(--signed-bg); color: var(--signed-ink); }
+    .st-warn { background: var(--warn-bg); }
+    .st-bad { background: var(--bad-bg); }
+    .st-muted { background: var(--muted-bg); color: var(--muted-ink); }
+    dl.legend { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.4rem; margin: 0.6rem 0; font-size: 0.8rem; }
+    dl.legend dt { margin: 0; }
+    dl.legend dd { margin: 0 1rem 0 0.15rem; }
+    .badge { display: inline-block; padding: 0 0.3rem; border-radius: 3px; font-size: 0.75rem; }
+    .green { color: var(--rag-green); } .amber { color: var(--rag-amber); } .red { color: var(--rag-red); } .unknown { color: var(--rag-unknown); }
+    .sev-badge { color: var(--badge-ink); padding: 0 .35rem; border-radius: 3px; font-size: .7rem; text-transform: uppercase; font-weight: 600; }
+    /* The badge PRINTS the severity as a word; the fill only reinforces it. Same closed
+       vocabulary — an unfilled badge is --badge-ink on the page, i.e. white on white. */
+    .sev-red .sev-badge { background: var(--rag-red); } .sev-amber .sev-badge { background: var(--rag-amber); }
+    .sev-green .sev-badge { background: var(--rag-green); } .sev-unknown .sev-badge { background: var(--rag-unknown); }
+    nav a { margin-right: 1rem; }
+    form.inline { display: inline; }
+    /* LAYOUT lives here and nowhere else. tests/test_web_responsive.py fails any page-local
+       <style> or style= that declares display:flex/grid, flex, overflow or min-/max-width,
+       so a surface cannot lay itself out one way on the dashboard and another on the drill
+       page. Every row below wraps rather than clipping, which is what carries the design
+       down to a tablet without hiding a column. */
+    .tiles { display: flex; flex-wrap: wrap; gap: 1rem; margin: 1rem 0 2rem; }
+    .tile { border: 1px solid var(--rule); border-radius: 6px; padding: .7rem 1.2rem; min-width: 9rem; }
+    .tile b { display: block; font-size: .75rem; text-transform: uppercase; color: var(--muted-ink); }
+    .value { font-size: 1.6rem; font-weight: 600; }
+    .command { display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: flex-start; }
+    .command > .heat { flex: 3 1 36rem; min-width: 0; } .command > .rail { flex: 1 1 18rem; }
+    .charts { display: flex; flex-wrap: wrap; gap: 1.5rem; margin: 0 0 1.5rem; }
+    .chart-curve, .chart-treemap { flex: 1 1 22rem; min-width: 0; }
+    .board { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start; }
+    .board-col { flex: 1 1 12rem; min-width: 12rem; }
+    .rings { display: flex; flex-wrap: wrap; gap: .6rem; margin: .6rem 0; }
+    .rings > span { display: inline-flex; align-items: center; }
+    form.narrow { max-width: 22rem; }
+    /* A grid too wide for the viewport SCROLLS; it never clips and nothing is ever hidden —
+       a manager on a tablet must not decide without the column that mattered. min-width:100%
+       keeps the desktop rendering (a table narrower than the box still fills it) while
+       width:max-content lets a wider one keep readable columns and scroll instead of
+       crushing them. _scroll.html is the only way one of these is written, so it always
+       carries tabindex=0 (a keyboard can scroll it) and a named role=region (a reader
+       announces it) — the affordance cannot be mouse-only by construction. */
+    .scroll-x { overflow-x: auto; max-width: 100%; }
+    .scroll-x > table { min-width: 100%; width: max-content; }
+    /* Keyboard and screen reader: a focus ring nothing removes, a skip link that
+       appears on focus ahead of the nav, and the off-screen text that keeps a colour
+       wash from being a state's only carrier (never display:none — that is unread). */
+    :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    .skip { position: absolute; left: -9999px; }
+    .skip:focus { left: .5rem; top: .5rem; background: var(--background); padding: .4rem; z-index: 2; }
+    /* ONE width breakpoint, and this is why 60rem (960px): the dashboard's command split is
+       36rem of heatmap + 18rem of rail + a 1.5rem gap = 55.5rem, which stops fitting inside
+       the 2rem body gutters at 59.5rem of viewport — so 60rem is the width the desktop
+       reading genuinely ends, not a device name. A landscape tablet (1024px) still gets the
+       two-column desktop layout; a portrait one (768px) gets the wrapped layout with wider
+       gutters reclaimed for content. Below it nothing is hidden or dropped: the flex rows
+       above wrap, .scroll-x scrolls, and the SVG charts scale on their viewBox. Two charts
+       carry the same figures as text: gantt.html repeats every bar and every mark as a row
+       of a real table underneath it, and home.html's cost S-curve repeats every sampled
+       date with its planned and actual totals. The rest do not — the portfolio treemap,
+       the weekly-status trend and the EVM curve have an aria-label and their own
+       in-SVG labels, and where text does sit under one (the EVM figures) it is the current
+       as-of position rather than the plotted series. That is a weaker guarantee, written
+       here as the weaker one on purpose: a comment claiming more than the markup gives is
+       what a reviewer trusts instead of checking. A second breakpoint would need its own
+       paragraph here; the test pins there being one. */
+    @media (max-width: 60rem) {
+      body { margin: 1rem .75rem; }
+      .charts svg, figure svg { max-width: 100%; height: auto; }
+    }
+    /* Dark theme (audit finding #21): one media query re-pointing EVERY token above
+       to a dark-legible variant — surface, ink and washes included, so no rule below
+       the :root block needs a dark twin and light mode is untouched. */
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --rag-green: #4cc77d;
+        --rag-amber: #e0a83e;
+        --rag-red: #f2665a;
+        --rag-unknown: #9a9a9a;
+        --background: #151515; --ink: #e8e8e8; --muted-ink: #999999; --badge-ink: #151515; --focus: #8ab4ff;
+        --ok-bg: #16301f; --warn-bg: #33280f; --bad-bg: #331815; --muted-bg: #232323; --signed-bg: #103836; --signed-ink: #e8e8e8;
+        --rule: #333333; --gridline: #6a6a6a;
+      }
+    }
+  </style>
+</head>
+<body>
+  {# The first focusable thing on every page: seven nav links are never the price of content. #}
+  <a class="skip" href="#main">Skip to content</a>
+  {# On the cookie's presence, never its contents: verifying it per page is the gate's job.
+     aria-current comes off the request path — "current page", where colour alone says nothing. #}
+  <nav aria-label="Primary">{% for href, label in [("/", "Dashboard"), ("/threats", "Threats"), ("/org/departments", "Departments"), ("/org/heatmap", "Capacity"), ("/pmbok", "PMBOK"), ("/process-map", "Process map"), ("/search", "Search")] %}<a href="{{ href }}"{% if request.url.path == href %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}{% if request.cookies.get("driftless_session") %}<form class="inline" method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit">Sign out</button></form>{% else %}<a href="/login">Sign in</a>{% endif %}</nav>
+  <main id="main">{% block content %}{% endblock %}</main>
+</body>
+</html>

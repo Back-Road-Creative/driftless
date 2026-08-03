@@ -1,0 +1,27 @@
+{# Person x week: hours against the weekly capacity printed once per row, verdict written as a
+   WORD (so no legend is needed). Every wash is a base.html token; this spells no colour.
+   The horizon links carry the as-of they were rendered with, so following one moves the far
+   edge and nothing else, and the page a pinned as-of renders stays byte-identical. #}
+{% extends "base.html" %}
+{% block title %}Capacity — driftless{% endblock %}
+{% block content %}
+{% import "_empty.html" as empty %}
+{% import "_scroll.html" as scroll %}
+<h1>Capacity heatmap</h1>
+<p><em>As of {{ as_of }}</em> — that week and the {{ weeks|length - 1 }} after it. Each cell is allocated hours, judged against the same capacity ratio the Resource assessment uses.</p>
+<p>How far ahead: {% for n in horizons %}{% if n == horizon %}<strong aria-current="true">{{ n }} weeks</strong>{% else %}<a href="/org/heatmap?as_of={{ as_of }}&amp;weeks={{ n }}">{{ n }} weeks</a>{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}. Any horizon from 1 to {{ horizons[-1] }} works in the address (<code>?weeks=</code>); further out, an approved baseline plans almost nothing, so the columns would be zeros at full width.</p>
+{% if rows %}
+{% call scroll.wide("Capacity grid, person by week") %}
+<table><caption class="sr-only">Allocated hours per person per week from {{ as_of }}, each against that person's weekly capacity, with unplaced hours and the total</caption>
+<tr><th scope="col">Person</th><th scope="col">Capacity (hrs/wk)</th>{% for week in weeks %}<th scope="col" data-week="{{ week }}">Week of {{ week }}</th>{% endfor %}<th scope="col">Unplaced (no approved window, or one past these weeks)</th><th scope="col">Total</th></tr>
+{% for row in rows %}
+<tr><th scope="row">{{ row.name }}</th><td data-person="{{ row.name }}" data-field="capacity">{{ row.capacity }}</td>{% for cell in row.cells %}<td data-person="{{ row.name }}" data-field="{{ weeks[loop.index0] }}" data-state="{{ cell.state }}" class="{{ cell.wash }}">{{ cell.hours }}{% if cell.mark %} <strong>{{ cell.mark }}</strong>{% endif %}</td>{% endfor %}<td data-person="{{ row.name }}" data-field="unplaced">{{ row.unplaced }}</td><td data-person="{{ row.name }}" data-field="total">{{ row.total }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("Nobody is assigned an hour-estimated task — there is no allocation to weigh", id="heatmap-empty") %}
+Assign the work and estimate it in hours (<code>PATCH /tasks/{id}</code> with <code>assignee_id</code>, <code>estimate</code> and <code>estimate_unit=hours</code>); each person's <code>capacity_hours</code> is what those hours are weighed against.
+{% endcall %}
+{% endif %}
+{% endblock %}

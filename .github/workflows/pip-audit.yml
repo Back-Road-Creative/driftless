@@ -1,0 +1,168 @@
+name: pip-audit
+
+# The dependency audit, moved out of ci.yml so it starts only when it has
+# something to say.
+#
+# Two things were wrong with it as a job in ci.yml:
+#
+# 1. It never ran. `pip install pip-audit==2.10.1` went at whatever `pip` was on
+#    PATH, which was a distro-managed system pip; PEP 668 answers that with
+#    `error: externally-managed-environment` and the step dies before pip-audit
+#    exists. Of 44 runs after extraction, 43 skipped the audit
+#    step by gate and the one scheduled run that reached it failed there
+#    (run 30266490213, 2026-07-27). The audit had therefore never executed once.
+#    Fixed below by pinning the interpreter with actions/setup-python and putting
+#    pip-audit in its OWN venv, so no install ever touches a system interpreter.
+#
+# 2. It ran the wrong dependency set. Without a committed requirements.lock the
+#    audit resolved latest-of-everything at run time, which is not what the
+#    Docker image contains — a green audit said nothing about the shipped
+#    artifact. It now installs under requirements.lock as a constraint file, and
+#    adds `uvicorn` because the image's own install line does
+#    (Dockerfile: `pip install --no-cache-dir ".[dev]" uvicorn`).
+#
+# The `paths:` filter replaces the in-job gate step. That gate ran on every pull
+# request — including a `fetch-depth: 0` checkout of full history — purely to
+# compute its own skip. GitHub can decide the same thing without starting a
+# runner. The nightly and manual dispatch still audit unconditionally, so a new
+# advisory against an unchanged pin is caught within 24h.
+
+concurrency:
+  group: pip-audit-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - 'pyproject.toml'
+      - 'requirements.lock'
+      - '.pip-audit-ignore'
+      # A change to the audit itself must re-run the audit; otherwise this file
+      # is the one file in the repo its own gate cannot check.
+      - '.github/workflows/pip-audit.yml'
+  workflow_dispatch:
+  schedule:
+    # 05:37 EDT — half an hour after the CI nightly, so a night that goes red
+    # goes red in one place at a time and the two alerts do not arrive together.
+    - cron: '37 9 * * *'
+
+# Read-only token by default; the alert job below re-grants itself the one write
+# this file needs. Actions are pinned to the commit SHA of the tag named beside
+# them — a floating tag is a mutable pointer to somebody else's code.
+permissions:
+  contents: read
+
+env:
+  PIP_AUDIT_VERSION: '2.10.1'
+
+jobs:
+  audit:
+    name: pip-audit
+    # GitHub-hosted, like every other pull-request job here: this one starts on a
+    # pull request anyone may open, so it must not run on a machine we own.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        # Shallow: the full-history checkout existed only for the gate step's
+        # `git diff` against the PR base, and `paths:` above replaced that.
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Setup Python
+        # Not decoration. This is the fix: it puts a self-contained CPython ahead
+        # of Debian's on PATH, so `python3 -m venv` and every pip call below run
+        # against an interpreter that is not externally managed.
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Audit clean venv
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          AUDIT_VENV="$RUNNER_TEMP/audit-venv-driftless"
+          TOOL_VENV="$RUNNER_TEMP/audit-tool-driftless"
+          rm -rf "$AUDIT_VENV" "$TOOL_VENV"
+          die() { echo "::error::audit venv: $*"; exit 1; }
+          # Two venvs on purpose. The tool venv holds pip-audit; the audit venv
+          # holds ONLY the project's dependencies, so pip-audit's own transitive
+          # tree can never be mistaken for something this service ships.
+          # Same uv-then-pip builder shim the other jobs use.
+          if command -v uv >/dev/null 2>&1; then
+            uv venv "$AUDIT_VENV" --python "$(command -v python3)" -q || die "uv venv failed"
+            uv venv "$TOOL_VENV" --python "$(command -v python3)" -q || die "uv venv (tool) failed"
+            pyinstall() { uv pip install --python "$AUDIT_VENV/bin/python" -q "$@" || die "install failed: $*"; }
+            uv pip install --python "$TOOL_VENV/bin/python" -q "pip-audit==$PIP_AUDIT_VERSION" \
+              || die "pip-audit install failed"
+          else
+            python3 -m venv "$AUDIT_VENV" || die "python3 -m venv failed"
+            python3 -m venv "$TOOL_VENV" || die "python3 -m venv (tool) failed"
+            "$AUDIT_VENV/bin/pip" install --upgrade pip || die "pip self-upgrade failed"
+            pyinstall() { "$AUDIT_VENV/bin/pip" install "$@" || die "install failed: $*"; }
+            "$TOOL_VENV/bin/pip" install "pip-audit==$PIP_AUDIT_VERSION" || die "pip-audit install failed"
+          fi
+          PIP_AUDIT="$TOOL_VENV/bin/pip-audit"
+          [ -x "$PIP_AUDIT" ] || die "pip-audit is not executable at $PIP_AUDIT"
+          echo "auditing with $("$PIP_AUDIT" --version 2>&1)"
+
+          # Install what the IMAGE installs, at the versions requirements.lock
+          # pins. uvicorn is not declared in pyproject.toml but the Dockerfile
+          # installs it, so leaving it out would audit a set the shipped
+          # container does not have.
+          #
+          # The image reads requirements-runtime.txt rather than this constraint now,
+          # and this job deliberately does not: hashes pin distributions, and the audit
+          # asks about versions. The two files cannot disagree about a version —
+          # requirements-runtime.txt is compiled under `-c requirements.lock` and
+          # tests/test_image_dependency_parity.py fails if they drift — so auditing
+          # under the lock still reports on what the container runs.
+          if [ -f "requirements.lock" ]; then
+            grep -v '^-e ' requirements.lock > "$RUNNER_TEMP/constraints-driftless.txt"
+            pyinstall --constraint "$RUNNER_TEMP/constraints-driftless.txt" ".[dev]" uvicorn
+          else
+            die "requirements.lock is missing — the audit would scan a resolution nothing ships"
+          fi
+
+          IGNORE_ARGS=""
+          if [ -f ".pip-audit-ignore" ]; then
+            while IFS= read -r cve; do
+              [ -n "$cve" ] && [[ ! "$cve" =~ ^# ]] && IGNORE_ARGS="$IGNORE_ARGS --ignore-vuln $cve"
+            done < .pip-audit-ignore
+          fi
+          SITE_PKGS="$("$AUDIT_VENV/bin/python" -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"
+          [ -d "$SITE_PKGS" ] || die "site-packages missing at $SITE_PKGS"
+          n_dists=$(find "$SITE_PKGS" -maxdepth 1 -name '*.dist-info' | wc -l)
+          [ "$n_dists" -ge 10 ] || die "only $n_dists distributions — the venv did not populate"
+          # Retry ONLY transient pypi network errors (bounded, backoff); a
+          # security gate that cannot execute must fail, never stay quiet.
+          attempt=1; max=3
+          while :; do
+            out="$("$PIP_AUDIT" --timeout 60 --path "$SITE_PKGS" $IGNORE_ARGS 2>&1)"; rc=$?
+            printf '%s\n' "$out"
+            [ "$rc" -eq 0 ] && break
+            if printf '%s' "$out" | grep -qiE 'ReadTimeout|ConnectTimeout|ConnectionError|timed out|Max retries|HTTPSConnectionPool|Failed to establish'; then
+              if [ "$attempt" -lt "$max" ]; then
+                echo "::warning::pip-audit transient network error (attempt ${attempt}/${max}) — retrying"
+                sleep $((attempt * 15)); attempt=$((attempt + 1)); continue
+              fi
+              echo "::error::pip-audit failed on network after ${max} attempts"
+            fi
+            exit "$rc"
+          done
+
+  alert:
+    name: Alert on a red nightly audit
+    # The failure this whole file exists to fix was a scheduled one nobody saw.
+    # Moving the audit into its own workflow would have moved it back out from
+    # under the alarm, so the alarm comes with it.
+    needs: [audit]
+    if: failure() && github.event_name == 'schedule'
+    permissions:
+      contents: read
+      issues: write
+    uses: ./.github/workflows/scheduled-failure-alert.yml
+    with:
+      # Its own dedupe key, separate from the CI nightly's: a broken audit and a
+      # broken suite are different problems and should not share a thread.
+      issue_title: 'nightly: driftless pip-audit is red on master'
+      what_failed: 'The nightly pip-audit failed on master — either a new advisory against a pinned dependency, or the audit itself could not run.'

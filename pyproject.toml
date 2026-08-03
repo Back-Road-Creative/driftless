@@ -1,0 +1,105 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "svc-driftless"
+version = "0.2.0"
+description = "Business / portfolio / program / project management hub — one store, computed views"
+# 3.12 is the real floor and the only version CI's matrix tests
+# (.github/workflows/ci.yml, python-version: ['3.12']).
+requires-python = ">=3.12"
+# Runtime dependencies are declared by the phase that first imports them
+# (schema adds sqlalchemy+alembic, the API adds fastapi+pydantic, and so on).
+# CI runs pip-audit against whatever is declared here, so an unused dependency
+# is pure CVE surface with no benefit. Alembic arrives here with the migration
+# baseline: `alembic upgrade head` is how a deployment builds its schema, so it
+# is a runtime dependency of the service, not a dev tool.
+dependencies = [
+    "alembic>=1.13",
+    "fastapi>=0.110",
+    "jinja2>=3.1",  # the dashboard renders server-side; fastapi does not pull it in
+    # deploy/entrypoint.sh builds a `postgresql+psycopg://` URL, so the driver is what the
+    # deployed service opens its store with — not a test convenience. While it sat in the
+    # [dev] extra alone, `pip install .` produced a container that raised NoSuchModuleError
+    # on its first query, and the image papered over it by naming psycopg at its pip line.
+    "psycopg[binary]>=3.1",
+    "pydantic>=2.6",
+    # The web edit forms post form-encoded bodies; FastAPI parses those through
+    # python-multipart. Floored past the ReDoS advisories (fixed by 0.0.7/0.0.18).
+    "python-multipart>=0.0.18",
+    "sqlalchemy>=2.0",
+]
+
+[project.scripts]
+# The top-level CLI dispatches report / pmbok / assess / wizard; argparse +
+# pathlib are stdlib, so this entry point adds no runtime dependency. The older
+# `driftless.report.cli:main` still serves `driftless report all` for direct callers.
+driftless = "driftless.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "httpx",  # backs fastapi.testclient.TestClient
+    # psycopg is NOT here: the migration is proven against the real dialect rather than only
+    # SQLite, and the deployment needs the same driver, so it is declared above as runtime.
+    "pytest",
+    "pytest-cov",
+    # CI runs the suite with `-n auto`. Without this the flag is an unrecognised
+    # argument and the Tests job dies at collection, so the plugin is a dev
+    # dependency of the suite, not an optional local convenience.
+    "pytest-xdist",
+]
+
+[tool.setuptools]
+# `alembic/` is deliberately absent: migrations are run from a checkout
+# (`alembic upgrade head`), not imported, so packaging them would ship a second
+# copy that could drift from the one under version control.
+packages = ["driftless", "driftless.api", "driftless.assess", "driftless.assess.evaluators", "driftless.auth", "driftless.calc", "driftless.db", "driftless.demo", "driftless.models", "driftless.pmbok", "driftless.pmbok.areas", "driftless.report", "driftless.report.documents", "driftless.web", "driftless.wizard"]
+
+[tool.setuptools.package-data]
+# PEP 561: [tool.mypy] strict = true types every symbol in this package, and without this
+# marker in the built distribution a downstream importer is told to ignore all of it.
+"driftless" = ["py.typed"]
+"driftless.web" = ["templates/*.html", "static/*"]  # templates+assets are code: pages 500 without them
+"driftless.report" = ["templates/*.md"]  # ditto: the installed package renders from these
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# The floor tracks the measurement: the suite covers 99.64% of 4935 statements (18 missed),
+# so 99.2 leaves ~22 statements of slack for a genuinely untestable branch and fails on
+# anything larger. At the old 80 the gate was decorative — deleting every test that touches
+# api/app.py, web/pages.py and api/secure.py lands at 82.1%, and CI still went green. Raise
+# this with the measurement; never lower it to make a red run green.
+addopts = "--cov=driftless --cov-report=term-missing --cov-fail-under=99.2"
+# CI installs this project NON-editable, so without this `import driftless` would
+# resolve to the site-packages copy while --cov measured the local ./driftless
+# tree — every run would report 0% and fail the floor. Pinning the checkout
+# onto sys.path makes the code under test and the code under measurement the
+# same files, and means CI exercises the checkout rather than a stale install.
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+
+[tool.mypy]
+# Present deliberately: CI enforces mypy only when this table exists
+# (advisory-only otherwise). A greenfield service starts strict and stays
+# strict rather than trying to retrofit it later.
+python_version = "3.12"
+strict = true
+# A non-editable install leaves build/lib/driftless in the checkout, which mypy
+# would otherwise report as a duplicate of the real package and refuse to
+# check anything at all.
+# `alembic/` is the migrations directory, not the alembic package, and it has no
+# __init__.py — so mypy maps it as a namespace package named `alembic` that
+# shadows the real one and reports `has no attribute "context"`. Excluded here
+# and skipped in the override below so the name always resolves to Any.
+exclude = "^(build|alembic|tests)/"
+ignore_missing_imports = true  # CI type-checks before any pip install; see commit
+disallow_subclassing_any = false
+disallow_untyped_decorators = false
+
+[[tool.mypy.overrides]]
+module = ["alembic", "alembic.*"]
+follow_imports = "skip"
+ignore_missing_imports = true

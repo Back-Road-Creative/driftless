@@ -1,0 +1,27 @@
+# pip-audit ignore list for svc-driftless
+#
+# Format: one vulnerability ID per line. Each entry MUST have a "# reason:"
+# comment immediately above explaining why we accept the risk.
+#
+# Adding to this file is the LAST resort. First try:
+#   1. Upgrade the affected package
+#   2. Switch to a different package
+#   3. Pin a floor version that contains the fix
+# Only use --ignore-vuln when the upstream has no fix available
+# and the vulnerability is not exploitable in our usage pattern.
+#
+# EMPTY BY VERIFICATION, not by neglect. CI audits a clean project venv (#1375),
+# and this project reports zero vulnerabilities in one. Every entry this file
+# used to carry — msgpack, torch — described packages driftless neither declares
+# nor imports, reported only because the audit used to scan the self-hosted
+# runner's shared environment. Those entries said to drop them once that stopped
+# being true. It has.
+#
+# This list must stay empty as long as it can. pyproject.toml declares real
+# runtime dependencies (alembic, fastapi, jinja2, pydantic, python-multipart,
+# sqlalchemy), so a CVE in one of THOSE is a genuine finding for this project and
+# must be fixed by upgrading or raising the floor — never by adding a line here.
+# python-multipart is the worked example: its ReDoS advisories were answered with
+# a `>=0.0.18` floor in pyproject, not with an entry here. Anything added must
+# fire in a clean venv, and an entry that stops firing is dead and should be
+# deleted.

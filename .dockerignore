@@ -1,0 +1,36 @@
+# What may not enter the Docker build context.
+#
+# An image layer is permanent: a file copied in once is recoverable from
+# `docker save` even if a later step deletes it. `.gitignore` keeps a secret out
+# of *git* and has no effect here — `docker compose up --build` sends everything
+# under this directory to the daemon.
+#
+# This is the SECOND lock; the first is the Dockerfile, which copies files by
+# name and never a whole directory an operator keeps secrets in.
+# tests/test_docker_build_context.py derives the secret patterns below from
+# .gitignore's own secret section: add one there and this file must learn it.
+
+# Operator secrets. deploy/age-key.txt decrypts deploy/secrets.enc.env, and with
+# it DRIFTLESS_SESSION_SECRET, DRIFTLESS_API_TOKEN and POSTGRES_PASSWORD.
+deploy/age-key.txt
+deploy/*.key
+**/*.key
+backups
+**/backups
+
+# History and local state. Nothing here builds anything, and .git carries every
+# secret ever committed by accident, including ones since removed from the tip.
+.git
+.github
+.venv
+**/__pycache__
+**/*.py[cod]
+.coverage
+htmlcov
+**/*.db
+**/*.sqlite3
+reports
+build
+dist
+*.egg-info
+tests

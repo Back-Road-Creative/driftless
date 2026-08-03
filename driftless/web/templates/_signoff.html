@@ -1,0 +1,11 @@
+{# The ONE decision <select> a sign-off form renders, so a second copy cannot be
+   hand-listed: its options are looped out of ``signoff_decisions`` — the model's own
+   vocabulary, put on the Jinja environment by ``web/templating.py`` — which is what
+   makes a decision added to the store reachable from the browser the same day.
+   ``label`` names the control in the page's own words: several of these render on one
+   page, and "Sign-off decision" alone would not say which subject it decides. #}
+{% macro decision(label) %}
+<select name="decision" aria-label="{{ label }}">
+  {% for value in signoff_decisions %}<option value="{{ value }}">{{ value | humanize }}</option>{% endfor %}
+</select>
+{% endmacro %}

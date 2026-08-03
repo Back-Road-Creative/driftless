@@ -1,0 +1,41 @@
+# The production profile: a TLS-terminating reverse proxy in front of the API.
+#
+# An overlay rather than a service in docker-compose.yml, so a deployment that
+# fronts the API some other way (an existing nginx, a cloud load balancer) simply
+# does not pass this file. Compose merges it:
+#
+#   docker compose -f docker-compose.yml -f deploy/proxy.compose.yml up -d
+#
+# Nothing about driftless-app changes — it still publishes only 127.0.0.1:8000
+# for local admin, and the proxy reaches it over the compose network by name.
+services:
+  driftless-proxy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - driftless-app
+    environment:
+      # The public name on the certificate; ACME only issues for a name that
+      # resolves to this host.
+      DRIFTLESS_PUBLIC_HOST: ${DRIFTLESS_PUBLIC_HOST:?set the public hostname — see OPERATIONS.md}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Issued certificates and ACME account keys. Without this volume every
+      # restart re-issues and walks into Let's Encrypt's rate limit.
+      - driftless-caddy:/data
+    ports:
+      - "80:80"    # ACME HTTP-01 challenge, and the redirect to https
+      - "443:443"
+    # Caddy proxies and terminates TLS, buffering nothing large. A ceiling this low
+    # turns a request flood into slow replies from one container instead of memory
+    # pressure on the host that also runs the app and the database.
+    mem_limit: 128m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE  # dropping ALL takes away even root's right to bind :80
+
+volumes:
+  driftless-caddy:

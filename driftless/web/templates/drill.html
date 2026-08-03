@@ -1,0 +1,33 @@
+{# The portfolio/program drill page: one node's rollup KPIs plus its children's
+   rows, from the same gather.overview() tree home.html renders — a tile here
+   can never disagree with the dashboard. Not "the same table idioms as home.html"
+   but literally the same ones: .tiles and .rollup are base.html classes both pages
+   apply, so this page carries no <style> of its own to drift out of step. #}
+{% extends "base.html" %}
+{% block title %}{{ total.name }} — driftless{% endblock %}
+{% block content %}
+{% import "_empty.html" as empty %}
+{% import "_scroll.html" as scroll %}
+<h1>{{ total.name }}</h1>
+<p>As of <strong>{{ as_of }}</strong> — every figure computed by <code>driftless.calc</code>.</p>
+<section class="tiles">
+<div class="tile"><b>Budget</b><span id="kpi-budget" class="value">{{ total.budget }}</span></div>
+<div class="tile"><b>Actual</b><span id="kpi-actual" class="value">{{ total.actual }}</span></div>
+<div class="tile"><b>Complete</b><span id="kpi-complete" class="value">{{ total.complete }}</span></div>
+<div class="tile"><b>On track</b><span id="kpi-on-track" class="value">{{ on_track }}</span></div>
+<div class="tile"><b>Open high risks</b><span id="kpi-risks" class="value">{{ total.risks }}</span></div>
+</section>
+{% if rows %}{% call scroll.wide(total.name ~ " children") %}<table class="rollup">
+<caption class="sr-only">What sits under {{ total.name }} as of {{ as_of }}, with each RAG status and figures</caption>
+<tr><th scope="col">{{ "Program / project" if kind == "portfolio" else "Project" }}</th><th scope="col">RAG</th><th scope="col">Budget</th><th scope="col">Actual</th><th scope="col">Complete</th><th scope="col">Open high risks</th></tr>
+{% for kid in rows %}
+<tr class="{{ kid.kind }}{% if kid.nested %} nested{% endif %}" data-rag="{{ kid.rag }}">
+<td>{{ kid.name }}</td><td class="rag {{ kid.rag }}">{{ "no data" if kid.rag == "unknown" else kid.rag }}</td><td>{{ kid.budget }}</td><td>{{ kid.actual }}</td><td>{{ kid.complete }}</td><td>{{ kid.risks }}</td></tr>
+{% endfor %}
+</table>{% endcall %}
+{% else %}
+{% call empty.state("Nothing sits under " ~ total.name ~ " yet — its KPIs above roll up whatever does") %}
+Create one with <code>POST /projects</code> carrying this {{ kind }}'s id, or move an existing one with <code>PATCH /projects/&lt;id&gt;</code>; every {{ kind }} is on the <a href="/">dashboard</a>.
+{% endcall %}
+{% endif %}
+{% endblock %}

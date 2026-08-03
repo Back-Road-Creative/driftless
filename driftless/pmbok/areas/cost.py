@@ -1,0 +1,89 @@
+"""PMBOK Cost Management processes (4): Plan, Estimate, Determine Budget, Control."""
+
+from driftless.pmbok.model import KnowledgeArea, Process, ProcessGroup
+
+PROCESSES: tuple[Process, ...] = (
+    Process(
+        id="7.1",
+        name="Plan Cost Management",
+        group=ProcessGroup.PLANNING,
+        area=KnowledgeArea.COST,
+        inputs=(
+            "project_charter",
+            "project_management_plan",
+            "enterprise_environmental_factors",
+            "organizational_process_assets",
+        ),
+        tools_techniques=("expert_judgment", "data_analysis", "meetings"),
+        outputs=("cost_management_plan",),
+    ),
+    Process(
+        id="7.2",
+        name="Estimate Costs",
+        group=ProcessGroup.PLANNING,
+        area=KnowledgeArea.COST,
+        inputs=(
+            "cost_management_plan",
+            "scope_baseline",
+            "schedule_management_plan",
+            "resource_management_plan",
+            "risk_register",
+            "enterprise_environmental_factors",
+            "organizational_process_assets",
+        ),
+        tools_techniques=(
+            "expert_judgment",
+            "analogous_estimating",
+            "parametric_estimating",
+            "three_point_estimating",
+            "bottom_up_estimating",
+            "data_analysis",
+        ),
+        outputs=("cost_estimates", "basis_of_estimates"),
+    ),
+    Process(
+        id="7.3",
+        name="Determine Budget",
+        group=ProcessGroup.PLANNING,
+        area=KnowledgeArea.COST,
+        inputs=(
+            "cost_management_plan",
+            "scope_baseline",
+            "cost_estimates",
+            "basis_of_estimates",
+            "project_schedule",
+            "risk_register",
+            "agreements",
+        ),
+        tools_techniques=(
+            "expert_judgment",
+            "cost_aggregation",
+            "data_analysis",
+            "historical_information_review",
+            "funding_limit_reconciliation",
+            "financing",
+        ),
+        outputs=("cost_baseline", "project_funding_requirements"),
+    ),
+    Process(
+        id="7.4",
+        name="Control Costs",
+        group=ProcessGroup.MONITORING,
+        area=KnowledgeArea.COST,
+        inputs=(
+            "project_management_plan",
+            "project_funding_requirements",
+            "work_performance_data",
+            "organizational_process_assets",
+        ),
+        tools_techniques=(
+            "expert_judgment",
+            "data_analysis",
+            "earned_value_analysis",
+            "to_complete_performance_index",
+            "project_management_information_system",
+        ),
+        outputs=("work_performance_information", "cost_forecasts", "change_requests"),
+        optional_outputs=("change_requests",),
+    ),
+)

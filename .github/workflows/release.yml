@@ -1,0 +1,100 @@
+name: Release
+
+# The tag is the trigger; CHANGELOG.md is the source of the notes.
+#
+# v0.1.0 was tagged on 2026-07-31 and no release object was ever created. Every
+# other workflow here starts on a pull request, a schedule, a dispatch or a
+# workflow_call, so a pushed tag started nothing at all and publishing the notes
+# stayed a manual step nobody took — the changelog said what shipped and the
+# only place a reader looks said nothing.
+#
+# The notes are READ out of CHANGELOG.md, never re-assembled from changelog.d/:
+# by tag time the fragments have been folded into the file and deleted, so an
+# assembler run here would find nothing and publish an empty release. If the tag
+# names a version CHANGELOG.md has no dated section for, the job fails and
+# publishes nothing — an empty release looks answered, which is worse than a
+# missing one, and is how the notes went stale in the first place.
+#
+# Runs on GitHub-hosted ubuntu-latest, not the self-hosted pool: this job needs
+# `gh` and a python3 and none of the toolchain those runners cache, and a
+# release should not wait behind — or take a slot from — the two runners the
+# suite shares. Hosted runners are verified available for this org's private
+# repos (see scheduled-failure-alert.yml).
+
+on:
+  push:
+    tags:
+      # The shape this repo already tags: v0.1.0. A tag that is not a release
+      # (a marker, a checkpoint) does not start this.
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+# Read-only by default like every workflow here, so a compromised step cannot
+# push or tag; the job below re-grants itself the single write it needs. Actions
+# are pinned to the commit SHA of the tag named beside them — a floating tag is
+# a mutable pointer to somebody else's code.
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Publish the release notes for the tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # Creating a release is a `contents` write and nothing more. No secret is
+      # added: GITHUB_TOKEN is the workflow's own, scoped to this repository and
+      # expiring with the run.
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Release notes for this tag from CHANGELOG.md
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # The heading must be the DATED form `## [x.y.z] - YYYY-MM-DD`, which
+          # is the only shape bin/assemble-changelog.py writes. An undated one is
+          # a hand-written placeholder (CHANGELOG.md carried such a 0.1.0 heading
+          # before the first release), and publishing from it would ship notes no
+          # release fold ever stamped. The file is written by the extractor
+          # itself, so a failure leaves no file for a later step to publish.
+          python3 - "${TAG#v}" "$RUNNER_TEMP/release-notes.md" <<'EXTRACT'
+          import pathlib
+          import re
+          import sys
+
+          version, destination = sys.argv[1], sys.argv[2]
+          text = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8")
+          dated = rf"^## \[{re.escape(version)}\] - \d{{4}}-\d{{2}}-\d{{2}}$"
+          found = re.search(dated, text, re.M)
+          if found is None:
+              sys.exit(
+                  f"::error::CHANGELOG.md has no dated section for {version} — expected a"
+                  f" heading matching `## [{version}] - YYYY-MM-DD`. Run"
+                  f" bin/assemble-changelog.py --release {version}, merge that, then tag."
+              )
+          rest = text[found.end() :]
+          following = re.search(r"^## ", rest, re.M)
+          notes = (rest if following is None else rest[: following.start()]).strip()
+          if not notes:
+              sys.exit(f"::error::the {version} section of CHANGELOG.md is empty — nothing to publish")
+          pathlib.Path(destination).write_text(notes + "\n", encoding="utf-8")
+          EXTRACT
+          echo "release notes for $TAG:"
+          cat "$RUNNER_TEMP/release-notes.md"
+
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # --verify-tag: create the release for the tag that was pushed, never
+          # invent one the remote does not have.
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$TAG" \
+            --notes-file "$RUNNER_TEMP/release-notes.md" \
+            --verify-tag

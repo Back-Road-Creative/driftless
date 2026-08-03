@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Threats — driftless{% endblock %}
+{# The page's ranked cards (pages.threats already sliced them) are grouped by
+   project, preserving the ranked order of first appearance — the highest-ranked
+   threat's project heads the board. Each group is a heading linking the project's
+   process map (mirroring the old per-card link), then that project's cards in rank
+   order; a threat with no project falls under a Portfolio-level heading. Each card
+   still states the finding, lists the recommended PMBOK actions its assessment
+   attached, and ends with the sign-off form posting the threat id + project_id.
+   Ranking, suppression and pagination are pages.py's; this template only formats. #}
+{% block content %}
+{% import "_empty.html" as empty %}
+{% import "_signoff.html" as signoff %}
+<h1>Top threats</h1>
+<p><em>As of {{ as_of }}</em></p>
+<div id="threat-board">
+{% if not threats %}
+{% call empty.state("No live threats — everything is green, or every threat is signed off") %}
+This board ranks what the assessment engine finds across every project. File this week's status from a project hub on the <a href="/">dashboard</a>, or run <code>driftless assess</code>.
+{% endcall %}
+{% endif %}
+{% set ns = namespace(seen=[]) %}
+{% for t in threats %}
+  {% if t.project_id not in ns.seen %}
+  {% set ns.seen = ns.seen + [t.project_id] %}
+  <h2 class="project-group">
+    {% if t.project_id is not none %}
+    <a href="/projects/{{ t.project_id }}/process-map">{{ t.project_name }}</a>
+    {% else %}
+    Portfolio-level
+    {% endif %}
+  </h2>
+  {% for c in threats if c.project_id == t.project_id %}
+  <div class="card sev-{{ c.severity }}">
+    <strong>{{ c.kind }}</strong> — {{ c.description }}
+    <span class="badge sev-badge">{{ c.severity }}</span>
+    <span class="badge">score {{ "%.4f"|format(c.score) }}</span>
+    {# Week-over-week trend vs the same threat a week ago (matched by id in pages.py).
+       ▲ worse (rag-red), ▼ better (rag-green), – unchanged, or a "new" badge — shared
+       tokens only, guarded when no delta was attached. #}
+    {% if c.delta is not none %}
+      {% if c.delta.dir == "new" %}
+    <span class="badge delta delta-new amber" title="new since last week">new<span class="sr-only"> since last week</span></span>
+      {% elif c.delta.dir == "up" %}
+    <span class="badge delta delta-up red" title="score {{ "%+g"|format(c.delta.amount) }} vs last week"><span aria-hidden="true">▲</span> {{ "%+g"|format(c.delta.amount) }}<span class="sr-only"> worse vs last week</span></span>
+      {% elif c.delta.dir == "down" %}
+    <span class="badge delta delta-down green" title="score {{ "%+g"|format(c.delta.amount) }} vs last week"><span aria-hidden="true">▼</span> {{ "%+g"|format(c.delta.amount) }}<span class="sr-only"> better vs last week</span></span>
+      {% else %}
+    {# The glyph is aria-hidden and the words sit beside it, the same shape process_map.html
+       uses for a state mark: title= is hover-only — no keyboard, no touch, no print. #}
+    <span class="badge delta delta-flat"><span aria-hidden="true">–</span><span class="sr-only">unchanged vs last week</span></span>
+      {% endif %}
+    {% endif %}
+    {% if c.actions %}
+    <ul class="actions">
+      {% for a in c.actions %}
+      <li><strong>{{ a.label }}</strong> — {{ a.rationale }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {# data-target: the swap script lifts the fresh #threat-board out of the full
+       re-render, so a background sign-off updates the board in place. #}
+    <form class="inline" method="post" action="/sign-off" data-swap data-target="#threat-board">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="subject_kind" value="threat">
+      <input type="hidden" name="subject_ref" value="{{ c.id }}">
+      <input type="hidden" name="signal" value="{{ c.score }}">
+      <input type="hidden" name="as_of" value="{{ as_of }}">
+      {% if c.project_id is not none %}
+      <input type="hidden" name="project_id" value="{{ c.project_id }}">
+      {% endif %}
+      {{ signoff.decision("Sign-off decision for " ~ c.kind ~ " on " ~ (c.project_name or "the portfolio")) }}
+      {# no "signed by" input: the ledger stamps the signed-in user (api.app.signer) and
+         discards the claim, so the box only ever invited a name it would throw away #}
+      <button type="submit">Sign off</button>
+    </form>
+  </div>
+  {% endfor %}
+  {% endif %}
+{% endfor %}
+</div>
+{% if total_pages > 1 %}
+<nav class="pager" aria-label="Threat board pages">
+  {% if has_prev %}
+  <a href="/threats?as_of={{ as_of }}&page={{ page - 1 }}">&larr; prev</a>
+  {% endif %}
+  <span>page {{ page }} of {{ total_pages }}</span>
+  {% if has_next %}
+  <a href="/threats?as_of={{ as_of }}&page={{ page + 1 }}">next &rarr;</a>
+  {% endif %}
+</nav>
+{% endif %}
+{% endblock %}

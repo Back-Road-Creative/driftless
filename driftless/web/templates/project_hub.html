@@ -1,0 +1,61 @@
+{# The project hub: completeness, earned value, this project's live threats,
+   RAID counts and milestones — every figure from the same engines the deep
+   pages render from; styling reuses base.html's tokens, no fresh palette. #}
+{% extends "base.html" %}
+{% block title %}{{ project.name }} — driftless{% endblock %}
+{% block content %}
+{% import "_empty.html" as empty %}
+{% import "_scroll.html" as scroll %}
+<h1>{{ project.name }}</h1>
+<p><em>As of {{ as_of }}</em> ·
+   <a href="/projects/{{ project.id }}/process-map?as_of={{ as_of }}">Process map</a> ·
+   <a href="/projects/{{ project.id }}/wizard?as_of={{ as_of }}">Wizard</a> ·
+   <a href="/projects/{{ project.id }}/gantt?as_of={{ as_of }}">Schedule</a> ·
+   {# no as_of: nothing the board renders is dated — see driftless/web/board.py #}
+   <a href="/projects/{{ project.id }}/board">Board</a> ·
+   <a href="/projects/{{ project.id }}/status?as_of={{ as_of }}">Weekly status</a></p>
+<h2>Status</h2>
+<p>Process completeness <strong id="hub-completeness">{{ completeness }}</strong>
+{%- for area, label in ring_labels.items() %} · <span class="hub-area">{{ area|humanize }} {{ label }}</span>{%- endfor %}</p>
+{% if evm.current %}
+<p>EV <strong id="evm-ev">{{ evm.current.ev }}</strong> ·
+   CPI <strong id="evm-cpi">{{ evm.current.cpi if evm.current.cpi is not none else 'n/a' }}</strong> ·
+   SPI <strong id="evm-spi">{{ evm.current.spi if evm.current.spi is not none else 'n/a' }}</strong> ·
+   EAC <strong id="evm-eac">{{ evm.current.eac if evm.current.eac is not none else 'n/a' }}</strong> ·
+   Budget <strong id="evm-bac">{{ evm.bac }}</strong></p>
+{% else %}
+{% call empty.state("No cost baseline yet — earned value has nothing to measure", id="evm-empty") %}
+Baseline the plan (<code>POST /baselines</code>, <code>POST /baseline-lines</code>) and record spend (<code>POST /cost-entries</code>); the <a href="/projects/{{ project.id }}/wizard?as_of={{ as_of }}">wizard</a> walks that order.
+{% endcall %}
+{% endif %}
+<h2>Live threats</h2>
+{% for t in threats %}
+<div class="card sev-{{ t.severity }}" data-threat="{{ t.id }}">
+  <span class="badge sev-badge">{{ t.severity }}</span>
+  <strong>{{ t.kind|humanize }}</strong> · score {{ t.score }} — {{ t.description }}
+</div>
+{% else %}
+<p><em>No live threats.</em></p>
+{% endfor %}
+<h2>RAID</h2>
+<p>Open risks <strong id="raid-risks">{{ raid.risks }}</strong> ·
+   open issues <strong id="raid-issues">{{ raid.issues }}</strong> ·
+   open change requests <strong id="raid-changes">{{ raid.changes }}</strong></p>
+<h2>Milestones</h2>
+{% if milestones %}
+{% call scroll.wide("Milestones") %}
+<table>
+<caption class="sr-only">Milestones for {{ project.name }}, with target date and status</caption>
+<tr><th scope="col">Milestone</th><th scope="col">Target</th><th scope="col">Status</th></tr>
+{% for m in milestones %}
+<tr><td class="ms-name">{{ m.name }}</td><td>{{ m.target }}</td>
+<td>{{ m.status|humanize }}{% if m.slipped %} <span class="badge red ms-slipped">slipped</span>{% endif %}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No milestones yet — these are the dates this project is judged against", id="milestones-empty") %}
+Add one with <code>POST /milestones</code> (this project's id, a target date); a slipped one then shows here and on the <a href="/threats">threat board</a>.
+{% endcall %}
+{% endif %}
+{% endblock %}

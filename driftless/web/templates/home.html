@@ -1,0 +1,267 @@
+{# The portfolio dashboard. Extends base.html for the shared nav (Dashboard |
+   Threats | Departments | PMBOK | Process map) and base styling, so the page
+   is no longer a dead end; only the tile/RAG/table specifics base does not
+   cover stay local. Each project row
+   links to its /projects/{id}/hub page — the id is threaded in
+   home.py, since calc's Kpis leaves carry none. RAG renders as a word, never
+   colour alone. #}
+{% extends "base.html" %}
+{% block title %}Portfolio dashboard — driftless{% endblock %}
+{% block content %}
+{% import "_empty.html" as empty %}
+{% import "_scroll.html" as scroll %}
+{% import "_signoff.html" as signoff %}
+<style>
+{# .tiles/.tile/.value, the .command and .charts rows, the scroll boxes and the rollup
+   table's own alignment and indents (base.html's .rollup, applied below) are all base's:
+   this page and drill.html render the SAME rollup, so neither restates those rules. Only
+   what is genuinely this page's — the burn sparkline, the charts, the rail — stays here. #}
+nav.businesses a { margin-right: 1rem; }
+{# .green/.amber/.red/.unknown now live in base.html as var(--rag-*) tokens — the single palette source. #}
+{# Burn sparkline: AC(t) climbing left→right (currentColor, tinted by the row's
+   RAG) vs the flat dashed BAC reference. Coords are scaled in-template from the
+   raw ac/bac home.py hands over; a project with no baseline shows a dash. #}
+td.burn { text-align: center; padding: .15rem .4rem; }
+svg.burn { display: block; margin: 0 auto; }
+.burn-ac { fill: none; stroke: currentColor; stroke-width: 1.5; }
+.burn-bac { stroke: var(--rag-unknown); stroke-width: 1; stroke-dasharray: 2 2; }
+td.burn-empty { text-align: center; color: var(--rag-unknown); }
+.rail li { font-size: .85rem; }
+.rail ol { list-style: none; margin: 0; padding: 0; } .rail .action { display: block; font-style: italic; margin: .2rem 0; }
+{# Two home charts, same wrapping flex idiom as .command: the business cost
+   S-curve (2 series, one money axis, final value labeled once per line, never
+   a gridline beyond the muted baseline) and the portfolio treemap (area
+   proportional to BAC, coloured by RAG only -- the reserved job of those
+   tokens -- everything else in normal text tokens, never series-coloured). #}
+.chart-curve h2, .chart-treemap h2 { font-size: 1rem; margin: 0 0 .4rem; }
+.axis-baseline { stroke: var(--rag-unknown); stroke-width: 1; }
+.s-line { fill: none; stroke: currentColor; stroke-width: 2; }
+{# Actual dashes, planned stays solid — the EVM chart's own idiom, so the pair
+   survives greyscale and print where the RAG tint is one colour (F-G7). #}
+.s-line.ac { stroke-dasharray: 7 3; }
+text.curve-label { fill: currentColor; font-size: .7rem; }
+{# A treemap label is drawn INSIDE its own rectangle, so it is read against that
+   --rag-* fill and never against the page: currentColor (i.e. --ink) scored
+   2.66-3.48:1 light and 1.74-2.51:1 dark, under the 4.5:1 AA floor in every cell.
+   --badge-ink is the token that exists to sit on a RAG fill (5.00-6.54:1 light,
+   5.93-8.56:1 dark), and the budget line carries no opacity -- compositing a rated
+   pair back toward its background defeats the rating. #}
+text.tm-label { fill: var(--badge-ink); font-size: .65rem; }
+.legend { font-size: .8rem; }
+.chip { display: inline-block; width: .65rem; height: .65rem; border-radius: 2px; background: currentColor; margin: 0 .3rem 0 .8rem; }
+.legend .chip:first-child { margin-left: 0; }
+svg.treemap a { cursor: pointer; }
+rect.tm { stroke: none; }
+rect.tm.green { fill: var(--rag-green); } rect.tm.amber { fill: var(--rag-amber); }
+rect.tm.red { fill: var(--rag-red); } rect.tm.unknown { fill: var(--rag-unknown); }
+</style>
+<h1>{{ heading }}</h1>
+<p>As of <strong>{{ as_of }}</strong> — every figure computed by <code>driftless.calc</code>.</p>
+{% if multi %}<nav class="businesses" aria-label="Businesses on this dashboard">{% for row in rows %}{% if row.kind == "business" %}<a href="#{{ row.anchor }}">{{ row.name }}</a>{% endif %}{% endfor %}</nav>{% endif %}
+{# data-countup hooks driftless.js's client-side count-up (progressive
+   enhancement only): the span's rendered text IS the complete final figure
+   with JS off; JS animates 0 -> that same text on load, respecting
+   prefers-reduced-motion, and lands on the identical rendered string. #}
+<section class="tiles">
+<div class="tile"><b>Budget</b><span id="kpi-budget" class="value" data-countup>{{ total.budget }}</span></div>
+<div class="tile"><b>Actual</b><span id="kpi-actual" class="value" data-countup>{{ total.actual }}</span></div>
+<div class="tile"><b>Complete</b><span id="kpi-complete" class="value" data-countup>{{ total.complete }}</span></div>
+<div class="tile"><b>On track</b><span id="kpi-on-track" class="value" data-countup>{{ on_track }}</span></div>
+<div class="tile"><b>Open high risks</b><span id="kpi-risks" class="value" data-countup>{{ total.risks }}</span></div>
+<div class="tile"><b>Open threats</b><span id="kpi-threats" class="value" data-countup>{{ threats_open }}</span></div><div class="tile"><b>Process completeness</b><span id="kpi-process" class="value" data-countup>{{ completeness }}</span></div>
+</section>
+{% set portfolios = rows | selectattr("kind", "equalto", "portfolio") | list %}
+{% if curve.points or treemap or portfolios %}
+<div class="charts">
+{% if curve.points %}
+{% set W, H = 320, 150 %}
+{% set pvs = curve.points | map(attribute="pv") | list %}
+{% set acs = curve.points | map(attribute="ac") | list %}
+{% set n = curve.points | length %}
+{% set ymax = (([pvs | max, acs | max] | max) or 1) * 1.15 %}
+<section class="chart-curve">
+<h2>Cost S-curve — whole business</h2>
+<svg class="scurve" width="{{ W }}" height="{{ H }}" viewBox="0 0 {{ W }} {{ H }}" role="img" aria-label="Planned {{ "{:,.0f}".format(pvs[-1]) }} vs actual {{ "{:,.0f}".format(acs[-1]) }}. The table below carries every sampled date as text.">
+<line class="axis-baseline" x1="0" x2="{{ W }}" y1="{{ H - 14 }}" y2="{{ H - 14 }}"/>
+{# Both end labels are anchored at the same x, so two series finishing within a few
+   percent of each other -- the healthy case, and the pair a reader most wants to
+   read precisely -- printed their figures on top of each other. Only the LOWER of
+   the two moves, pushed to a full .7rem line height (11.2) below the upper: the
+   pair can never invert, and the deepest a label can land is y = 143.2 (a zero
+   series sits at 132), inside the H = 150 box. #}
+{% set y_pv = H - 14 - pvs[-1] / ymax * (H - 14) - 4 %}
+{% set y_ac = H - 14 - acs[-1] / ymax * (H - 14) - 4 %}
+{% set pushed = [[y_pv, y_ac] | max, ([y_pv, y_ac] | min) + 11.2] | max %}
+<polyline class="s-line" points="{% for v in pvs %}{{ (loop.index0 / (n - 1) * W) | round(2) if n > 1 else 0 }},{{ (H - 14 - v / ymax * (H - 14)) | round(2) }} {% endfor %}"/>
+<text class="curve-label" x="{{ W }}" y="{{ (y_pv if y_pv <= y_ac else pushed) | round(2) }}" text-anchor="end">{{ "{:,.0f}".format(pvs[-1]) }}</text>
+{# The actual label sits INSIDE the RAG-tinted <g>, so it reads as that line's figure:
+   outside it both labels rendered in --ink and neither was attributable to a series.
+   Every --rag-* token clears 4.5:1 on --background in both schemes (test_web_a11y). #}
+<g class="{{ total.rag }}"><polyline class="s-line ac" points="{% for v in acs %}{{ (loop.index0 / (n - 1) * W) | round(2) if n > 1 else 0 }},{{ (H - 14 - v / ymax * (H - 14)) | round(2) }} {% endfor %}"/><text class="curve-label" x="{{ W }}" y="{{ (y_ac if y_ac < y_pv else pushed) | round(2) }}" text-anchor="end">{{ "{:,.0f}".format(acs[-1]) }}</text></g>
+</svg>
+<p class="legend"><span class="chip"></span>Planned (solid)<span class="chip {{ total.rag }}"></span>Actual (dashed)</p>
+{# The same figures as text, on the argument that earned the Gantt its table twin:
+   the aria-label above carries the endpoint pair, but WHERE actual crossed planned
+   and by how much it sat above or below at each sample was reachable by eye alone.
+   Every plotted point is one row, in plot order, same scroll.wide + sr-only caption
+   idiom gantt.html uses. Nothing is computed here — the date and both figures are
+   gather.business_curve's own, formatted the way the end labels above are. #}
+{% call scroll.wide("Cost S-curve as text") %}
+<table>
+<caption class="sr-only">The same S-curve as text: total planned and total actual cost at each sampled date, earliest first</caption>
+<tr><th scope="col">Date</th><th scope="col">Planned</th><th scope="col">Actual</th></tr>
+{% for point in curve.points %}
+<tr><td>{{ point.date }}</td><td>{{ "{:,.0f}".format(point.pv) }}</td><td>{{ "{:,.0f}".format(point.ac) }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+</section>
+{% else %}
+{# Portfolios recorded and no approved baseline anywhere: there is no plan to sweep, so
+   the curve's whole slot used to disappear while the treemap kept its own beside it,
+   and nothing said a chart was missing or how to get it. The shared empty state takes
+   the slot instead -- NOT wrapped in chart-curve, because there is genuinely no chart
+   section here and no table twin (test_web_scurve_table pins that absence); its title
+   names the missing curve. Same answer the treemap below and gantt.html give. #}
+{% call empty.state("No approved cost baseline yet — there is no planned curve to draw", id="curve-empty") %}
+Draft each project's baseline, add its lines, then approve it (<code>POST /baselines</code>, <code>POST /baseline-lines</code>, <code>PATCH /baselines/&lt;id&gt;</code> — approval freezes the plan, so the lines go in first); planned-vs-actual sweeps from the earliest approved start as soon as one plan carries a cost.
+{% endcall %}
+{% endif %}
+{% if treemap or portfolios %}
+<section class="chart-treemap">
+<h2>Portfolio treemap — budget by portfolio</h2>
+{# With portfolios recorded but no approved baseline anywhere there is no BAC to
+   divide, so there is no honest area to draw: gather.treemap_layout returns nothing
+   and this renders the shared empty state naming the next step, the way gantt.html
+   does for the same missing input -- never equal halves under a heading that claims
+   area is proportional to BAC. #}
+{% if treemap %}
+{# NOT role="img": that says "a single graphic" and prunes the subtree, and every
+   rectangle here LINKS its portfolio's rollup. Pruned, those links were not merely
+   unlabelled -- they were unreachable, and the <title> naming each one went with them.
+   The aria-label still names the whole graphic (an <svg> maps to graphics-document,
+   which takes a name and keeps its children), and each <a>'s first-child <title> names
+   that link, so the treemap reads as what it is: a set of named portfolio links. #}
+<svg class="treemap" width="{{ treemap_w }}" height="{{ treemap_h }}" viewBox="0 0 {{ treemap_w }} {{ treemap_h }}" aria-label="Portfolio budgets, rectangle area proportional to BAC">
+{% for r in treemap %}
+{# tabindex: engines do not all focus an SVG <a>; the RAG rides in the title as a
+   word — the rollup table's own vocabulary — so the fill hue is never the verdict's
+   only carrier (F-G6, F-G9). #}
+<a href="/portfolios/{{ r.id }}/rollup" tabindex="0"><title>{{ r.name }} — {{ "{:,.0f}".format(r.bac) }} — {{ "no data" if r.rag == "unknown" else r.rag }}</title>
+<rect class="tm {{ r.rag }}" x="{{ (r.x + 1) | round(2) }}" y="{{ (r.y + 1) | round(2) }}" width="{{ ([r.w - 2, 0] | max) | round(2) }}" height="{{ ([r.h - 2, 0] | max) | round(2) }}"/>
+{# Placed by gather._label_lines against this rectangle's real geometry: the name, the
+   name and budget, or a truncated name, whichever fits. The template decides nothing,
+   so it cannot print a label a rectangle has no room for -- the old w > 70 and h > 26
+   gate was a landscape test and did both, dropping names from tall rectangles of ample
+   area and overflowing long ones out of narrow-but-wide-enough boxes. #}
+{% for text, lx, ly in r.lines %}
+<text class="tm-label{{ ' tm-budget' if not loop.first }}" x="{{ lx | round(2) }}" y="{{ ly | round(2) }}">{{ text }}</text>
+{% endfor %}
+</a>
+{% endfor %}
+</svg>
+{% else %}
+{% call empty.state("No portfolio has an approved budget yet — there is no area to draw", id="treemap-empty") %}
+Draft each project's baseline, add its lines, then approve it (<code>POST /baselines</code>, <code>POST /baseline-lines</code>, <code>PATCH /baselines/&lt;id&gt;</code>); every portfolio takes its share of the canvas as soon as one approved baseline carries a cost.
+{% endcall %}
+{% endif %}
+</section>
+{% endif %}
+</div>
+{% endif %}
+<div class="command"><div class="heat">
+{% if rows %}
+{% call scroll.wide("Portfolio rollup") %}
+<table class="rollup">
+<caption class="sr-only">Every business, portfolio, program and project as of {{ as_of }}, with its RAG status and figures</caption>
+<tr><th scope="col">Business / portfolio / program / project</th><th scope="col">RAG</th><th scope="col">Budget</th><th scope="col">Actual</th><th scope="col">Complete</th><th scope="col">Open high risks</th><th scope="col">Burn</th><th scope="col">Last status</th></tr>
+{% for kid in rows %}
+{% if kid.kind != "project" %}
+<tr class="{{ kid.kind }}" data-rag="{{ kid.rag }}"{% if kid.kind == "business" %} id="{{ kid.anchor }}"{% endif %}>
+<td>{% if kid.kind == "portfolio" %}<a href="/portfolios/{{ kid.id }}/rollup">{{ kid.name }}</a>{% elif kid.kind == "program" %}<a href="/programs/{{ kid.id }}/rollup">{{ kid.name }}</a>{% else %}{{ kid.name }}{% endif %}</td><td class="rag {{ kid.rag }}">{{ "no data" if kid.rag == "unknown" else kid.rag }}</td><td>{{ kid.budget }}</td><td>{{ kid.actual }}</td><td>{{ kid.complete }}</td><td>{{ kid.risks }}</td><td></td><td></td></tr>
+{% else %}
+<tr class="project{% if kid.nested %} nested{% endif %}" data-rag="{{ kid.rag }}">
+<td><a href="/projects/{{ kid.id }}/hub">{{ kid.name }}</a></td><td class="rag {{ kid.rag }}">{{ "no data" if kid.rag == "unknown" else kid.rag }}</td><td>{{ kid.budget }}</td>
+<td>{{ kid.actual }}</td><td>{{ kid.complete }}</td><td>{{ kid.risks }}</td>
+{% if kid.burn.points %}
+{% set W, H = 90, 24 %}
+{% set acs = kid.burn.points | map(attribute="ac") | list %}
+{% set n = acs | length %}
+{# The same 1.15 headroom the S-curve above buys: with actual still under budget --
+   the normal case -- ymax equalled bac exactly, putting the dashed reference on
+   y = 0, the top edge of the 24-unit viewBox. SVG clips overflow, so half the
+   stroke was gone and the line read as a box edge or as absent. #}
+{% set ymax = (([kid.burn.bac, acs | max] | max) or 1) * 1.15 %}
+<td class="burn {{ kid.rag }}"><svg class="burn" width="{{ W }}" height="{{ H }}" viewBox="0 0 {{ W }} {{ H }}" role="img" aria-label="Actual {{ "{:,.0f}".format(acs[-1]) }} of budget {{ "{:,.0f}".format(kid.burn.bac) }}">
+{% if kid.burn.bac > 0 %}<line class="burn-bac" x1="0" x2="{{ W }}" y1="{{ (H - kid.burn.bac / ymax * H) | round(2) }}" y2="{{ (H - kid.burn.bac / ymax * H) | round(2) }}"/>{% endif %}
+<polyline class="burn-ac" points="{% for ac in acs %}{{ (loop.index0 / (n - 1) * W) | round(2) if n > 1 else 0 }},{{ (H - ac / ymax * H) | round(2) }} {% endfor %}"/>
+</svg></td>
+{% else %}<td class="burn-empty">—</td>{% endif %}
+{# Status freshness: the last StatusSnapshot date, or "never" when a project has
+   filed none — a glance at which projects have stale/absent status (finding #19). #}
+<td class="freshness">{{ kid.freshness or "never" }}</td>
+</tr>
+{% endif %}
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("Nothing to roll up yet — no portfolios or businesses are recorded", id="onboarding") %}
+Create your business, its portfolio and a first project (<code>POST /businesses</code>, <code>POST /portfolios</code>, <code>POST /projects</code>), then step that project through <code>/projects/&lt;id&gt;/wizard</code>.
+{% endcall %}
+{% endif %}
+</div>
+{# The attention rail: the canonical feed in its exact order. Threat items reuse
+   threats.html's sign-off form idiom (same route, same fields); data signals
+   link their fix surface instead. #}
+<aside class="rail" aria-label="Needs attention">
+<h2>Needs attention</h2>
+<p>Process completeness <strong>{{ completeness }}</strong> — <a href="/process-map">whole-business process map</a>.</p>
+{% if rail %}
+<ol>
+{% for item in rail %}
+<li class="card sev-{{ item.severity }}" data-kind="{{ item.kind }}" data-item-id="{{ item.id }}">
+<strong>{{ item.project_name }}</strong> — {{ item.description }}
+{# The severity as a WORD, the same badge threats.html renders and off the same closed
+   vocabulary: the card's 6px stripe was its only carrier, and the four RAG tokens sit
+   1.01-1.44:1 apart from EACH OTHER -- red beside amber, green beside unknown -- so the
+   stripe said "a severity" and never which one. #}
+<span class="badge sev-badge">{{ item.severity }}</span>
+<span class="action">{{ item.action }}</span>
+{# Week-over-week trend vs the same item a week ago (matched by id in
+   assess.feed.attention_trends) — same idiom as threats.html's card: ▲ worse
+   (red), ▼ better (green), – unchanged, or a "new" badge, arrow next to the
+   signed amount so it never reads by colour or symbol alone. #}
+{% set delta = trends[item.id] %}
+{% if delta.dir == "new" %}
+<span class="badge delta delta-new amber" title="new since last week">new<span class="sr-only"> since last week</span></span>
+{% elif delta.dir == "up" %}
+<span class="badge delta delta-up red" title="score {{ "%+g"|format(delta.amount) }} vs last week"><span aria-hidden="true">▲</span> {{ "%+g"|format(delta.amount) }}<span class="sr-only"> worse vs last week</span></span>
+{% elif delta.dir == "down" %}
+<span class="badge delta delta-down green" title="score {{ "%+g"|format(delta.amount) }} vs last week"><span aria-hidden="true">▼</span> {{ "%+g"|format(delta.amount) }}<span class="sr-only"> better vs last week</span></span>
+{% else %}
+{# Glyph aria-hidden, words beside it: title= is hover-only -- no keyboard, no touch,
+   no print, and not announced on a non-interactive span. Same shape threats.html uses. #}
+<span class="badge delta delta-flat"><span aria-hidden="true">–</span><span class="sr-only">unchanged vs last week</span></span>
+{% endif %}
+{% if item.kind == "threat" %}
+<form class="inline" method="post" action="/sign-off">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<input type="hidden" name="subject_kind" value="threat"><input type="hidden" name="subject_ref" value="{{ item.id.removeprefix('threat:') }}">
+<input type="hidden" name="signal" value="{{ item.score }}"><input type="hidden" name="as_of" value="{{ as_of }}"><input type="hidden" name="project_id" value="{{ item.project_id }}">
+<input type="hidden" name="next" value="/">
+{{ signoff.decision("Sign-off decision for " ~ item.description) }}
+{# no "signed by" input: the ledger stamps the signed-in user and discards the claim #}
+<button type="submit">Sign off</button>
+</form>
+{% else %}
+<a href="/projects/{{ item.project_id }}/{{ fix_paths[item.kind] }}">Fix this</a>
+{% endif %}
+</li>
+{% endfor %}
+</ol>
+{% else %}
+<p>Nothing needs attention.</p>
+{% endif %}
+</aside></div>
+{% endblock %}

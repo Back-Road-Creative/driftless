@@ -1,0 +1,49 @@
+# Generated documents are never hand-edited and never tracked — any report can
+# be deleted and regenerated identically from the store.
+reports/
+
+# Local database files (Postgres is the runtime store; SQLite is for tests).
+*.db
+*.sqlite3
+
+# Local virtualenv
+.venv/
+
+# Compiled bytecode. Interpreter output, rebuilt on the next import, and a
+# `git add -A` after any test run otherwise sweeps hundreds of files into a
+# commit. This heading deliberately says nothing about secrets: the ignore file
+# is parsed section by section by tests/test_docker_build_context.py and
+# tests/test_docs_no_secrets_in_repo.py, which take the sections whose own
+# comment names a secret as the list of things that must never be built or
+# documented — a bytecode rule filed under such a heading would silently widen
+# what those two guards enforce.
+__pycache__/
+*.py[cod]
+
+# Rendered page snapshots (bin/driftless-snapshot-pages.py). Regenerable output,
+# like reports/ above: the whole bundle re-renders byte-identically from the demo
+# store at a pinned as-of, so committing 38 pages would only rot on the next
+# template change. This heading deliberately names nothing an intruder would
+# want, for the reason the bytecode heading above states.
+docs/page-snapshots/
+
+# Coverage artifacts
+.coverage
+htmlcov/
+
+# setuptools build output. A non-editable `pip install .` (which is what CI
+# runs) leaves a build/lib copy of the package in the checkout; tracking it
+# would also give mypy two modules with the same name.
+build/
+dist/
+*.egg-info/
+
+# The deployment's age PRIVATE key. Neither the encrypted secrets overlay nor
+# the private key that decrypts it is committed: both are written on the
+# deployment host, the key outside the checkout entirely (OPERATIONS.md
+# generates it under ~/.config/driftless, and tests/test_docs_no_secrets_in_repo.py
+# fails any document that says otherwise). These patterns are the backstop for a
+# key that lands here anyway. Backups are written locally, too.
+deploy/age-key.txt
+deploy/*.key
+backups/

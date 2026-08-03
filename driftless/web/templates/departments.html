@@ -1,0 +1,25 @@
+{# The department list: name, business, headcount and weekly capacity — the
+   SAME figures department_rows hands the Department report document. #}
+{% extends "base.html" %}
+{% block title %}Departments — driftless{% endblock %}
+{% block content %}
+{% import "_empty.html" as empty %}
+{% import "_scroll.html" as scroll %}
+<h1>Departments</h1>
+<p>As of <strong>{{ as_of }}</strong> — the same figures as the Department Report.</p>
+{% if departments %}
+{% call scroll.wide("Department list") %}
+<table>
+<caption class="sr-only">Departments as of {{ as_of }}, with their business, headcount and weekly capacity</caption>
+<tr><th scope="col">Department</th><th scope="col">Business</th><th scope="col">Headcount</th><th scope="col">Capacity (hrs/wk)</th></tr>
+{% for d in departments %}
+<tr class="department"><td><a href="/org/departments/{{ d.id }}">{{ d.name }}</a></td><td>{{ d.business }}</td><td>{{ d.headcount }}</td><td>{{ d.capacity_hours }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No departments yet — a department owns the people, capacity and cost rates a project draws on") %}
+Create one with <code>POST /departments</code> (it belongs to a business), then staff it with <code>POST /people</code>.
+{% endcall %}
+{% endif %}
+{% endblock %}

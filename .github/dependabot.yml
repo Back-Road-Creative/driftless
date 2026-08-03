@@ -1,0 +1,37 @@
+version: 2
+
+# Grouped, weekly, and never automerged.
+#
+# Grouped because each dependabot pull request costs a full CI run; ungrouped, a
+# quiet week of point releases is a dozen runs to say the same thing. One pull
+# request per ecosystem per week is one run.
+#
+# Split by update type inside each group: minor and patch arrive together as one
+# reviewable bump, majors arrive one per pull request because a major is a
+# behaviour change that deserves its own diff and its own revert.
+#
+# No `automerge` anywhere, and none is coming: merges in this repository are a
+# human decision.
+#
+# Note for whoever bumps a Python dependency here — requirements.lock is NOT
+# maintained by dependabot (it is a constraint file, not a manifest dependabot
+# understands). A pip update that changes a pin needs the lock regenerated in the
+# same pull request; requirements.lock's own header carries the command.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ['*']
+        update-types: [minor, patch]
+
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      python-deps:
+        patterns: ['*']
+        update-types: [minor, patch]

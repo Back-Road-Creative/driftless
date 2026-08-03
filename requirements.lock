@@ -1,0 +1,83 @@
+# Resolved dependency set for svc-driftless — the pins CI installs against.
+#
+# This file is a CONSTRAINT list, not an install list. `.github/workflows/ci.yml`
+# and `.github/workflows/pip-audit.yml` install with `--constraint`, so what gets
+# installed is still decided by each caller's own arguments; this file only
+# decides WHICH version of each resolved package lands. That keeps the Tests job,
+# the audit, and the Docker image on one set of versions instead of three
+# independent "latest at run time" resolutions — the audit used to scan a
+# dependency set the shipped image never contained, because the image install
+# line carried no constraint at all.
+#
+# The image reaches that same version set one step removed: it installs from
+# `requirements-runtime.txt`, which is COMPILED under `-c requirements.lock` and
+# so cannot name a version this file does not. That indirection buys hashes —
+# see the note below — and `tests/test_image_dependency_parity.py` fails if the
+# two files ever disagree about a version.
+#
+# The set is exactly what `pip install ".[dev]" uvicorn` resolves to: the union
+# of what any of the three installs. The image installs the smaller half of it
+# (the runtime closure — no test tooling in production), so the audit
+# scans a superset of the shipped set and never a different one. uvicorn is
+# pinned here although nothing declares it, because the image installs it and the
+# audit must therefore see it; psycopg needs no such note: `[project.dependencies]`
+# declares it, so `.` carries it into all three installs and the image's extra
+# mention of it is belt-and-braces rather than the only thing putting it there.
+#
+# svc-driftless itself is deliberately absent: the project is installed from the
+# checkout (`.`), and naming it here would constrain the thing being built.
+#
+# Regenerate after any dependency change (from a CLEAN venv, never from a
+# working one — a stale venv pins whatever it happens to hold):
+#
+#   uv venv /tmp/lockenv --python python3.12
+#   uv pip install --python /tmp/lockenv/bin/python ".[dev]" uvicorn
+#   uv pip freeze --python /tmp/lockenv/bin/python | sort | grep -v '^svc-driftless'
+#
+# There are deliberately no `--hash` lines here, and adding them to THIS file breaks all
+# three installs rather than hardening them. pip switches into hash-checking mode as soon
+# as any requirement carries a hash, but it reads hashes off the requirement, never off a
+# constraint — so with hashes added here every caller fails at "Hashes are required in
+# --require-hashes mode, but they are missing from some requirements". That is why the
+# hashes live in `requirements-runtime.txt` instead: a runtime-only requirements file the
+# image installs with `-r --require-hashes`, followed by `pip install --no-deps .` for the
+# checkout itself, because hash mode refuses a directory outright ("Can't verify hashes for
+# these file:// requirements because they point to directories"). CI and the audit keep
+# installing `.[dev]` under this constraint and stay hash-free by design: they build a
+# throwaway venv on a runner, while the image is the artefact an operator runs.
+#
+# Generated 2026-08-02 on CPython 3.12.3.
+alembic==1.18.5
+annotated-doc==0.0.5
+annotated-types==0.8.0
+anyio==4.14.2
+certifi==2026.7.22
+click==8.4.2
+coverage==7.15.3
+execnet==2.1.2
+fastapi==0.141.1
+greenlet==3.5.4
+h11==0.16.0
+httpcore==1.0.9
+httpx==0.28.1
+idna==3.18
+iniconfig==2.3.0
+jinja2==3.1.6
+mako==1.3.12
+markupsafe==3.0.3
+packaging==26.2
+pluggy==1.6.0
+psycopg==3.3.4
+psycopg-binary==3.3.4
+pydantic==2.13.4
+pydantic-core==2.46.4
+pygments==2.20.0
+pytest==9.1.1
+pytest-cov==7.1.0
+pytest-xdist==3.8.0
+python-multipart==0.0.32
+sqlalchemy==2.0.51
+starlette==1.3.1
+typing-extensions==4.16.0
+typing-inspection==0.4.2
+uvicorn==0.52.1

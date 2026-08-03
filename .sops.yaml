@@ -1,0 +1,23 @@
+# SOPS configuration for the driftless deployment's secrets overlay: every value in
+# deploy/secrets.enc.env, encrypted to the age recipient below.
+#
+# REQUIRED BEFORE THE FIRST DEPLOYMENT: that recipient is a placeholder, not a
+# working default. Generate the deployment's key pair outside the checkout and put
+# the PUBLIC half here (age1...). sops refuses to encrypt to the placeholder, so
+# anything written to that path while it stands is plaintext wearing an .enc name:
+#   mkdir -p ~/.config/driftless
+#   age-keygen -o ~/.config/driftless/age-key.txt   # PRIVATE key — outside the repo,
+#   chmod 0600 ~/.config/driftless/age-key.txt      # so no build context can copy it
+#   grep 'public key' — put it here as the recipient
+#
+# No encrypted secrets file is committed here and none is expected to be:
+# `git ls-files deploy/` lists the plaintext template and nothing else. The operator
+# creates deploy/secrets.enc.env on the deployment host (OPERATIONS.md), where it
+# stays; `sops-edit deploy/secrets.enc.env` encrypts on save and the container
+# decrypts with the matching private key at /run/age/keys.txt (SOPS_AGE_KEY_FILE).
+# tests/test_deploy_hardening.py fails if that file exists while the placeholder does.
+creation_rules:
+  - path_regex: deploy/secrets\.enc\.env$
+    # Invalid on purpose rather than plausible: a well-formed key here is one nobody
+    # holds the private half of, and it would fail later, at decrypt time.
+    age: age1REPLACE_WITH_THE_DEPLOYMENT_AGE_PUBLIC_KEY

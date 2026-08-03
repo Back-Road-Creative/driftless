@@ -1,0 +1,10 @@
+{# The ONE empty state every list-shaped surface renders, so no surface grows a
+   second copy: import it inside the page's content block, call it with the next
+   step as body. ``title`` says what the surface is for; the body names the
+   command or link that creates the missing thing, never just "No data". #}
+{% macro state(title, id="empty-state") %}
+<section class="empty-state" id="{{ id }}" data-empty>
+  <p><strong>{{ title }}</strong></p>
+  <p>{{ caller() }}</p>
+</section>
+{% endmacro %}

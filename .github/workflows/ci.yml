@@ -1,0 +1,299 @@
+name: CI
+
+# Every job here runs on a GitHub-hosted runner, and that is a security property,
+# not a preference. A pull request is somebody else's code and anyone may open
+# one; on a self-hosted runner it would execute on a machine the maintainer owns.
+# tests/test_deploy_hardening.py fails the suite if any untrusted-triggered job
+# names `self-hosted` again. The cost is real and accepted: a hosted runner is
+# ephemeral, so the toolchain cache below starts cold every run.
+#
+# The job bodies keep the shape they were extracted with — same uv-then-pip venv
+# builder shim, same pinned lint toolchain, one job per question.
+#
+# No per-merge push trigger: the PR gate is the gate, and re-running the
+# exact suite the PR just passed doubled load for zero signal (grantpath #53,
+# workspaces #1338 both landed on this shape). The nightly re-validates
+# master, bounding post-merge semantic drift at 24h.
+#
+# pip-audit lives in .github/workflows/pip-audit.yml, not here. It has a
+# dependency-file `paths:` filter, so it starts only when an input it audits
+# moved; as a job in this file it started on EVERY pull request — including a
+# full-history checkout — purely to compute its own skip.
+
+concurrency:
+  # The event is part of the key. With `ci-<ref>` alone, a nightly and a manual
+  # dispatch both land on `ci-refs/heads/master` and cancel-in-progress makes
+  # whichever arrives second kill the first — two different questions, one slot.
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# Deliberately NO `paths-ignore`. The obvious entries — `docs/**`, `**.md`,
+# `changelog.d/**` — are all test *inputs* in this repo, so ignoring them would
+# turn documentation that is currently checked back into documentation that is
+# merely written:
+#   - docs/{pmbok-mapping,user-guide,admin-guide,agent-guide}.md are each read by
+#     the tests/test_docs_*.py of the same name (every citation must resolve).
+#   - tests/test_docs_health_truthfulness.py scans EVERY tracked *.md.
+#   - tests/test_assemble_changelog.py parses every changelog.d/ fragment name.
+#   - driftless/report/templates/*.md are markdown, and they are what the report
+#     engine renders — `**.md` would skip the suite on a change to shipped output.
+# If a genuinely inert path appears later, filter that path; do not filter by
+# extension.
+on:
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+  schedule:
+    - cron: '7 9 * * *'  # 05:07 EDT — off the hour, where GitHub queues scheduled runs hardest
+
+# The workflow token starts read-only and every job inherits that, so a
+# compromised step — or a compromised action — cannot push, tag, or open
+# anything. The alert job below re-grants `issues: write` to itself, which is
+# the only write this file needs; job-level scopes narrow, never widen.
+permissions:
+  contents: read
+
+env:
+  RUFF_VERSION: '0.15.22'
+  DETECT_SECRETS_VERSION: '1.5.0'
+
+# Actions are pinned to the full commit SHA of the tag named beside them. A
+# floating tag is a mutable pointer: whoever can move `v7` can run their code on
+# a runner that has this checkout and the workflow token. The comment is how a
+# reader (and Dependabot) knows which release a SHA is.
+
+jobs:
+  quality:
+    name: Quality (ruff, secrets, mypy)
+    runs-on: ubuntu-latest
+    # The point of a bound is that a wedged step ends in minutes instead of
+    # burning GitHub's 6-hour default.
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Pinned lint toolchain
+        # Keyed by version, so a bump rebuilds automatically. On an ephemeral
+        # hosted runner the marker never survives and this installs every run
+        # (~20s); the key is kept because it costs nothing and the versions are
+        # the point — an unpinned linter changes its mind between merges.
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          TOOLS_KEY="ruff-${RUFF_VERSION}_detect-secrets-${DETECT_SECRETS_VERSION}"
+          TOOLS_DIR="$HOME/.cache/ci-lint-tools/$TOOLS_KEY"
+          MARKER="$TOOLS_DIR/.installed"
+          if [ -f "$MARKER" ]; then
+            echo "lint toolchain already cached at $TOOLS_DIR"
+          else
+            mkdir -p "$TOOLS_DIR"
+            if command -v uv >/dev/null 2>&1; then
+              export UV_TOOL_DIR="$TOOLS_DIR/tools"
+              export UV_TOOL_BIN_DIR="$TOOLS_DIR/bin"
+              uv tool install "ruff==$RUFF_VERSION"
+              uv tool install "detect-secrets==$DETECT_SECRETS_VERSION"
+            else
+              python3 -m venv "$TOOLS_DIR/venv"
+              "$TOOLS_DIR/venv/bin/pip" install --upgrade pip
+              "$TOOLS_DIR/venv/bin/pip" install "ruff==$RUFF_VERSION" "detect-secrets==$DETECT_SECRETS_VERSION"
+              mkdir -p "$TOOLS_DIR/bin"
+              for exe in ruff detect-secrets; do
+                ln -sf "$TOOLS_DIR/venv/bin/$exe" "$TOOLS_DIR/bin/$exe"
+              done
+            fi
+            touch "$MARKER"
+          fi
+          echo "$TOOLS_DIR/bin" >> "$GITHUB_PATH"
+
+      - name: Lint
+        run: ruff check . --output-format=github
+
+      - name: Format check
+        run: ruff format . --check
+
+      - name: Secrets scan
+        run: |
+          detect-secrets scan . \
+            --no-verify \
+            --exclude-files '.*\.(lock|baseline|backup|enc)$' \
+            --exclude-files '.*/\.?venv/.*' \
+            --exclude-files '.*/node_modules/.*' \
+            --exclude-files '^\.data/.*' \
+            > /tmp/driftless-secrets.json
+          COUNT=$(python3 -c "import json; d=json.load(open('/tmp/driftless-secrets.json')); print(sum(len(v) for v in d.get('results',{}).values()))" 2>/dev/null || echo "0")
+          if [ "$COUNT" -gt "0" ]; then
+            echo "detect-secrets found $COUNT potential secret(s)"
+            cat /tmp/driftless-secrets.json
+            exit 1
+          fi
+          echo "no secrets detected"
+
+      - name: Type check (strict)
+        # mypy resolves third-party imports from the interpreter it runs
+        # under, so the enforcing check gets a throwaway venv with the real
+        # deps (same rationale and shape as the monorepo job; the phantom
+        # no-any-return incident that motivated it was on THIS service).
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          MYPY_VENV="$RUNNER_TEMP/mypy-venv-driftless"
+          rm -rf "$MYPY_VENV"
+          if command -v uv >/dev/null 2>&1; then
+            uv venv "$MYPY_VENV" --python "$(command -v python3)" -q
+            pyinstall() { uv pip install --python "$MYPY_VENV/bin/python" -q "$@"; }
+          else
+            python3 -m venv "$MYPY_VENV"
+            pyinstall() { "$MYPY_VENV/bin/pip" install -q "$@"; }
+          fi
+          pyinstall -e ".[dev]" mypy==2.3.0
+          "$MYPY_VENV/bin/python" -m mypy . --config-file pyproject.toml --install-types --non-interactive
+
+  test:
+    name: Tests (py3.12)
+    runs-on: ubuntu-latest
+    # No `needs: quality`. Lint and tests share no artifact and answer different
+    # questions, so the dependency only bought a serial prefix — ~1-4 min added to
+    # every one of ~38 PR runs a week, for a signal the test job would have given
+    # anyway. Both jobs still have to be green for the PR to be.
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        # Fresh per-job venv, uv-then-pip builder shim — port of the
+        # monorepo pattern (rationale documented there: persistent
+        # site-packages masked stale imports; uv fills the same venv ~60x
+        # faster from its wheel cache).
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          if command -v uv >/dev/null 2>&1; then
+            echo "venv builder: uv $(uv --version | awk '{print $2}')"
+            mkvenv()    { uv venv .venv --python "$(command -v python3)" -q; }
+            pyinstall() { uv pip install --python .venv/bin/python -q "$@"; }
+          else
+            echo "venv builder: pip (uv not on PATH)"
+            mkvenv()    { python3 -m venv .venv; .venv/bin/pip install --upgrade pip; }
+            pyinstall() { .venv/bin/pip install "$@"; }
+          fi
+          mkvenv
+          pyinstall pytest pytest-cov
+          if [ -f "requirements.lock" ]; then
+            grep -v '^-e ' requirements.lock > "$RUNNER_TEMP/constraints-driftless.txt"
+            pyinstall --constraint "$RUNNER_TEMP/constraints-driftless.txt" ".[dev]"
+          else
+            pyinstall ".[dev]"
+          fi
+
+      - name: Run tests
+        # `-n auto` takes the runner's own core count. There is no worker cap
+        # any more: the cap existed because a shared host ran two of these at
+        # once, and a hosted runner is a machine of its own. The suite was
+        # checked for order- and shared-state dependence before the flag went
+        # in — the serial and parallel runs give the same count at the same
+        # coverage (pytest-cov combines the per-worker data files).
+        run: |
+          set +e
+          .venv/bin/pytest -n auto
+          rc=$?
+          if [ $rc -eq 5 ]; then
+            echo "::error::no tests collected — likely import failure"
+            exit 1
+          fi
+          exit $rc
+
+  migrations:
+    name: Migrations (Postgres 16)
+    runs-on: ubuntu-latest
+    # The Tests job proves the migration chain on SQLite, which takes every
+    # schema change through Alembic's copy-and-swap batch mode
+    # (alembic/env.py: `render_as_batch` is on for SQLite only). Postgres alters
+    # in place, and Postgres is what a deployment runs — so the parity proof was
+    # green on the one path production never takes. This job runs the same
+    # tests/test_migrations.py against a real postgres:16.
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: driftless
+          POSTGRES_DB: driftless
+          # No password, by construction rather than by care: the container is
+          # ephemeral and reachable only from this job's runner, and any
+          # credential written here would be a real one committed to the repo.
+          POSTGRES_HOST_AUTH_METHOD: trust
+        options: >-
+          --health-cmd "pg_isready -U driftless -d driftless"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+        ports:
+          # Container port only, so GitHub publishes it on a free host port and
+          # reports which through `job.services` — read below rather than
+          # assumed to be 5432, which is what makes the mapping GitHub's problem.
+          - 5432
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        # Same uv-then-pip builder shim and lock constraints as the Tests job:
+        # the chain is checked against the versions the image ships, and
+        # `.[dev]` is what brings psycopg.
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          if command -v uv >/dev/null 2>&1; then
+            uv venv .venv --python "$(command -v python3)" -q
+            pyinstall() { uv pip install --python .venv/bin/python -q "$@"; }
+          else
+            python3 -m venv .venv
+            .venv/bin/pip install --upgrade pip
+            pyinstall() { .venv/bin/pip install "$@"; }
+          fi
+          grep -v '^-e ' requirements.lock > "$RUNNER_TEMP/constraints-migrations.txt"
+          pyinstall --constraint "$RUNNER_TEMP/constraints-migrations.txt" ".[dev]"
+
+      - name: Migration parity against Postgres
+        env:
+          # Trust auth against an ephemeral container — no secret to leak. The
+          # tests skip themselves when this is unset, which is exactly why it is
+          # set here and nowhere else: this job is the Postgres proof.
+          DRIFTLESS_TEST_DB_URL: postgresql+psycopg://driftless@localhost:${{ job.services.postgres.ports['5432'] }}/driftless
+        # `-o addopts=` drops the repo-wide coverage floor: one test module
+        # cannot cover 80% of the package, and coverage is the Tests job's
+        # question, not this one's.
+        run: .venv/bin/pytest tests/test_migrations.py -o "addopts=" -q
+
+  alert:
+    name: Alert on a red nightly
+    # A pull request that goes red has an author watching it. A scheduled run has
+    # nobody, so before this job a red nightly was a log line no one read — which
+    # is how the audit job stayed broken from extraction until an audit went
+    # looking for it. Only scheduled runs alert; a manual dispatch is watched by
+    # whoever dispatched it.
+    needs: [quality, test, migrations]
+    if: failure() && github.event_name == 'schedule'
+    permissions:
+      contents: read
+      issues: write
+    uses: ./.github/workflows/scheduled-failure-alert.yml
+    with:
+      # Stable — this string is the dedupe key, so a week of red nights is one
+      # thread rather than seven issues. Changing it starts a new thread.
+      issue_title: 'nightly: driftless CI is red on master'
+      what_failed: 'The nightly Quality, Tests and/or Migrations job failed on master.'
+

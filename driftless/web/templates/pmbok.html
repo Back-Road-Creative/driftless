@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}PMBOK reference{% endblock %}
+{% block content %}
+{% import "_scroll.html" as scroll %}
+<h1>PMBOK ITTO reference</h1>
+<p><em>Theory reference — the 49 predictive processes on the knowledge-area ×
+   process-group grid, independent of any project's state. Follow a cell for its
+   inputs, tools &amp; techniques and outputs.</em></p>
+{% call scroll.wide("The 49-process grid") %}
+<table>
+  <caption class="sr-only">The 49 predictive processes, knowledge area by row and process group by column</caption>
+  <tr>
+    <th scope="col">Knowledge area</th>
+    {% for g in groups %}<th scope="col">{{ g | humanize }}</th>{% endfor %}
+  </tr>
+  {% for area in areas %}
+  <tr>
+    <th scope="row">{{ area | humanize }}</th>
+    {% for g in groups %}
+    <td>
+      {% for cell in grid[area][g] %}
+      <a href="/pmbok/{{ cell.id }}">{{ cell.id }} {{ cell.name }}</a><br>
+      {% endfor %}
+    </td>
+    {% endfor %}
+  </tr>
+  {% endfor %}
+</table>
+{% endcall %}
+{% endblock %}

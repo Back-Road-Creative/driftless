@@ -1,0 +1,108 @@
+# svc-driftless deployment: a hardened Postgres 16 and the token-gated API.
+#
+# Both services are locked down — no new privileges, Linux capabilities dropped
+# to the minimum, ports published only on the loopback address. The API decrypts
+# its secrets from SOPS to a tmpfs at start (deploy/entrypoint.sh) so no
+# credential ever lands on the app container's disk; the database password
+# reaches Postgres through the operator's ephemeral shell environment, sourced
+# from the same SOPS file. Real secrets are created with
+# `sops-edit deploy/secrets.enc.env` (see OPERATIONS.md); this file wires paths.
+services:
+  driftless-db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: driftless
+      POSTGRES_USER: driftless
+      # Substituted from the operator's shell, itself sourced from the decrypted
+      # SOPS file; the container refuses to start if it is unset.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?source the decrypted secrets first — see OPERATIONS.md}
+    volumes:
+      - driftless-pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U driftless -d driftless"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      # First boot runs initdb before Postgres listens. Without this the app's
+      # `depends_on: service_healthy` can time out on a slow disk and nothing starts.
+      start_period: 30s
+    # Postgres 16's defaults (128 MiB shared_buffers) sit far under this; the ceiling
+    # is here so a runaway plan is this container's problem, not the host's.
+    mem_limit: 512m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+
+  driftless-app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      driftless-db:
+        condition: service_healthy
+    environment:
+      DRIFTLESS_DB_HOST: driftless-db
+      DRIFTLESS_DB_NAME: driftless
+      DRIFTLESS_DB_USER: driftless
+      SOPS_AGE_KEY_FILE: /run/age/keys.txt
+    volumes:
+      # The SOPS-encrypted overlay. Required, and for the same reason as the key
+      # below: no checkout carries this file — it is written on the deployment
+      # host — and a bind mount with a missing source is not an error Docker
+      # reports. It creates an empty DIRECTORY at the path instead, so the `cp`
+      # of the plaintext template that OPERATIONS.md has an operator run next
+      # lands the template inside it rather than failing. Unset, Compose names
+      # the variable and starts nothing. Same variable bin/driftless-backup.sh
+      # reads, so one export serves the run and its backups.
+      - ${DRIFTLESS_SECRETS_ENC:?export the path to the sops-encrypted env file, written on this host — see OPERATIONS.md}:/app/deploy/secrets.enc.env:ro
+      # The operator's age private key, mounted read-only at /run/age. Required,
+      # with no fallback on purpose: any default here is a path nobody typed, and
+      # the obvious one would sit in the build context, which is exactly where the
+      # key must not be. Unset, Compose stops before it starts
+      # anything and prints the message below; a default would instead have Docker
+      # create an empty directory at the missing path and the container would die
+      # on a confusing failed decrypt. See OPERATIONS.md.
+      - ${DRIFTLESS_AGE_KEY:?export the path to the operator's age key, kept outside this repository — see OPERATIONS.md}:/run/age/keys.txt:ro
+    ports:
+      - "127.0.0.1:8000:8000"
+    # /health asks the database, so this goes red during an outage instead of
+    # reporting a process that is up and cannot serve (driftless/api/app.py:health).
+    # `-f` is what makes that true from here: without it curl downloads the 503 body
+    # and exits 0. tests/test_deploy_healthcheck.py pins all of it.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      # Three consecutive misses over 45s: long enough that one slow reply is not an
+      # outage, short enough that `docker compose ps` is worth reading during one.
+      retries: 3
+      # `alembic upgrade head` runs before uvicorn binds. Failures inside this window
+      # do not count, so a first migration on a cold volume is not reported as sick.
+      start_period: 90s
+    # This host also runs the rest of the workspaces stack, so an unbounded container
+    # is not one service's outage — it is everything's. Sign-in hashes at ~16 MiB per
+    # password (driftless/auth/passwords.py: scrypt N=2**14): cheap once, a host-wide
+    # event unbounded and in parallel. 768m clears the ~200 MiB idle with room and
+    # still caps a login storm; cpus bounds the same storm's other half, time.
+    mem_limit: 768m
+    cpus: "2.0"  # quoted: older docker compose builds reject the bare float
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /run/secrets:mode=0700,uid=10001
+      - /tmp
+
+volumes:
+  driftless-pgdata:

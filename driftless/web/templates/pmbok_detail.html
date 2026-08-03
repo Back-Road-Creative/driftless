@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}{{ process.id }} {{ process.name }}{% endblock %}
+{# Two reading modes, one template. Without ``live`` this is the stateless ITTO
+   reference it has always been. With it — the map cell carried a project and the
+   as-of through the hop — every artifact kind also carries what THIS project's store
+   answers for it, and the knowledge area's assessment follows below. pages.py owns
+   every figure and every wash; this file only formats them. #}
+{% block content %}
+{% macro itto(items) %}
+<ul>{% for item in items %}<li>{{ item }}
+  {%- set cell = live and live.artifacts.get(item) %}
+  {%- if cell %} <span class="badge st-{{ cell.rank }}">{{ cell.label }} — {{ cell.detail }}</span>{% endif %}</li>{% endfor %}</ul>
+{% endmacro %}
+<h1>{{ process.id }} {{ process.name }}</h1>
+<p><em>{{ process.group.value | humanize }} / {{ process.area.value | humanize }}</em> ·
+   {% if live %}<a href="/projects/{{ live.project.id }}/process-map?as_of={{ live.as_of }}">&larr; {{ live.project.name }} process map</a>
+   {% else %}<a href="/pmbok">&larr; PMBOK reference</a>{% endif %}</p>
+{% if live %}
+<p>On <strong>{{ live.project.name }}</strong> as of {{ live.as_of }} this process reads
+   <span class="badge st-{{ live.rank }}">{{ live.state | humanize }}</span>{% if not live.assessable %} —
+   no output of this process is a kind the store tracks, so that reading is about this
+   product, not about the project{% endif %}.</p>
+{% endif %}
+<h2>Inputs</h2>{{ itto(process.inputs) }}
+<h2>Tools &amp; Techniques</h2>{{ itto(process.tools_techniques) }}
+<h2>Outputs</h2>{{ itto(process.outputs) }}
+{% if live and live.assessment %}
+<h2>{{ process.area.value | humanize }} assessment</h2>
+<p>This project's {{ process.area.value | humanize }} reading as of {{ live.as_of }} is
+   <strong>{{ live.assessment.status }}</strong>, risk score {{ "%.4f"|format(live.assessment.score) }} —
+   the same assessment the <a href="/threats?as_of={{ live.as_of }}">threat board</a> ranks.</p>
+{% for t in live.assessment.threats %}
+<div class="card sev-{{ t.severity }}"><span class="badge sev-badge">{{ t.severity }}</span> {{ t.description }}</div>
+{% else %}
+<p>No live threat in this knowledge area.</p>
+{% endfor %}
+{% if live.assessment.actions %}
+<h3>Recommended actions</h3>
+<ul>{% for a in live.assessment.actions %}<li><strong>{{ a.label }}</strong> — {{ a.rationale }}</li>{% endfor %}</ul>
+{% endif %}
+{% endif %}
+{% endblock %}

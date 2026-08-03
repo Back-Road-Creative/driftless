@@ -1,0 +1,30 @@
+# The runtime install set, by name — the input `requirements-runtime.txt` is compiled from.
+#
+# This is `[project.dependencies]` in pyproject.toml plus uvicorn, and
+# `tests/test_image_dependency_parity.py` fails if it stops being exactly that, so a
+# dependency added to pyproject.toml and forgotten here is caught before the image
+# quietly stops installing it. The project itself is NOT listed: pip cannot hash-verify
+# a directory ("Can't verify hashes for these file:// requirements"), so the Dockerfile
+# installs the checkout separately with `--no-deps` once this set is already in place.
+#
+# Regenerate the hashed file after any change here or in pyproject.toml — the command is
+# also recorded in requirements-runtime.txt's own first two lines by uv:
+#
+#   uv pip compile requirements-runtime.in --generate-hashes -c requirements.lock \
+#       --python-platform x86_64-manylinux2014 --python-version 3.12 \
+#       -o requirements-runtime.txt
+#
+# The platform and version are pinned to what the image is: the base is
+# python:3.12-slim on linux/amd64, and an unscoped compile emits every wheel hash for
+# every platform instead of the ones this build can actually use.
+#
+# The `-c requirements.lock` is what keeps the two files on one version set: without it
+# a recompile resolves to latest and the image ships versions pip-audit never scanned.
+alembic
+fastapi
+jinja2
+psycopg[binary]
+pydantic
+python-multipart
+sqlalchemy
+uvicorn

@@ -1,0 +1,44 @@
+{# One department's drill page: projects (from department_rows) and each
+   person's capacity row (from the resource evaluator's person_task_load). #}
+{% extends "base.html" %}
+{% block title %}{{ department.name }} — driftless{% endblock %}
+{% block content %}
+{% import "_empty.html" as empty %}
+{% import "_scroll.html" as scroll %}
+<h1>{{ department.name }}</h1>
+<p>{{ department.business }} — as of <strong>{{ as_of }}</strong></p>
+<p>Headcount: {{ department.headcount }} &middot; Capacity: {{ department.capacity_hours }} hrs/wk &middot; Blended rate: {{ department.blended_rate }}</p>
+<h2>Projects</h2>
+{% if department.projects %}
+{% call scroll.wide("Projects delivered here") %}
+<table>
+<caption class="sr-only">Projects delivered by {{ department.name }}, with budget, actual and CPI</caption>
+<tr><th scope="col">Project</th><th scope="col">Budget</th><th scope="col">Actual</th><th scope="col">CPI</th></tr>
+{% for p in department.projects %}
+<tr class="dept-project"><td>{{ p.name }}</td><td>{{ p.budget }}</td><td>{{ p.actual }}</td><td>{{ p.cpi }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No project is delivered here yet — the budget, actual and CPI above read from them", id="projects-empty") %}
+Point one at it: <code>PATCH /projects/&lt;id&gt;</code> with <code>{"responsible_department_id": {{ department.id }}}</code>.
+{% endcall %}
+{% endif %}
+<h2>People</h2>
+{% if people %}
+{% call scroll.wide("People and their load") %}
+<table>
+<caption class="sr-only">People in {{ department.name }}, with capacity and open task load</caption>
+<tr><th scope="col">Person</th><th scope="col">Capacity (hrs/wk)</th><th scope="col">Open tasks</th><th scope="col">Remaining hours</th></tr>
+{% for p in people %}
+<tr class="person"><td>{{ p.name }}</td><td>{{ p.capacity_hours }}</td><td>{{ p.open_tasks }}</td><td>{{ p.remaining_hours }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("Nobody works here yet — headcount, capacity and task load all read from this roster", id="people-empty") %}
+Add someone: <code>POST /people</code> with <code>{"department_id": {{ department.id }}}</code>, and their open tasks and remaining hours appear here.
+{% endcall %}
+{% endif %}
+<p><a href="/org/departments">&larr; All departments</a></p>
+{% endblock %}

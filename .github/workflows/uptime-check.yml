@@ -1,0 +1,63 @@
+name: Uptime check
+
+# The paging path a deployment does not otherwise have. `restart: unless-stopped`
+# does not act on an `unhealthy` container — Docker records the status and leaves it
+# running — and the only other alarm here fires on a red nightly CI run, which says
+# nothing about whether the deployed service answered. OPERATIONS.md's "verify before
+# walking away" and the admin guide's §5 are curls a human types, so a 2am outage
+# reached nobody until morning.
+#
+# GitHub-hosted, not the self-hosted runner: a probe sharing a box with the thing it
+# probes goes quiet in exactly the outage it exists to report, and takes a loopback
+# path no visitor uses. Hourly, because every fifteen minutes is ~2,900 billed
+# minutes a month (one-minute rounding) for detection nobody needs here.
+
+on:
+  schedule:
+    - cron: '23 * * * *'  # off the hour, where GitHub queues scheduled runs hardest
+  workflow_dispatch:
+
+concurrency:
+  group: uptime-check
+  cancel-in-progress: false  # a probe that cancels the running probe reports nothing
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Probe /health
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ask /health for a 200
+        env:
+          # A repository variable, not a secret: it is the public URL. Unset means
+          # nothing is deployed yet, which is not an outage — hence the quiet exit.
+          HEALTH_URL: ${{ vars.DRIFTLESS_HEALTH_URL }}
+        run: |
+          set -uo pipefail
+          if [ -z "$HEALTH_URL" ]; then
+            echo "::notice::DRIFTLESS_HEALTH_URL is unset, so there is nothing deployed to watch."
+            exit 0
+          fi
+          # /health reaches the store (driftless/api/app.py), so a database outage fails
+          # this and not only a process that stopped listening. `-f` is what makes that
+          # true from here: without it curl downloads the 503 body and exits 0. Three
+          # tries over a minute, because one dropped packet must not open an issue.
+          curl -fsS -o /dev/null --max-time 10 \
+            --retry 3 --retry-delay 20 --retry-all-errors "$HEALTH_URL" \
+            || { echo "::error::$HEALTH_URL did not answer over a minute of tries."; exit 1; }
+
+  alert:
+    name: Alert on a failed probe
+    needs: probe
+    if: failure()
+    permissions:
+      contents: read
+      issues: write
+    uses: ./.github/workflows/scheduled-failure-alert.yml
+    with:
+      # Its own dedupe key: an outage is one thread, not one issue an hour.
+      issue_title: 'uptime: driftless /health is not answering'
+      what_failed: 'The hourly uptime probe could not get a 200 from the public /health endpoint.'

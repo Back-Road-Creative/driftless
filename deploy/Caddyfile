@@ -1,0 +1,24 @@
+# TLS terminates here, never in the app: uvicorn keeps serving plain HTTP on the
+# compose network and its only host-published port stays 127.0.0.1:8000, so the
+# proxy is the single public listener. Caddy obtains and renews a certificate for
+# the name below over the ACME HTTP-01 challenge, which needs port 80 to reach
+# this container from the internet, and redirects http -> https itself.
+#
+# The headers below are set here rather than in the app for the same reason TLS is:
+# nothing reaches a browser except through this block. Every page renders text an
+# operator stored, so the policy is what stands between a pasted <script> and the
+# origin. tests/test_deploy_hardening.py pins them, and pins the policy to templates.
+{$DRIFTLESS_PUBLIC_HOST} {
+	header {
+		# A year, subdomains included: without it the first request of every visit
+		# is plain http and interceptable, however good the redirect is.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		# 'unsafe-inline' for styles only, because base.html carries the palette in a
+		# <style> block and a dozen templates use style=. Scripts fall through to
+		# default-src: /static/driftless.js is the only one the pages load.
+		Content-Security-Policy "default-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+	}
+	reverse_proxy driftless-app:8000
+}

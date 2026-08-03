@@ -1,0 +1,40 @@
+{# One column per entry of the model's TASK_STATUSES — the loop is over the vocabulary the
+   router passed, never a list written here, so a status added to the model appears without
+   this file changing. Every card prints its own status as TEXT, so blocked reads as blocked
+   in greyscale; the one wash is a base.html token class and this template spells no colour.
+   Layout is base.html's .board/.board-col (never inline): the columns WRAP rather than
+   scroll below the breakpoint, because a card is readable at 12rem and a stacked column
+   loses nothing — the count badge and every card stay on the page. #}
+{% extends "base.html" %}
+{% block title %}Board — {{ project.name }}{% endblock %}
+{% block content %}
+{% import "_empty.html" as empty %}
+<h1>Board — {{ project.name }}</h1>
+<p><a href="/projects/{{ project.id }}/hub">Project hub</a> · {{ total }} task{{ "s" if total != 1 }} across {{ columns|length }} columns</p>
+{% if total %}
+<div class="board">
+{% for column in columns %}
+  <section class="board-col" data-column="{{ column.status }}">
+    <h2 style="font-size:1rem">{{ column.status|humanize }} <span class="badge st-muted" data-count="{{ column.status }}">{{ column.count }}</span></h2>
+    {% if column.tasks %}
+    <ol style="list-style:none; padding:0; margin:0">
+      {% for task in column.tasks %}
+      <li class="card" data-task="{{ task.name }}">
+        <strong>{{ task.name }}</strong> <span class="badge st-muted">{{ task.status|humanize }}</span><br>
+        {{ task.workstream.name }} · {{ task.assignee.name if task.assignee else "Unassigned" }}<br>
+        {{ task.percent_complete }}% complete · {{ (task.estimate|string ~ " " ~ task.estimate_unit) if task.estimate is not none else "no estimate" }}
+      </li>
+      {% endfor %}
+    </ol>
+    {% else %}
+    <p data-empty-column="{{ column.status }}"><em>No {{ column.status|humanize|lower }} tasks.</em></p>
+    {% endif %}
+  </section>
+{% endfor %}
+</div>
+{% else %}
+{% call empty.state("No tasks yet — a board has nothing to lay out", id="board-empty") %}
+Add a workstream and its tasks (<code>POST /workstreams</code>, <code>POST /tasks</code>); the <a href="/projects/{{ project.id }}/wizard">wizard</a> walks that order, and each task appears here in the column its <code>status</code> names.
+{% endcall %}
+{% endif %}
+{% endblock %}
