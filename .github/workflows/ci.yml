@@ -123,7 +123,6 @@ jobs:
             --exclude-files '.*\.(lock|baseline|backup|enc)$' \
             --exclude-files '.*/\.?venv/.*' \
             --exclude-files '.*/node_modules/.*' \
-            --exclude-files '^\.data/.*' \
             > /tmp/driftless-secrets.json
           COUNT=$(python3 -c "import json; d=json.load(open('/tmp/driftless-secrets.json')); print(sum(len(v) for v in d.get('results',{}).values()))" 2>/dev/null || echo "0")
           if [ "$COUNT" -gt "0" ]; then

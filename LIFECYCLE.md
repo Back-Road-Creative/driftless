@@ -15,7 +15,7 @@
 ## Ownership Responsibilities
 
 - Keep this service's `README.md` and `CHANGELOG.md` in step with what has
-  actually shipped. (The pre-extraction `.data/plans/…` build plan they were
-  written against stayed behind in the workspace monorepo; there is no `.data/`
-  in this repo, so it is no longer a reference anyone can follow.)
+  actually shipped. (The pre-extraction build plan they were written against
+  stayed behind in the source monorepo and is no longer a reference anyone
+  can follow.)
 - Review the state declaration above at the auto-review date.
