@@ -107,8 +107,13 @@ def test_the_changelog_carries_no_authoring_scaffold() -> None:
 
 def test_the_only_repository_this_tree_names_is_this_one() -> None:
     """Naming a private sibling tells a reader it exists, who owns it and what is in it.
-    The *reason* a shape was borrowed from one is worth keeping; the name never is."""
-    foreign = re.compile(rf"{ORG}/(?!driftless\b)[\w.-]+")
+    The *reason* a shape was borrowed from one is worth keeping; the name never is.
+    Two names are the repo's own to say: itself, and the org's public CI home, which the
+    leak-scan caller must name to call it. The lookahead ends each allowed name rather
+    than using ``\\b``: a word boundary sits between ``driftless`` and the ``-`` of a
+    hyphenated sibling, so the ``\\b`` form could not see the one repo it existed to
+    catch. A trailing ``.`` (sentence prose, ``.git``) still ends the name."""
+    foreign = re.compile(rf"{ORG}/(?!(?:driftless|\.github)(?:\.git)?(?![\w-]))[\w.-]+")
     tracked = tracked_files()
     assert tracked, "git listed no tracked files, so this scan read nothing to pass on"
     named = [

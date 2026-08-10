@@ -598,8 +598,8 @@ the tests as they stand, not from memory. They sit below the user guide because 
   `progress_history` replays it from the ChangeLog; and the department drill, the demo
   seed's `--force`, the wizard's re-baseline refusal, the per-client login cap and the
   error shell's 422 are described as they now behave. README and `LIFECYCLE.md` no
-  longer point at a `.data/plans/…` build plan that stayed in the monorepo this repo was
-  extracted from.
+  longer point at a pre-extraction build plan that stayed behind in the monorepo this
+  repo was extracted from.
 - The dated ChangeLog replay is the one source of truth for earned value. The
   assessment path already replayed task progress out of the log, but `snapshot_from`
   called without a progress series — every report and dashboard surface behind
