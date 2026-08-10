@@ -90,6 +90,16 @@ def runs_on(path: Path) -> list[str]:
     ]
 
 
+def delegated_to(path: Path) -> list[str]:
+    """Job-level ``uses:`` targets in a workflow that has no steps of its own. Such a
+    job runs on whatever the callee declares, so ``runs_on`` rightly sees nothing here;
+    a workflow with any ``steps:`` block keeps declaring its runners locally."""
+    text = path.read_text(encoding="utf-8")
+    if re.search(r"^\s*steps\s*:", text, flags=re.MULTILINE):
+        return []
+    return re.findall(r"^\s*uses\s*:\s*(\S+)", text, flags=re.MULTILINE)
+
+
 def triggers(path: Path) -> set[str]:
     """The event names under a workflow's own ``on:`` block, by indentation."""
     events: set[str] = set()
@@ -198,11 +208,20 @@ def test_an_untrusted_pull_request_never_reaches_a_machine_we_own() -> None:
         if not triggers(path) & untrusted:
             continue
         runners = runs_on(path)
-        assert runners, f"{path.name}: no runs-on parsed, so this guard checked nothing"
+        delegated = delegated_to(path)
+        assert runners or delegated, (
+            f"{path.name}: no runs-on and no delegation parsed, so this guard checked nothing"
+        )
         assert not [name for name in runners if "self-hosted" in name], (
             f"{path.name} runs {runners} on an event anyone can start. Use a GitHub-hosted "
             f"runner; self-hosted is only for work no untrusted event reaches."
         )
+        for target in delegated:
+            assert target.startswith("Back-Road-Creative/.github/"), (
+                f"{path.name} sends an event anyone can start to {target}, and the runner "
+                f"it lands on is declared there, not here. Only the org CI home is trusted "
+                f"with that."
+            )
         checked.append(path.name)
     assert len(checked) >= 2, f"only {checked} parsed as untrusted-triggered — the scan slipped"
 
