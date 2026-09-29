@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}{{ technique.display_name }} — driftless{% endblock %}
+{# One technique in full. Every section below is skipped when the registry holds
+   nothing for it — an empty heading says less than no heading, and a citation is
+   never manufactured for a technique whose further_reading is blank. #}
+{% block content %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{% if live %}
+{{ breadcrumbs.trail(live.project, technique.display_name, live.as_of) }}
+{% else %}
+{{ breadcrumbs.theory("Techniques", "/techniques", technique.display_name, family=technique.family.value | humanize, family_href="/techniques#family-" ~ technique.family.value) }}
+{% endif %}
+{% macro listing(heading, items, ordered=False) %}
+{% if items %}
+<h2>{{ heading }}</h2>
+{% if ordered %}<ol>{% for item in items %}<li>{{ item }}</li>{% endfor %}</ol>
+{% else %}<ul>{% for item in items %}<li>{{ item }}</li>{% endfor %}</ul>{% endif %}
+{% endif %}
+{% endmacro %}
+<h1>{{ technique.display_name }}</h1>
+<p><em>{{ technique.family.value | humanize }} technique</em> ·
+   <a href="/map?focus=technique:{{ technique.key }}">See it on the map</a></p>
+<p>{% if support_tier_href %}<a href="{{ support_tier_href }}">{{ support_tier }}</a>{% else %}{{ support_tier }}{% endif %}</p>
+{% if technique.summary %}<p>{{ technique.summary | gloss }}</p>{% endif %}
+{% if technique.when_to_use %}<h2>When to use it</h2><p>{{ technique.when_to_use | gloss }}</p>{% endif %}
+{% if technique.when_to_avoid %}<h2>When to avoid it</h2><p>{{ technique.when_to_avoid | gloss }}</p>{% endif %}
+{# Steps as a checklist rather than numbered prose (TQ08): a reader working the
+   technique can tick one off, and the same markup is what a printed copy checks
+   by hand — no JS reads these boxes and nothing persists a check across a reload. #}
+{% if technique.steps %}
+<h2>Steps</h2>
+<ol class="steps-checklist">
+{% for step in technique.steps %}
+<li><label><input type="checkbox" id="step-{{ technique.key | technique_slug }}-{{ loop.index0 }}"> {{ step }}</label></li>
+{% endfor %}
+</ol>
+{% endif %}
+{{ listing("What it produces", technique.outputs) }}
+{{ listing("Common pitfalls", technique.pitfalls) }}
+{% if technique.worked_example %}<h2>Worked example</h2><p>{{ technique.worked_example }}</p>{% endif %}
+{{ listing("Source", technique.further_reading) }}
+{# Where the technique itself comes from, which is not the same question as which
+   clause explains it. A PMBOK technique names the edition; an extension says plainly
+   that Driftless added it, and never borrows the edition string to look official. The
+   data attributes are the machine-readable half of the same statement, so a test reads
+   the registry's own values back off the page instead of matching this prose. #}
+<p class="provenance" data-source="{{ technique.source }}"
+   data-clause="{{ 'cited' if technique.further_reading else 'none' }}">
+{%- if technique.source_version %}
+  Where it comes from: this technique is named by the {{ technique.source_version }}.
+  {%- if not technique.further_reading %}
+  No clause number is recorded for it here — a guessed citation would be worse than none.
+  {#- And the particular reason THIS technique has none, as ``reasons.UNCITED_EXEMPTIONS``
+      recorded it: shown verbatim, so the page cannot drift from the recorded decision. The
+      filter withholds a reason that quotes the ruled-out clause, leaving the sentence above
+      to stand alone — a page with no citation never prints a clause number. #}
+  {%- set gap = technique.key | uncited_reason %}
+  {%- if gap %} {{ gap }}{% endif %}
+  {%- endif %}
+{%- else %}
+  Where it comes from: Driftless added this technique to its own vocabulary. No PMBOK-6
+  clause defines it, so none is cited.
+{%- endif %}
+</p>
+{# The written reason an extension is one, as ``tt.EXTENSION_REASONS`` records it — a
+   required field on every extension that no page rendered until now. Shown verbatim
+   rather than summarized here, so the page cannot drift from the recorded reason. #}
+{%- set why = technique.key | extension_reason %}
+{% if why %}<p class="why-extension">Why it is an extension: {{ why }}</p>{% endif %}
+{% if runs %}
+<h2>Runs on this project</h2>
+<ul>{% for run in runs %}<li>Run on {{ run.as_of }} by {{ run.actor }} for <a href="/pmbok/{{ run.process_id }}">{{ run.process_id }}</a></li>{% endfor %}</ul>
+{% endif %}
+{# Where this technique sits in the method, computed by ``related.for_technique`` over the
+   frozen registries and rendered by the ONE shared macro every Method page uses — never a
+   list of links written here, which is how the same panel on two pages drifts apart. #}
+{% import "_related.html" as related_block %}
+{{ related_block.related(related) }}
+{% endblock %}

@@ -23,7 +23,11 @@ _No live threats._
 - ⚠ {{ th }}
 {% endfor %}
 {% for ac in a.actions %}
-- → {{ ac.label }} [{{ ac.tt }}]
+{% if ac.launch_href %}
+- → {{ ac.label }} — apply **{{ ac.technique }}** at {{ ac.launch_href }}
+{% else %}
+- → {{ ac.label }} — [{{ ac.technique }}]({{ ac.reference_href }}) (reference only — no assistant yet)
+{% endif %}
 {% endfor %}
 {% if not a.threats %}
 - Healthy — no action required.

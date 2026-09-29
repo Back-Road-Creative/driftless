@@ -8,7 +8,8 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from driftless.models import ChangeRequest, Issue, Project, Risk
+from driftless.models import ChangeRequest, Issue, Project, Risk, RiskResponse
+from driftless.pmbok import mapping
 from driftless.report import engine
 
 SLUG = "risk-register"
@@ -21,6 +22,12 @@ def render(session: Session, project: Project, as_of: date) -> str:
     risks = session.scalars(
         select(Risk).where(Risk.project_id == pid).order_by(Risk.exposure.desc(), Risk.id)
     ).all()
+    # Batched via ``mapping.rows_for`` -- run once across the whole open
+    # ``pmbok.state``/``mapping.prefetched`` scope (``_render_all``'s document loop)
+    # instead of once per (document, project); the same scope
+    # ``risk_facts.gather`` reads its own ``RiskResponse`` rows through, so the
+    # two share one query and one cache entry.
+    responses = sorted(mapping.rows_for(session, RiskResponse, pid), key=lambda r: r.id)
     issues = session.scalars(
         select(Issue).where(Issue.project_id == pid).order_by(Issue.raised_on, Issue.id)
     ).all()
@@ -36,6 +43,7 @@ def render(session: Session, project: Project, as_of: date) -> str:
             "project": project.name,
             "as_of": as_of,
             "risks": risks,
+            "responses": responses,
             "issues": issues,
             "changes": changes,
         },

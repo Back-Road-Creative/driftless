@@ -5,8 +5,10 @@
 {% block content %}
 {% import "_empty.html" as empty %}
 {% import "_scroll.html" as scroll %}
+{% import "_chart.html" as chart %}
 <h1>{{ department.name }}</h1>
-<p>{{ department.business }} — as of <strong>{{ as_of }}</strong></p>
+<p>{{ department.business }} — as of <strong>{{ as_of }}</strong> ·
+   <a href="/org/departments/{{ department.id }}/assist?as_of={{ as_of }}">Department workspace</a></p>
 <p>Headcount: {{ department.headcount }} &middot; Capacity: {{ department.capacity_hours }} hrs/wk &middot; Blended rate: {{ department.blended_rate }}</p>
 <h2>Projects</h2>
 {% if department.projects %}
@@ -15,7 +17,7 @@
 <caption class="sr-only">Projects delivered by {{ department.name }}, with budget, actual and CPI</caption>
 <tr><th scope="col">Project</th><th scope="col">Budget</th><th scope="col">Actual</th><th scope="col">CPI</th></tr>
 {% for p in department.projects %}
-<tr class="dept-project"><td>{{ p.name }}</td><td>{{ p.budget }}</td><td>{{ p.actual }}</td><td>{{ p.cpi }}</td></tr>
+<tr><td>{% if p.get('id') %}<a href="/projects/{{ p.id }}/hub?as_of={{ as_of }}">{{ p.name }}</a>{% else %}{{ p.name }}{% endif %}</td><td>{{ p.budget }}</td><td>{{ p.actual }}</td><td>{{ p.cpi }}</td></tr>
 {% endfor %}
 </table>
 {% endcall %}
@@ -38,6 +40,152 @@ Point one at it: <code>PATCH /projects/&lt;id&gt;</code> with <code>{"responsibl
 {% else %}
 {% call empty.state("Nobody works here yet — headcount, capacity and task load all read from this roster", id="people-empty") %}
 Add someone: <code>POST /people</code> with <code>{"department_id": {{ department.id }}}</code>, and their open tasks and remaining hours appear here.
+{% endcall %}
+{% endif %}
+{% call chart.figures("Operations: services, work queue, recurring work, service levels, operating controls, incidents and improvements") %}
+<h2>Services</h2>
+{% if operations.department_services %}
+{% call scroll.wide("Services this department provides") %}
+<table>
+<caption class="sr-only">Services {{ department.name }} provides, with owner</caption>
+<tr><th scope="col">Service</th><th scope="col">Owner</th><th scope="col">Description</th></tr>
+{% for s in operations.department_services %}
+<tr><td>{{ s.name }}</td><td>{{ s.owner }}</td><td>{{ s.description }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No service is catalogued yet", id="services-empty") %}
+Add one: <code>POST /department-services</code> with <code>{"department_id": {{ department.id }}}</code>.
+{% endcall %}
+{% endif %}
+<h2>Work queue</h2>
+{% if operations.work_requests %}
+{% call scroll.wide("Demand raised against this department") %}
+<table>
+<caption class="sr-only">Work requested from {{ department.name }}, with priority and status</caption>
+<tr><th scope="col">Requester</th><th scope="col">Service</th><th scope="col">Priority</th><th scope="col">Status</th><th scope="col">Raised</th></tr>
+{% for w in operations.work_requests %}
+<tr><td>{{ w.requester }}</td><td>{{ w.service }}</td><td>{{ w.priority }}</td><td>{{ w.status }}</td><td>{{ w.raised_on }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No work has been requested yet", id="work-requests-empty") %}
+Raise one: <code>POST /work-requests</code> with <code>{"department_id": {{ department.id }}}</code>.
+{% endcall %}
+{% endif %}
+<h2>Recurring work</h2>
+{% if operations.recurring_work_items %}
+{% call scroll.wide("Work this department runs on its own cadence") %}
+<table>
+<caption class="sr-only">Recurring work {{ department.name }} runs, with cadence and owner</caption>
+<tr><th scope="col">Name</th><th scope="col">Cadence</th><th scope="col">Owner</th><th scope="col">Next due</th></tr>
+{% for r in operations.recurring_work_items %}
+<tr><td>{{ r.name }}</td><td>{{ r.cadence }}</td><td>{{ r.owner }}</td><td>{{ r.next_due_on }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No recurring work is tracked yet", id="recurring-work-empty") %}
+Add one: <code>POST /recurring-work</code> with <code>{"department_id": {{ department.id }}}</code>.
+{% endcall %}
+{% endif %}
+<h2>Service levels</h2>
+{% if operations.service_levels %}
+{% call scroll.wide("What this department is held to") %}
+<table>
+<caption class="sr-only">Service level targets for {{ department.name }}, with measure and window</caption>
+<tr><th scope="col">Measure</th><th scope="col">Service</th><th scope="col">Target</th><th scope="col">Window</th></tr>
+{% for sl in operations.service_levels %}
+<tr><td>{{ sl.measure }}</td><td>{{ sl.service }}</td><td>{{ sl.target }}</td><td>{{ sl.window }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No service level is set yet", id="service-levels-empty") %}
+Add one: <code>POST /service-levels</code> with <code>{"department_id": {{ department.id }}}</code>.
+{% endcall %}
+{% endif %}
+<h2>Operating controls</h2>
+{% if operations.operating_controls %}
+{% call scroll.wide("Mechanisms this department runs to manage its operating risk") %}
+<table>
+<caption class="sr-only">Operating controls for {{ department.name }}, with owner</caption>
+<tr><th scope="col">Control</th><th scope="col">Owner</th><th scope="col">Description</th></tr>
+{% for c in operations.operating_controls %}
+<tr class="dept-control"><td>{{ c.name }}</td><td>{{ c.owner }}</td><td>{{ c.description }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No operating control is recorded yet", id="controls-empty") %}
+Add one: <code>POST /operating-controls</code> with <code>{"department_id": {{ department.id }}}</code>.
+{% endcall %}
+{% endif %}
+<h2>Incidents</h2>
+{% if operations.incidents %}
+{% call scroll.wide("Operating-risk events this department has raised") %}
+<table>
+<caption class="sr-only">Incidents for {{ department.name }}, with severity, status and control</caption>
+<tr><th scope="col">Incident</th><th scope="col">Control</th><th scope="col">Severity</th><th scope="col">Status</th><th scope="col">Raised</th></tr>
+{% for i in operations.incidents %}
+<tr><td>{{ i.description }}</td><td>{{ i.control }}</td><td>{{ i.severity }}</td><td>{{ i.status }}</td><td>{{ i.raised_on }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No incident has been raised yet", id="incidents-empty") %}
+Raise one: <code>POST /incidents</code> with <code>{"department_id": {{ department.id }}}</code>.
+{% endcall %}
+{% endif %}
+<h2>Improvements</h2>
+{% if operations.improvements %}
+{% call scroll.wide("Proposed operating changes") %}
+<table>
+<caption class="sr-only">Improvements proposed for {{ department.name }}, with owner and status</caption>
+<tr><th scope="col">What</th><th scope="col">Owner</th><th scope="col">Status</th></tr>
+{% for imp in operations.improvements %}
+<tr><td>{{ imp.what }}</td><td>{{ imp.owner }}</td><td>{{ imp.status }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No improvement is proposed yet", id="improvements-empty") %}
+Propose one: <code>POST /improvements</code> with <code>{"department_id": {{ department.id }}}</code>.
+{% endcall %}
+{% endif %}
+{% endcall %}
+<h2>Linked artifacts</h2>
+{% if artifact_links %}
+{% call scroll.wide("Artifacts linked to this department") %}
+<table>
+<caption class="sr-only">Artifacts linked to {{ department.name }}</caption>
+<tr><th scope="col">Title</th><th scope="col">Link</th></tr>
+{% for link in artifact_links %}
+<tr><td>{{ link.title }}</td><td><a href="{{ link.uri }}">{{ link.uri }}</a></td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No artifact is linked here yet", id="artifact-links-empty") %}
+Link one: <code>POST /artifact-links</code> with <code>{"record_kind": "department", "record_id": "{{ department.id }}"}</code>.
+{% endcall %}
+{% endif %}
+<h2>Notes</h2>
+{% if notes %}
+{% call scroll.wide("Notes filed against this department") %}
+<table>
+<caption class="sr-only">Notes filed against {{ department.name }}</caption>
+<tr><th scope="col">Note</th><th scope="col">Actor</th></tr>
+{% for note in notes %}
+<tr><td>{{ note.body }}</td><td>{{ note.actor }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No note has been filed here yet", id="notes-empty") %}
+File one: <code>POST /notes</code> with <code>{"record_kind": "department", "record_id": "{{ department.id }}"}</code>.
 {% endcall %}
 {% endif %}
 <p><a href="/org/departments">&larr; All departments</a></p>

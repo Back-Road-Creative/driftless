@@ -10,10 +10,12 @@ point, so every subcommand inherits them — the parametrised case pins that.
 
 from __future__ import annotations
 
+import argparse
 import sqlite3
 from pathlib import Path
 
 import pytest
+from sqlalchemy.exc import OperationalError
 
 from driftless import cli
 from driftless.db import Base, new_engine, new_session_factory
@@ -74,6 +76,29 @@ def _two_projects_of_one_name(tmp_path: Path) -> tuple[str, list[int]]:
         return url, sorted(project.id for project in twins)
 
 
+def test_missing_store_lets_the_engine_say_so_when_the_url_cannot_even_parse() -> None:
+    """A ``--db-url`` that is not a URL at all: the pre-flight steps aside rather
+    than shadowing whatever error the engine itself would raise."""
+    args = argparse.Namespace(db_url="not a url at all")
+    assert cli._missing_store(args) is None
+
+
+def test_missing_store_skips_an_in_memory_sqlite_url() -> None:
+    """``sqlite://`` names no file on disk to check for -- the pre-flight has
+    nothing to say about it."""
+    args = argparse.Namespace(db_url="sqlite://")
+    assert cli._missing_store(args) is None
+
+
+def test_unreadable_falls_back_to_a_generic_line_for_a_non_schema_error() -> None:
+    """An operational failure unrelated to a missing table still reads as one
+    line, just not the ``alembic upgrade head`` one."""
+    failure = OperationalError("SELECT 1", {}, Exception("database is locked"))
+    message = cli._unreadable(failure)
+    assert message == "error: the database could not be read: database is locked"
+    assert "alembic" not in message
+
+
 def test_two_projects_of_one_name_are_refused_rather_than_guessed(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -90,3 +115,37 @@ def test_the_id_still_resolves_when_the_name_is_ambiguous(tmp_path: Path) -> Non
     url, ids = _two_projects_of_one_name(tmp_path)
 
     assert cli.main(["assess", str(ids[0]), "--db-url", url]) == 0
+
+
+def test_a_user_command_with_no_database_url_at_all_refuses_before_opening_anything() -> None:
+    """``auth.cli._open``'s own guard: no ``--db-url`` and no env var, so there
+    is no URL yet for ``driftless.cli``'s own ``_missing_store`` to inspect —
+    ``_missing_store`` explicitly defers ("the handler's own... error still
+    applies") to this one instead."""
+    with pytest.raises(SystemExit, match="no database URL"):
+        cli.main(["user", "list"])
+
+
+def test_missing_store_lets_an_unparseable_db_url_reach_the_engine() -> None:
+    """A ``--db-url`` SQLAlchemy cannot even parse: ``_missing_store`` is a
+    SQLite-file existence check, and a URL it cannot read as a URL at all is
+    not its guard to refuse — the engine gets to say so instead."""
+    args = argparse.Namespace(db_url="not a url at all::::")
+    assert cli._missing_store(args) is None
+
+
+def test_missing_store_ignores_a_non_sqlite_or_in_memory_url() -> None:
+    """The file-existence guard only means anything for an ON-DISK SQLite
+    file: a server URL (nothing here to check for on THIS machine) and
+    ``sqlite://`` (in-memory, no file at all) both fall through unrefused."""
+    assert cli._missing_store(argparse.Namespace(db_url="postgresql://user@host/db")) is None
+    assert cli._missing_store(argparse.Namespace(db_url="sqlite://")) is None
+
+
+def test_unreadable_names_a_generic_database_error_outside_the_schema_markers() -> None:
+    """``_unreadable``'s fallback line: an ``OperationalError`` whose detail
+    matches none of ``_NO_SCHEMA``'s markers (missing table, wrong dialect
+    wording) — a locked file, a permissions error, disk corruption — gets
+    named for what it is rather than misread as a missing schema."""
+    failure = OperationalError("SELECT 1", {}, Exception("disk I/O error"))
+    assert cli._unreadable(failure) == "error: the database could not be read: disk I/O error"

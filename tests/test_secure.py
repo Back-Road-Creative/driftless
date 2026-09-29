@@ -18,23 +18,30 @@ nothing at all, at one of the app's page addresses, is sent to the sign-in form;
 other refusal keeps the JSON body a script already parses, byte for byte.
 """
 
+import ast
+import inspect
+import logging
+import textwrap
 from collections.abc import Iterator
 from contextlib import AbstractContextManager, nullcontext
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.types import Receive, Scope, Send
 
-from driftless.api import app as app_module
 from driftless.api import secure
+from driftless.api.versioning import API_PREFIX
 from driftless.api.app import app, get_session
+from driftless.services.sign_offs import create_sign_off
 from driftless.auth import sessions, tokens
 from driftless.auth.principal import Principal
 from driftless.db import Base, new_engine, new_session_factory
+from driftless.db import session as db_session
 from driftless.db.changelog import ChangeLog, register_changelog
 from driftless.models import USER_ROLES, ApiToken, User
 
@@ -43,6 +50,13 @@ TOKEN = "s3cr3t-token"
 # a browser can submit, and a JSON CRUD collection a client posts to.
 PAGE_WRITE = "/projects/1/status"
 API_WRITE = "/projects"
+# The two addresses that write the SAME append-only row: both call
+# ``driftless.services.sign_offs.create_sign_off`` rather than assembling one.
+SIGN_OFF_JSON = "/sign-offs"
+SIGN_OFF_PAGE = "/sign-off"
+# The versioned twin of the JSON route reaches the SAME write, so it needs the same
+# admin floor. It is a third address, not a rename -- see ``_PRIVILEGED_PATHS``.
+SIGN_OFF_VERSIONED = f"{API_PREFIX}/sign-offs"
 # The gate's unauthenticated body, spelled out here rather than read off the module: a
 # refactor that changes what a script parses has to change this literal to stay green.
 UNAUTHENTICATED = b'{"detail":"missing or invalid bearer token"}'
@@ -100,9 +114,60 @@ def test_create_secured_app_reads_the_environment(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setenv(secure.TOKEN_ENV, TOKEN)
     gated = secure.create_secured_app()
     assert gated._token == TOKEN
+
+
+def test_create_secured_app_refuses_to_start_with_no_token_and_no_opt_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The defect this unit closes: a token forgotten in production used to serve the
+    whole API open with only a warning in a log nobody reads. Now it refuses to start,
+    naming the variable to set."""
     monkeypatch.delenv(secure.TOKEN_ENV, raising=False)
     monkeypatch.delenv(secure.LEGACY_TOKEN_ENV, raising=False)
-    assert secure.create_secured_app()._token is None
+    monkeypatch.delenv(secure.ALLOW_UNAUTHENTICATED_ENV, raising=False)
+    with pytest.raises(RuntimeError, match=secure.TOKEN_ENV):
+        secure.create_secured_app()
+
+
+def test_create_secured_app_opts_into_open_mode_explicitly(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Local development keeps a way to run open, but only behind a name that says
+    exactly what it does — and the existing warning still fires on that path."""
+    monkeypatch.delenv(secure.TOKEN_ENV, raising=False)
+    monkeypatch.delenv(secure.LEGACY_TOKEN_ENV, raising=False)
+    monkeypatch.setenv(secure.ALLOW_UNAUTHENTICATED_ENV, "1")
+    with caplog.at_level(logging.WARNING, logger="driftless.secure"):
+        gated = secure.create_secured_app()
+    assert gated._token is None
+    assert "running open" in caplog.text
+
+
+@pytest.mark.parametrize("value", ["", "0", "true", "yes", "1 "])
+def test_only_the_exact_string_one_opts_into_open_mode(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    """The opt-in is compared against ``"1"`` exactly, not coerced to a truthy value, so a
+    variable of the same name left set by some other tool — or a shell that appended a
+    space — cannot open the API by accident. Anything that is not that one string is a
+    refusal, the same as the variable being absent."""
+    monkeypatch.delenv(secure.TOKEN_ENV, raising=False)
+    monkeypatch.delenv(secure.LEGACY_TOKEN_ENV, raising=False)
+    monkeypatch.setenv(secure.ALLOW_UNAUTHENTICATED_ENV, value)
+    with pytest.raises(RuntimeError, match=secure.TOKEN_ENV):
+        secure.create_secured_app()
+
+
+def test_secured_is_resolved_lazily_not_at_import_time(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Most of the suite imports this module only for :class:`TokenGate` — if
+    ``secured`` were built eagerly at import time, collecting those files would
+    already have raised before a single test ran. Only resolving the attribute
+    (as uvicorn's ``driftless.api.secure:secured`` does) pays the startup check."""
+    monkeypatch.delenv(secure.TOKEN_ENV, raising=False)
+    monkeypatch.delenv(secure.LEGACY_TOKEN_ENV, raising=False)
+    monkeypatch.delenv(secure.ALLOW_UNAUTHENTICATED_ENV, raising=False)
+    with pytest.raises(RuntimeError, match=secure.TOKEN_ENV):
+        getattr(secure, "secured")
 
 
 def test_token_env_names_are_the_renamed_ones() -> None:
@@ -291,7 +356,8 @@ def test_a_viewers_writes_are_refused_before_the_route(db: Session, signed: None
 
 
 def test_contributors_and_admins_both_write(db: Session, signed: None) -> None:
-    """No admin-only tier: nothing needs one yet, and an unused tier is a guess."""
+    """Ordinary writes stay open to both roles -- only the sign-off ledger narrows
+    further, to admin alone (see ``_PRIVILEGED_PATHS`` below)."""
     for role in ("contributor", "admin"):
         spy = _Spy()
         user = _user(db, role=role, username=role)
@@ -325,11 +391,74 @@ def test_a_write_with_no_principal_and_no_token_stays_open(db: Session) -> None:
     assert TestClient(_gate(db, spy, token=None)).post("/").status_code == 204
 
 
+def test_require_identity_refuses_anonymous_and_the_retired_shared_bearer(
+    db: Session, signed: None
+) -> None:
+    """The mode that retires the shared credential: no bearer authorizes, only a person.
+
+    ``token=None`` alone still means "open" (pinned above), so the two must be told
+    apart — this asserts the SAME constructor argument with the flag on refuses what
+    without it sails through.
+    """
+    spy = _Spy()
+    gate = secure.TokenGate(
+        spy, None, require_identity=True, session_scope=lambda: nullcontext(db), clock=lambda: NOW
+    )
+    client = TestClient(gate, follow_redirects=False)
+    assert client.post("/").status_code == 401  # anonymous: refused, where open mode admits
+    stale = client.post("/", headers={"Authorization": f"Bearer {TOKEN}"})
+    assert stale.status_code == 401, "the shared bearer must not authorize in this mode"
+    assert spy.calls == 0, "neither request should have reached the app"
+
+
+def test_require_identity_admits_a_service_account_and_attributes_its_write(
+    db: Session, signed: None
+) -> None:
+    """What the mode buys: the write lands with an actor instead of ``actor=None``.
+
+    A per-user token minted for a service account is the replacement for the shared
+    credential, so the principal the gate stamps is the account's — which is what
+    ``api.deps._actor`` reads to credit the ChangeLog.
+    """
+    service = _user(db, username="importer", role="contributor")
+    minted = tokens.issue(db, service, label="nightly-import")
+    spy = _Spy()
+    gate = secure.TokenGate(
+        spy, None, require_identity=True, session_scope=lambda: nullcontext(db), clock=lambda: NOW
+    )
+    resp = TestClient(gate).post("/", headers={"Authorization": f"Bearer {minted}"})
+    assert (resp.status_code, spy.calls) == (204, 1)
+    assert spy.principal == Principal(uid=service.id, username="importer", role="contributor")
+
+
+def test_create_secured_app_requires_a_user_credential_when_asked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(secure.TOKEN_ENV, raising=False)
+    monkeypatch.delenv(secure.LEGACY_TOKEN_ENV, raising=False)
+    monkeypatch.setenv(secure.REQUIRE_USER_AUTH_ENV, "1")
+    gated = secure.create_secured_app()
+    assert gated._token is None and gated._require_identity is True
+
+
+def test_create_secured_app_refuses_both_credential_modes_at_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Refused rather than resolved: either the operator believes the shared credential
+    still works or believes this mode is on, and silently picking one leaves a wrong
+    mental model about what authorizes."""
+    monkeypatch.setenv(secure.TOKEN_ENV, TOKEN)
+    monkeypatch.setenv(secure.REQUIRE_USER_AUTH_ENV, "1")
+    with pytest.raises(RuntimeError, match=secure.REQUIRE_USER_AUTH_ENV):
+        secure.create_secured_app()
+
+
 def test_the_read_methods_and_the_writing_roles_are_pinned(db: Session, signed: None) -> None:
     """Pinned as behaviour, not as a comment: a method silently added to the read set,
     or a role silently given the write, fails here. Every role is accounted for."""
     assert secure._READ_METHODS == frozenset({"GET", "HEAD", "OPTIONS"})
     assert secure._WRITE_ROLES == frozenset({"admin", "contributor"})
+    assert secure._PRIVILEGED_PATHS == frozenset({SIGN_OFF_JSON, SIGN_OFF_PAGE, SIGN_OFF_VERSIONED})
     assert set(USER_ROLES) - secure._WRITE_ROLES == {"viewer"}
     spy = _Spy()  # and an unlisted method is a write, not a read: fail closed
     headers = _cookie(_issued(_user(db, role="viewer")))
@@ -608,7 +737,7 @@ def audited(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[session
     Base.metadata.create_all(engine)
     factory = new_session_factory(engine)
     register_changelog(factory)
-    monkeypatch.setattr(app_module, "_factory", factory)
+    monkeypatch.setattr(db_session, "_factory", factory)
     yield factory
 
 
@@ -628,3 +757,100 @@ def test_a_write_authorized_by_a_token_is_credited_to_its_owner(
     with audited() as db:
         rows = db.scalars(select(ChangeLog).where(ChangeLog.table_name == "business")).all()
     assert [row.actor for row in rows] == ["agent"]
+
+
+def test_a_contributor_cannot_sign_off_through_the_json_route(db: Session, signed: None) -> None:
+    """A sign-off is a governance act, not an edit: contributor is enough for every
+    other write and not enough for this one -- and its own wording, not the ordinary
+    write refusal's, since a contributor already holds the role that message names."""
+    spy = _Spy()
+    headers = _cookie(_issued(_user(db, role="contributor", username="cc")))
+    resp = TestClient(_gate(db, spy)).post(SIGN_OFF_JSON, headers=headers, json={})
+    assert (resp.status_code, resp.content, spy.calls) == (403, secure._PRIVILEGED_DENIED, 0)
+
+
+def test_a_contributor_cannot_sign_off_through_the_page_form_either(
+    db: Session, signed: None
+) -> None:
+    """The hole this unit closes: the browser form calls ``create_sign_off`` too
+    rather than assembling its own row (driftless/services/sign_offs.py),
+    so gating only the JSON address would leave a second, unlocked way to the same write.
+    ``inner=app`` (the ``_gate`` default), so ``self._pages`` matches the real page
+    patterns -- the refusal is decided before ``self._inner`` is ever awaited, so no
+    route runs regardless."""
+    headers = _cookie(_issued(_user(db, role="contributor", username="cc")))
+    resp = TestClient(_gate(db), follow_redirects=False).post(SIGN_OFF_PAGE, headers=headers)
+    assert resp.status_code == 403
+    assert resp.headers["content-type"].startswith("text/html")  # a browser form, not JSON
+    # And its OWN wording. The viewer page would tell this reader to ask for the
+    # contributor access they already hold — a dead end, not merely clumsy copy.
+    assert "administrator" in resp.text
+    assert "viewer" not in resp.text and "contributor access" not in resp.text
+
+
+def test_a_viewer_refused_at_a_privileged_address_still_reads_the_viewer_refusal(
+    db: Session, signed: None
+) -> None:
+    """The other side of that split, and why it keys on the ROLE rather than the path.
+    A viewer at the sign-off form is refused by the write floor, not by the admin tier:
+    they cannot write anything, so "ask an admin to sign this off" would name the one
+    thing that is not their problem. Both surfaces agree — the page keeps its read-only
+    wording and the JSON keeps the ordinary write refusal, byte for byte."""
+    client, headers = TestClient(_gate(db), follow_redirects=False), _viewer(db)
+    page = client.post(SIGN_OFF_PAGE, headers=headers)
+    assert (page.status_code, "contributor access" in page.text) == (403, True)
+    api = client.post(SIGN_OFF_JSON, headers=headers, json={})
+    assert (api.status_code, api.content) == (403, secure._WRITE_DENIED)
+
+
+def test_an_admin_reaches_the_sign_off_route(audited: sessionmaker[Session]) -> None:
+    """The other half of the claim: admin is not merely let past the gate, the write
+    lands -- proving the narrowed tier still admits the role meant to keep it."""
+    with audited() as setup:
+        headers = _minted(setup, _user(setup, role="admin", username="jp"))
+    client = TestClient(secure.TokenGate(app, TOKEN), headers=headers)
+    resp = client.post(
+        SIGN_OFF_JSON,
+        json={"subject_kind": "threat", "subject_ref": "x", "decision": "accepted"},
+    )
+    assert resp.status_code == 201, resp.text
+
+
+def _reaches(endpoint: object, target: object) -> bool:
+    """Whether ``endpoint`` IS ``target``, or calls it directly in its own body."""
+    if endpoint is target:
+        return True
+    try:
+        source = textwrap.dedent(inspect.getsource(endpoint))  # type: ignore[arg-type]
+    except (OSError, TypeError):
+        return False
+    tree = ast.parse(source)
+    name = getattr(target, "__name__", None)
+    return any(
+        isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == name
+        for node in ast.walk(tree)
+    )
+
+
+def _routes_writing_a_sign_off() -> frozenset[str]:
+    """Every live write-method route on ``app`` that reaches ``create_sign_off`` --
+    derived from the REAL route table and each handler's own source, never a
+    hand-typed path, so this is the independent half of the exact-set check below."""
+    return frozenset(
+        leaf.path
+        for route in app.routes
+        for leaf in secure._leaves(route)
+        if isinstance(leaf, APIRoute)
+        and set(leaf.methods or ()) - secure._READ_METHODS
+        and _reaches(leaf.endpoint, create_sign_off)
+    )
+
+
+def test_the_privileged_paths_are_exactly_the_routes_that_write_a_sign_off() -> None:
+    """The exact-set idiom this repo already uses twice (``NOT_CHOOSING_A_PLAN``,
+    ``tests/test_baseline_selection.py``): a route reaching ``create_sign_off`` that
+    ``secure._PRIVILEGED_PATHS`` has not named, or a name it still carries after the
+    route it named is gone, both fail here rather than drift quietly."""
+    derived = _routes_writing_a_sign_off()
+    assert derived == {SIGN_OFF_JSON, SIGN_OFF_PAGE, SIGN_OFF_VERSIONED}  # not a vacuous walk
+    assert derived == secure._PRIVILEGED_PATHS, sorted(derived ^ secure._PRIVILEGED_PATHS)

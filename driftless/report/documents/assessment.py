@@ -26,7 +26,15 @@ def _assessment_rows(assessments: tuple[Assessment, ...]) -> list[dict[str, Any]
             "status": a.status,
             "score": f"{a.risk_score:.4f}",
             "threats": [t.description for t in a.threats],
-            "actions": [{"label": ac.label, "tt": ac.pmbok_tt} for ac in a.actions],
+            "actions": [
+                {
+                    "label": ac.label,
+                    "technique": ac.technique.display_name,
+                    "launch_href": ac.launch_href,
+                    "reference_href": ac.reference_href,
+                }
+                for ac in a.actions
+            ],
         }
         for a in assessments
     ]

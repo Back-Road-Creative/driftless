@@ -9,7 +9,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
-from driftless.api.app import Db
+from driftless.api.deps import Db
 from driftless.api.search import PER_KIND, Hit, search
 from driftless.web.errors import PageRoute
 from driftless.web.templating import TEMPLATES

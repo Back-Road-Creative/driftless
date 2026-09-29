@@ -110,3 +110,50 @@ def test_an_uncommitted_deletion_fails_as_itself(tmp_path: Path) -> None:
     (tmp_path / "doomed.md").unlink()
     with pytest.raises(pytest.fail.Exception, match="uncommitted deletion"):
         tracked_markdown(tmp_path)
+
+
+def test_operations_states_the_recovery_objectives() -> None:
+    """A backup script is not a recovery plan without an RPO, an RTO and a retention
+    policy naming what is and is not enforced. This pins the section existing and stating
+    each of those in words a reader can act on, so an edit that quietly drops one fails
+    here instead of in an incident."""
+    operations = (ROOT / "OPERATIONS.md").read_text(encoding="utf-8")
+    heading = "### Recovery objectives (RPO/RTO)"
+    assert heading in operations, "OPERATIONS.md lost its recovery-objectives section"
+    section = " ".join(operations.split(heading, 1)[1].split("\n## ", 1)[0].split())
+    for must in (
+        "RPO",
+        "RTO",
+        "Frequency:",
+        "Retention: none enforced.",
+        "Storage:",
+        "no offsite copy ships here",
+    ):
+        assert must in section, f"the recovery-objectives section stopped stating {must!r}"
+
+
+def test_the_shipped_schedule_and_the_stated_rpo_agree() -> None:
+    """This test used to assert the opposite — that *nothing* scheduled the backup — because
+    for as long as that held, OPERATIONS.md's "RPO is unbounded" was the honest claim. A timer
+    now ships, so the pairing it guards has flipped rather than disappeared: the schedule and
+    the documented RPO must state the same period, and the sentence calling RPO unbounded must
+    be gone. A timer landing while the prose still says "unbounded" is the same defect as the
+    reverse, and it is the direction that reads as safer than it is.
+    """
+    operations = (ROOT / "OPERATIONS.md").read_text(encoding="utf-8")
+    heading = "### Recovery objectives (RPO/RTO)"
+    section = " ".join(operations.split(heading, 1)[1].split("\n## ", 1)[0].split())
+
+    timer = (ROOT / "deploy" / "driftless-backup.timer").read_text(encoding="utf-8")
+    assert "OnCalendar=*-*-* 03:00:00" in timer, (
+        f"the timer's period changed; OPERATIONS.md and this test both name it:\n{timer}"
+    )
+    assert "unbounded" not in section, (
+        "the recovery-objectives section still calls RPO unbounded, but deploy/"
+        f"driftless-backup.timer schedules the backup:\n{section}"
+    )
+    for must in ("24 hours", "deploy/driftless-backup.timer"):
+        assert must in section, (
+            f"the recovery-objectives section does not state {must!r}. The RPO a reader acts "
+            "on has to be the period the shipped timer actually uses."
+        )

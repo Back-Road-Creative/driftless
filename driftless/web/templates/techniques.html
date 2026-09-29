@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Technique library{% endblock %}
+{# The whole closed Tools & Techniques catalog, grouped by family. web/techniques.py
+   owns the grouping, the ordering and each row's support tier; this file only formats
+   them. Each row carries its summary and its tier so the index answers "which one do I
+   want, and can this product actually run it?" before anyone follows a link. #}
+{# The family heading's anchor word is written twice — here as the id, and in
+   technique_detail.html as the fragment a detail page links back to. A shared macro
+   is not available across these two files: both extend base.html, and importing a
+   macro out of an extending template evaluates that template's own blocks. So the
+   two copies are held together mechanically instead, by the walk in
+   tests/test_web_techniques.py over every family. #}
+{% block content %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{% import "_scroll.html" as scroll %}
+{% import "_help.html" as help_block %}
+{{ breadcrumbs.theory(None, None, "Techniques") }}
+<h1>Technique library</h1>
+<p><em>Every technique Driftless works with, explained — the tools and techniques the
+   PMBOK ITTO catalog names, and any Driftless adds to its own vocabulary that no process
+   names — when to use each, when not to, the steps, what it produces and what usually
+   goes wrong. Theory reference: nothing here reads a project or a date.</em></p>
+{% call help_block.how_to_read() %}
+<p>The library is grouped by family — the kind of work a technique belongs to. Each family
+   opens with what it is for, then one row per technique: its name, what it is for in a
+   line, and how much help this product gives you with it. Open any technique for when to
+   use it, when not to, the steps in order, what it produces and what usually goes wrong.</p>
+{% endcall %}
+{# The tier key. Every figure below is counted from the registries by
+   web/techniques.tier_counts(), never written here. #}
+<dl class="tier-legend">
+  <dt>Runnable here</dt>
+  <dd>Driftless has an assistant you can open and run for it — {{ tier_counts["runnable"] }} of {{ total }}.</dd>
+  <dt>Worksheet</dt>
+  <dd>No calculator, but a printable worksheet walks you through it — {{ tier_counts["worksheet"] }} of {{ total }}.</dd>
+  <dt>Anything else</dt>
+  <dd>The column holds the one sentence recorded beside that technique saying why this
+      product explains it rather than running it — {{ tier_counts["guide"] }} of {{ total }}.</dd>
+</dl>
+{# family_explanations is keyed by the TechniqueFamily enum, whose members ARE their
+   own string values (str, Enum), so the family word this loop carries looks each one
+   up directly. #}
+{% for family, techniques in families %}
+<h2 id="family-{{ family }}">{{ family | humanize }}</h2>
+<p class="family-note">{{ family_explanations[family] }}</p>
+{% call scroll.wide(family | humanize ~ " techniques") %}
+<table>
+<caption class="sr-only">{{ family | humanize }} techniques: what each one is for, and how much help this product gives</caption>
+<tr><th scope="col">Technique</th><th scope="col">What it is for</th><th scope="col">How much help</th></tr>
+{% for slug, technique, tier in techniques %}
+<tr><th scope="row"><a href="/techniques/{{ slug }}">{{ technique.display_name }}</a></th>
+    <td>{{ technique.summary }}</td>
+    <td>{{ tier }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% endfor %}
+{% endblock %}

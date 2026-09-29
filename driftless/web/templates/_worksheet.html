@@ -1,0 +1,40 @@
+{# The ONE printable worksheet: plain HTML, no JS, no <form>/submit. Each
+   section is a <fieldset>/<legend>, each prompt a <label for> bound to a
+   checkbox (kind="check") or <textarea> (kind="text"). steps_checklist
+   below is for a plain technique `steps` list with no Worksheet (TQ08). #}
+{% macro worksheet(sheet) %}
+<div class="worksheet" data-worksheet="{{ sheet.key }}">
+  <h2>{{ sheet.title }}</h2>
+  <p>{{ sheet.purpose }}</p>
+  {% for section in sheet.sections %}
+  {% set section_index = loop.index0 %}
+  <fieldset class="worksheet-section">
+    <legend>{{ section.heading }}</legend>
+    {% for prompt in section.prompts %}
+    {% set field_id = "ws-" ~ sheet.key ~ "-" ~ section_index ~ "-" ~ loop.index0 %}
+    <p class="worksheet-field">
+      {% if section.kind == "check" %}
+      <label for="{{ field_id }}"><input type="checkbox" id="{{ field_id }}"> {{ prompt }}</label>
+      {% else %}
+      <label for="{{ field_id }}">{{ prompt }}</label>
+      <textarea id="{{ field_id }}" class="worksheet-textarea" rows="2"></textarea>
+      {% endif %}
+    </p>
+    {% endfor %}
+  </fieldset>
+  {% endfor %}
+  {% if sheet.outputs %}
+  <p class="worksheet-outputs"><strong>What this produces:</strong> {{ sheet.outputs | join("; ") }}</p>
+  {% endif %}
+  <p class="worksheet-print-hint">Print this page to use it on paper.</p>
+</div>
+{% endmacro %}
+
+{% macro steps_checklist(key, steps) %}
+<ul class="worksheet-steps">
+  {% for step in steps %}
+  {% set field_id = "steps-" ~ key ~ "-" ~ loop.index0 %}
+  <li><label for="{{ field_id }}"><input type="checkbox" id="{{ field_id }}"> {{ step }}</label></li>
+  {% endfor %}
+</ul>
+{% endmacro %}

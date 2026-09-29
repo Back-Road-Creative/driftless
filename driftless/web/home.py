@@ -26,13 +26,14 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from driftless.api.app import get_session
+from driftless.api.deps import get_session
 from driftless.assess import adapters
 from driftless.assess.feed import attention_feed, attention_trends
 from driftless.calc.rollup import Kpis, RagStatus, on_track_share
 from driftless.models import CostEntry, Project, StatusSnapshot
 from driftless.pmbok.rollup import business_completeness, business_process_cells
 from driftless.report import gather
+from driftless.web.as_of import as_of_dependency
 from driftless.web.errors import PageRoute
 from driftless.web.templating import TEMPLATES
 
@@ -52,13 +53,14 @@ def _burn_series(project: Project, costs: list[CostEntry], as_of: date) -> dict[
     ``as_of`` — genuinely time-phased, read straight from that project's dated
     ``CostEntry`` rows — with ``bac`` the constant budget of the same baseline
     (its top reference line). One selector, so the axis a bar is drawn against
-    is the plan the bar's own BAC came from. The project is adapted ONCE through
+    is the plan the bar's own BAC came from. The project is adapted through
     ``gather.snapshot_sweep`` (pinned byte-equal to ``adapters.snapshot_from``)
-    and reused at every sample — pure in-memory work over the already
-    eager-loaded project, so this whole sweep fires no query. A project with no
+    once per DISTINCT baseline the window crosses — normally one, and one more
+    only where an approval lands mid-window — pure in-memory work over the
+    already eager-loaded project, so this whole sweep fires no query. A project with no
     APPROVED baseline has no plan to burn against and returns an empty
     ``points`` list, which the template renders as a dash."""
-    baseline = adapters.plan_baseline(project)
+    baseline = adapters.plan_baseline(project, as_of)
     lines = baseline.lines if baseline else []
     if not lines:
         return {"bac": 0.0, "points": []}
@@ -107,7 +109,7 @@ def _render(request: Request, db: Session, as_of: date) -> HTMLResponse:
     # The rail: the canonical feed, order rendered verbatim; each runs ONCE here.
     feed = attention_feed(db, as_of)
     # Week-over-week trend per rail item, mirroring the threat board's marker
-    # (``web.pages._trend_delta``). ``feed`` above is reused rather than
+    # (``web.views._trend_delta``). ``feed`` above is reused rather than
     # recomputed, so this fetches the prior week's feed exactly once more --
     # the feed runs twice total per render (current + prior), never per-item.
     trends = attention_trends(db, as_of, feed)
@@ -137,9 +139,10 @@ def _render(request: Request, db: Session, as_of: date) -> HTMLResponse:
         "heading": total.children[0].name if businesses == 1 else "Dashboard",
         "multi": businesses > 1,
         "total": gather.cell(total),
-        "on_track": f"{share:.0f}%" if share is not None else "n/a",
+        "flow": gather.flow_cell(total),
+        "on_track": f"{share:.0f}%" if share is not None else "no data yet",
         "threats_open": sum(1 for i in feed if i.kind == "threat"),
-        "completeness": f"{completeness * 100:.0f}%" if completeness is not None else "n/a",
+        "completeness": f"{completeness * 100:.0f}%" if completeness is not None else "no data yet",
         "rail": feed,
         "trends": trends,
         "fix_paths": FIX_PATHS,
@@ -161,10 +164,10 @@ def create_router(default_as_of: date | Callable[[], date]) -> APIRouter:
     what a reproducible report wants.
     """
     router = APIRouter(route_class=PageRoute)
-    resolve = default_as_of if callable(default_as_of) else lambda: default_as_of
+    resolve_as_of = as_of_dependency(default_as_of)
 
     @router.get("/", response_class=HTMLResponse)
-    def home(request: Request, db: Db, as_of: date | None = None) -> HTMLResponse:
-        return _render(request, db, as_of or resolve())
+    def home(request: Request, db: Db, at: date = Depends(resolve_as_of)) -> HTMLResponse:
+        return _render(request, db, at)
 
     return router

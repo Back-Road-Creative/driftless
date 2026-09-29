@@ -40,8 +40,13 @@ PROCESSES: tuple[Process, ...] = (
         tools_techniques=(
             "expert_judgment",
             "data_gathering",
+            "benchmarking",
+            "focus_groups",
             "data_analysis",
             "decision_making",
+            "voting",
+            "autocratic_decision_making",
+            "multicriteria_decision_analysis",
             "data_representation",
             "interpersonal_and_team_skills",
             "context_diagram",
@@ -104,7 +109,7 @@ PROCESSES: tuple[Process, ...] = (
             "project_management_plan",
             "requirements_documentation",
             "requirements_traceability_matrix",
-            "deliverables",
+            "verified_deliverables",
             "work_performance_data",
         ),
         tools_techniques=(

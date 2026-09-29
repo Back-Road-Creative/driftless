@@ -3,12 +3,16 @@
 {% block content %}
 {% import "_scroll.html" as scroll %}
 {% import "_empty.html" as empty %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{{ breadcrumbs.theory(None, None, "Process map") }}
 <h1>Process map — Business</h1>
-<p><em>As of {{ as_of }}</em> — each grid cell washed by the share of applicable projects producing or signing off that process. These washes read grid cells only: a listed project's own state is a different vocabulary, legended where it is read.</p>
+<p><em>As of {{ as_of }}</em> — each grid cell washed by the share of applicable projects producing or signing off that process: the cell's background colour is tinted according to that share, a bigger share reading as a stronger tint. These washes read grid cells only: a listed project's own state is a different vocabulary, legended where it is read.
+   <a href="/map">Method map</a> · <a href="/pmbok">PMBOK reference</a></p>
 <dl class="legend">
   {# aria-hidden on the chip: it is the <dd> beside it in colour, not a second term #}
   {% for label, rank in legend %}<dt aria-hidden="true"><span class="badge st-{{ rank }}" title="{{ label }}">&nbsp;&nbsp;</span></dt><dd>{{ label }}</dd>{% endfor %}
 </dl>
+<p>Each ring is this area's share of applicable project-process pairs produced or signed off, pooled across every project.</p>
 <div class="rings">
   {% for area in areas %}
   {# Same completion-ring idiom as the per-project map's per-area ring, pooled
@@ -19,7 +23,7 @@
   <span>
     <svg class="ring" viewBox="0 0 36 36" width="34" height="34" role="img"
          aria-label="{{ area | humanize }} completion {{ ring_labels[area] }}"
-         style="vertical-align:middle;margin-right:.35em">
+      >
       <circle cx="18" cy="18" r="15.9155" fill="none" stroke="currentColor"
               stroke-opacity="0.15" stroke-width="3.5"/>
       {% set frac = rings[area] %}
@@ -38,23 +42,31 @@
   {% endfor %}
 </div>
 {% call scroll.wide("Whole-business process grid") %}
-<table>
+<table class="process-grid">
   <caption class="sr-only">Whole-business process coverage as of {{ as_of }}, knowledge area by row and process group by column</caption>
-  <tr><th scope="col">Knowledge area</th>{% for g in groups %}<th scope="col">{{ g | humanize }}</th>{% endfor %}</tr>
+  {# thead/tbody are written out rather than left to the parser: the frozen headings in
+     driftless.css are addressed as `thead th`, and a row the browser invents lands in
+     tbody like every other, which would freeze nothing. pg-area marks the knowledge-area
+     column — the heading cell and every row's own — as the band that pins to the left. #}
+  <thead>
+  <tr><th scope="col" class="pg-area">Knowledge area</th>{% for g in groups %}<th scope="col">{{ g | humanize }}</th>{% endfor %}</tr>
+  </thead>
+  <tbody>
   {% for area in areas %}
   <tr>
-    <th scope="row">{{ area | humanize }}</th>
+    <th scope="row" class="pg-area">{{ area | humanize }}</th>
     {# The share is PRINTED in the cell, not only washed onto it: the four buckets sit
        under 1.2:1 apart, so in greyscale or in print the grid is one colour and the
        figure it is washed by is the only thing that reads. The sr-only span finishes
        the sentence a reader hears rather than repeating the number. #}
-    {% for g in groups %}<td>{% for cell in grid[area][g] %}<a href="/process-map?as_of={{ as_of }}&process={{ cell.id }}"><span class="badge st-{{ cell.rank }}" title="{{ cell.share }}">{{ cell.id }} {{ cell.name }} {{ cell.share }}<span class="sr-only"> of applicable projects</span></span></a><br>{% endfor %}</td>{% endfor %}
+    {% for g in groups %}<td>{% for cell in grid[area][g] %}<a href="/process-map?as_of={{ as_of }}&process={{ cell.id }}#listing"><span class="badge st-{{ cell.rank }}" title="{{ cell.share }}">{{ cell.id }} {{ cell.name }} {{ cell.share }}<span class="sr-only"> of applicable projects</span></span></a> <a href="/pmbok/{{ cell.id }}">{{ cell.id }} reference</a><br>{% endfor %}</td>{% endfor %}
   </tr>
   {% endfor %}
+  </tbody>
 </table>
 {% endcall %}
 {% if listing is not none %}
-<section class="process-listing">
+<section class="process-listing" id="listing">
   <h2>{{ listing.process_id }} {{ listing.process_name }}</h2>
   {% if listing.rows %}
   {# The grid's legend buckets a SHARE onto these same four washes; a row here paints a
@@ -76,7 +88,7 @@
      project would BE a row above, so an empty listing is one of exactly these. #}
   {% elif not listing.assessable %}
   {% call empty.state("Nothing to list — no output of this process is a kind the store tracks", id="listing-empty") %}
-  The store records none of {{ listing.process_id }}'s outputs, so counting a project either way would be a guess — which is why its grid cell reads <code>n/a</code> rather than 0%. See what it produces on the <a href="/pmbok/{{ listing.process_id }}">{{ listing.process_id }} {{ listing.process_name }}</a> reference.
+  The store records none of {{ listing.process_id }}'s outputs, so counting a project either way would be a guess — which is why its grid cell reads <code>no data yet</code> rather than 0%. See what it produces on the <a href="/pmbok/{{ listing.process_id }}">{{ listing.process_id }} {{ listing.process_name }}</a> reference.
   {% endcall %}
   {% elif listing.waived %}
   {% call empty.state("Every project has waived " ~ listing.process_id ~ " — a waiver drops it out of every completeness figure", id="listing-empty") %}
@@ -84,7 +96,7 @@
   {% endcall %}
   {% else %}
   {% call empty.state("No projects yet — " ~ listing.process_id ~ " has nothing to be applicable to", id="listing-empty") %}
-  Create one with <code>POST /projects</code> (it belongs to a portfolio), then its state for this process is listed here.
+  Create one through the <a href="/docs">API reference</a> (it belongs to a portfolio), then its state for this process is listed here.
   {% endcall %}
   {% endif %}
 </section>

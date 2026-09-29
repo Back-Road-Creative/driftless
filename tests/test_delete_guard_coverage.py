@@ -1,6 +1,6 @@
 """Every foreign key in the schema must be visible to the delete guard.
 
-``driftless.api.app._delete`` names what blocks a delete by reading the parent
+``driftless.api.crud._delete`` names what blocks a delete by reading the parent
 mapper's ONETOMANY relationships. A foreign key with no covering relationship on
 the parent is therefore invisible to it: the delete falls through to the generic
 ``IntegrityError`` handler and answers an opaque "constraint violation" instead

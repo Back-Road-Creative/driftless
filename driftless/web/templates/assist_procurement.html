@@ -1,0 +1,151 @@
+{# The procurement calculator: make-or-buy, bid scoring and contract-type guidance,
+   each a no-write what-if over driftless.calc.procurement, plus the project's signed
+   ProcurementAgreement rows and the closure checklist derived from their status. #}
+{% extends "base.html" %}
+{% block title %}Procurement calculator — {{ project.name }}{% endblock %}
+{% block content %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{% import "_scroll.html" as scroll %}
+{% import "_assist.html" as assist %}
+{{ breadcrumbs.trail(project, "Procurement calculator", as_of) }}
+<h1>Procurement calculator — {{ project.name }}</h1>
+<p><em>As of {{ as_of }}</em> ·
+   <a href="/projects/{{ project.id }}/hub?as_of={{ as_of }}">Project hub</a></p>
+
+{{ assist.summary_strip([
+  {"label": "Agreements", "value": agreements|length},
+  {"label": "Closed", "value": (checklist.closed if agreements else "no data yet")},
+  {"label": "Disputed", "value": (checklist.disputed|length if agreements else "no data yet")},
+]) }}
+
+{% call assist.section("Agreements") %}
+{% if agreements %}
+{% call scroll.wide(project.name ~ " procurement agreements") %}
+<table>
+<caption class="sr-only">Procurement agreements for {{ project.name }}</caption>
+<tr><th scope="col">Vendor</th><th scope="col">Status</th><th scope="col">Amount</th></tr>
+{% for a in agreements %}
+<tr><th scope="row">{{ a.vendor }}</th><td>{{ a.status }}</td><td>{{ a.amount }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+<h3>Closure checklist</h3>
+<p>{{ checklist.closed }} of {{ checklist.total }} agreement{{ checklist.total | s }} closed
+  {%- if checklist.all_closed %} — every agreement is closed.
+  {%- else %}.{% endif %}</p>
+{% if checklist.disputed %}
+<p>Disputed, and blocking closure: {{ checklist.disputed | join(", ") }}.</p>
+{% endif %}
+{% else %}
+{{ assist.empty("No procurement agreements yet.") }}
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Make or buy") %}
+<p>Compares the per-unit cost of making against buying, and the fixed cost of standing
+   making up, to find the volume at which they cost the same.</p>
+<form method="get" action="/projects/{{ project.id }}/assist/procurement">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label for="make-cost">Cost to make, per unit</label>
+  <input type="number" step="0.01" id="make-cost" name="make_cost"
+    value="{{ make_or_buy.make_cost if make_or_buy.make_cost is not none else '' }}">
+  <label for="buy-cost">Cost to buy, per unit</label>
+  <input type="number" step="0.01" id="buy-cost" name="buy_cost"
+    value="{{ make_or_buy.buy_cost if make_or_buy.buy_cost is not none else '' }}">
+  <label for="volume">Planned volume</label>
+  <input type="number" step="0.01" id="volume" name="volume"
+    value="{{ make_or_buy.volume if make_or_buy.volume is not none else '' }}">
+  <label for="fixed-make-cost">Fixed cost of making</label>
+  <input type="number" step="0.01" id="fixed-make-cost" name="fixed_make_cost"
+    value="{{ make_or_buy.fixed_make_cost if make_or_buy.fixed_make_cost is not none else '' }}">
+  <button type="submit" class="btn btn-primary">Compare</button>
+</form>
+{% if make_or_buy.result %}
+<p id="make-or-buy-result">Break-even:
+  {{ make_or_buy.result.break_even_volume if make_or_buy.result.break_even_volume is not none else "never" }}
+  units. Recommendation: <strong>{{ make_or_buy.result.recommendation }}</strong>.
+  {{ make_or_buy.result.reason }}</p>
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Bid scoring") %}
+<p>Weighs two proposals' price and quality scores against the weight given each
+   criterion, and shows whether the ranking would flip if a weight were dropped.</p>
+<form method="get" action="/projects/{{ project.id }}/assist/procurement">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label for="bidder-a-name">Bidder A name</label>
+  <input type="text" id="bidder-a-name" name="bidder_a_name" value="{{ bid.bidder_a_name or '' }}">
+  <label for="bidder-a-price">Bidder A price score</label>
+  <input type="number" step="0.01" id="bidder-a-price" name="bidder_a_price"
+    value="{{ bid.bidder_a_price if bid.bidder_a_price is not none else '' }}">
+  <label for="bidder-a-quality">Bidder A quality score</label>
+  <input type="number" step="0.01" id="bidder-a-quality" name="bidder_a_quality"
+    value="{{ bid.bidder_a_quality if bid.bidder_a_quality is not none else '' }}">
+  <label for="bidder-b-name">Bidder B name</label>
+  <input type="text" id="bidder-b-name" name="bidder_b_name" value="{{ bid.bidder_b_name or '' }}">
+  <label for="bidder-b-price">Bidder B price score</label>
+  <input type="number" step="0.01" id="bidder-b-price" name="bidder_b_price"
+    value="{{ bid.bidder_b_price if bid.bidder_b_price is not none else '' }}">
+  <label for="bidder-b-quality">Bidder B quality score</label>
+  <input type="number" step="0.01" id="bidder-b-quality" name="bidder_b_quality"
+    value="{{ bid.bidder_b_quality if bid.bidder_b_quality is not none else '' }}">
+  <label for="weight-price">Weight — price</label>
+  <input type="number" step="0.01" id="weight-price" name="weight_price"
+    value="{{ bid.weight_price if bid.weight_price is not none else '' }}">
+  <label for="weight-quality">Weight — quality</label>
+  <input type="number" step="0.01" id="weight-quality" name="weight_quality"
+    value="{{ bid.weight_quality if bid.weight_quality is not none else '' }}">
+  <button type="submit" class="btn btn-primary">Score</button>
+</form>
+{% if bid.result %}
+{% call scroll.wide(project.name ~ " bid scoring ranking") %}
+<table>
+<caption class="sr-only">Bid scoring ranking</caption>
+<tr><th scope="col">Rank</th><th scope="col">Vendor</th><th scope="col">Score</th></tr>
+{% for row in bid.result.ranking %}
+<tr><th scope="row">{{ loop.index }}</th><td>{{ row.vendor }}</td><td>{{ row.score }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+<p id="bid-sensitivity">Sensitive to:
+  {% for criterion, flips in bid.result.sensitivity.items() %}
+  {{ criterion }} ({{ "flips the winner" if flips else "does not flip the winner" }}){% if not loop.last %}, {% endif %}
+  {% endfor %}
+</p>
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Contract type") %}
+<p>Which PMBOK contract family fits, from how well the scope is known and who should
+   carry the risk of it changing.</p>
+<form method="get" action="/projects/{{ project.id }}/assist/procurement">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label for="scope-certainty">Scope certainty</label>
+  <select id="scope-certainty" name="scope_certainty">
+    <option value="">— choose —</option>
+    <option value="well_defined" {{ "selected" if contract.scope_certainty == "well_defined" }}>Well defined</option>
+    <option value="somewhat_defined" {{ "selected" if contract.scope_certainty == "somewhat_defined" }}>Somewhat defined</option>
+    <option value="poorly_defined" {{ "selected" if contract.scope_certainty == "poorly_defined" }}>Poorly defined</option>
+  </select>
+  <label for="risk-appetite">Who should carry the risk</label>
+  <select id="risk-appetite" name="risk_appetite">
+    <option value="">— choose —</option>
+    <option value="seller_bears_risk" {{ "selected" if contract.risk_appetite == "seller_bears_risk" }}>Seller</option>
+    <option value="shared_risk" {{ "selected" if contract.risk_appetite == "shared_risk" }}>Shared</option>
+    <option value="buyer_bears_risk" {{ "selected" if contract.risk_appetite == "buyer_bears_risk" }}>Buyer</option>
+  </select>
+  <button type="submit" class="btn btn-primary">Recommend</button>
+</form>
+{% if contract.result %}
+<p id="contract-type-result">Recommended: <strong>{{ contract.result.contract_type }}</strong>.
+  {{ contract.result.reason }}</p>
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Where this comes from", collapsed=True) %}
+<p>PMBOK-6 processes <strong>{{ provenance.processes }}</strong> · as of
+   <strong>{{ provenance.as_of }}</strong> · source <strong>{{ provenance.source }}</strong>.</p>
+{% endcall %}
+
+<p><a href="/projects/{{ project.id }}/hub?as_of={{ as_of }}">&larr; Back to {{ project.name }} hub</a></p>
+{% endblock %}

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Organization configuration — driftless{% endblock %}
+{% block content %}
+{% import "_scroll.html" as scroll %}
+{% import "_tiles.html" as tiles %}
+<h1>Organization configuration</h1>
+<p>This inventory separates operating setup from delivery health. Counts are live rows; create and edit them through the validated API resources named below.</p>
+
+<section class="tiles" aria-label="Configured organization records">
+{% for label, count in counts %}
+{{ tiles.tile(label, count ~ " " ~ label ~ ("" if count == 1 else "s")) }}
+{% endfor %}
+</section>
+
+<h2>Balanced operating readiness</h2>
+<p>These checks connect the durable organization model to the four scorecard perspectives. A missing layer stays visible as <strong>Needs setup</strong>; there is no hidden default and no second configuration store.</p>
+{% call scroll.wide("Configuration readiness") %}<table>
+<caption class="sr-only">Setup readiness for the business, delivery, ownership, strategy, metrics and evidence layers</caption>
+<tr><th scope="col">Layer</th><th scope="col">Status</th><th scope="col">Rows</th><th scope="col">Next action</th></tr>
+{% for item in readiness %}
+<tr><th scope="row">{{ item.label }}</th><td><span class="badge {{ "green" if item.ready else "amber" }}">{{ item.state }}</span></td><td>{{ item.count }}</td><td>{% if item.href %}<a href="{{ item.href }}">{{ item.action }}</a>{% else %}<code>{{ item.action }}</code>{% endif %}</td></tr>
+{% endfor %}
+</table>{% endcall %}
+
+<h2>Tailoring</h2>
+<p>Each delivery mode reads its Monitoring &amp; Controlling controls differently — a project's <code>delivery_mode</code> picks one of these. The plan itself only ever changes through one approval chain, whichever profile applies; see a project's <a href="/process-map">process map</a> for the control-by-control reading. Defined in code (<code>driftless.pmbok.tailoring</code>), never a second configuration store.</p>
+{% call scroll.wide("Tailoring profiles") %}<table>
+<caption class="sr-only">Delivery-mode tailoring profiles: how each reads its Monitoring and Controlling processes</caption>
+<tr><th scope="col">Delivery mode</th><th scope="col">What it means</th><th scope="col">On a fixed baseline</th><th scope="col">On the team's own commitment</th><th scope="col">On the department's own cadence</th></tr>
+{% for p in tailoring %}
+<tr><th scope="row">{{ p.display_name }}</th><td>{{ p.plain_summary }}</td><td>{{ p.predictive_count }}</td><td>{{ p.adaptive_count }}</td><td>{{ p.operations_count }}</td></tr>
+{% endfor %}
+</table>{% endcall %}
+
+<h2>Set up the operating model</h2>
+<ol>
+  <li><strong>Establish the delivery hierarchy.</strong> Create a <code>POST /businesses</code> root, then group work with <code>POST /portfolios</code>, optional <code>POST /programs</code>, and <code>POST /projects</code>.</li>
+  <li><strong>Assign ownership and capacity.</strong> Create accountable units with <code>POST /departments</code>, staff them with <code>POST /people</code>, and set each project’s <code>responsible_department_id</code>. <a href="/org/departments">Review departments and capacity</a>.</li>
+  <li><strong>Define quality policy before judging delivery.</strong> Create a project-scoped <code>POST /quality-metrics</code> policy, then record evidence with <code>POST /quality-measurements</code>. A metric says whether lower, higher, or a target band is healthy.</li>
+  <li><strong>Govern scorecard connectors.</strong> Register a business-scoped source with <code>POST /scorecard-sources</code> before a metric may name it as a registered connector.</li>
+</ol>
+
+<p>After this structure exists, use the <a href="/">dashboard</a> for delivery, <a href="/org/heatmap">capacity</a> for workload, and <a href="/process-map">process map</a> for evidence coverage.</p>
+{% endblock %}

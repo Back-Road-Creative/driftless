@@ -4,11 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "svc-driftless"
-version = "0.2.0"
+version = "0.8.0"
 description = "Business / portfolio / program / project management hub — one store, computed views"
-# 3.12 is the real floor and the only version CI's matrix tests
-# (.github/workflows/ci.yml, python-version: ['3.12']).
-requires-python = ">=3.12"
+# 3.12 is the only version CI runs anywhere (ci.yml, pip-audit.yml: python-version: '3.12')
+# and the only one the image ships (Dockerfile: python:3.12-slim, pinned by digest). The
+# ceiling stops at the next minor: 3.13 is excluded because nothing has ever run a line of
+# this package on it, not because it is known broken. Raise the ceiling in the same change
+# that adds a version to a CI matrix, never ahead of it.
+requires-python = ">=3.12,<3.13"
 # Runtime dependencies are declared by the phase that first imports them
 # (schema adds sqlalchemy+alembic, the API adds fastapi+pydantic, and so on).
 # CI runs pip-audit against whatever is declared here, so an unused dependency
@@ -28,7 +31,12 @@ dependencies = [
     # The web edit forms post form-encoded bodies; FastAPI parses those through
     # python-multipart. Floored past the ReDoS advisories (fixed by 0.0.7/0.0.18).
     "python-multipart>=0.0.18",
-    "sqlalchemy>=2.0",
+    # Ceiling on purpose: the lock (what the Tests, Migrations and audit jobs install) is
+    # on 2.0.x, and the one job that resolves from here alone — the strict mypy check —
+    # picked up 2.1.0 the day it reached PyPI (2026-09-24) and went red on annotations
+    # 2.0 had inferred. A new SQLAlchemy line arrives by a deliberate lock bump that
+    # moves both this range and requirements.lock together, never by a release date.
+    "sqlalchemy>=2.0,<2.1",
 ]
 
 [project.scripts]
@@ -49,12 +57,30 @@ dev = [
     # dependency of the suite, not an optional local convenience.
     "pytest-xdist",
 ]
+# NOT part of `dev`, and that is the whole point: Chromium is a ~150MB download, so
+# the required Tests job must never pay for it. `pip install .[browser]` plus
+# `playwright install chromium` is what `bin/driftless-gates.sh --browser` and the
+# nightly browser workflow do, and nothing else installs it.
+browser = [
+    "playwright",
+    "pytest-playwright",
+]
+# The MCP server (driftless/mcp/) needs no extra: driftless.mcp.server implements the
+# JSON-RPC wire format itself rather than wrapping a third-party MCP SDK, so `.[dev]`
+# already carries everything it imports (`httpx` backs the same in-process TestClient
+# the resource tools route every write and read through -- the SAME gated app the
+# container serves, so no route is reimplemented).
+# uvicorn is NOT here, though tests/browser needs it to serve the app: requirements.lock's
+# header records that nothing declares uvicorn and that it is pinned there because the
+# image installs it, and tests/test_docs_numbers_are_measured.py enforces that sentence.
+# The stage and the workflow name it on their install line instead, exactly the way the
+# pip-audit stage already does.
 
 [tool.setuptools]
 # `alembic/` is deliberately absent: migrations are run from a checkout
 # (`alembic upgrade head`), not imported, so packaging them would ship a second
 # copy that could drift from the one under version control.
-packages = ["driftless", "driftless.api", "driftless.assess", "driftless.assess.evaluators", "driftless.auth", "driftless.calc", "driftless.db", "driftless.demo", "driftless.models", "driftless.pmbok", "driftless.pmbok.areas", "driftless.report", "driftless.report.documents", "driftless.web", "driftless.wizard"]
+packages = ["driftless", "driftless.api", "driftless.assess", "driftless.assess.evaluators", "driftless.auth", "driftless.calc", "driftless.db", "driftless.demo", "driftless.interchange", "driftless.mcp", "driftless.models", "driftless.notify", "driftless.pmbok", "driftless.pmbok.areas", "driftless.pmbok.artifact_content", "driftless.pmbok.technique_content", "driftless.pmbok.process_content", "driftless.pmbok.method_content", "driftless.report", "driftless.report.documents", "driftless.services", "driftless.web", "driftless.wizard"]
 
 [tool.setuptools.package-data]
 # PEP 561: [tool.mypy] strict = true types every symbol in this package, and without this
@@ -65,18 +91,32 @@ packages = ["driftless", "driftless.api", "driftless.assess", "driftless.assess.
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# The floor tracks the measurement: the suite covers 99.64% of 4935 statements (18 missed),
-# so 99.2 leaves ~22 statements of slack for a genuinely untestable branch and fails on
-# anything larger. At the old 80 the gate was decorative — deleting every test that touches
-# api/app.py, web/pages.py and api/secure.py lands at 82.1%, and CI still went green. Raise
-# this with the measurement; never lower it to make a red run green.
-addopts = "--cov=driftless --cov-report=term-missing --cov-fail-under=99.2"
+# The floor tracks the measurement, and the measurement is not written down here: it moves
+# on every merge, so a figure in this comment rots (this one claimed ~22 statements of slack
+# against a tree less than half the current size, which read as headroom that no longer
+# existed). Re-derive it instead — the run's own TOTAL line names the statement count and the
+# missed count, and `--cov-report=term-missing` names every missed line. At the old 80 the
+# gate was decorative — deleting every test that touches api/app.py, web/pages.py and
+# api/secure.py lands at 82.1%, and CI still went green. Raise this with the measurement;
+# never lower it to make a red run green.
+#
+# The slack is roughly ONE statement, by design: the floor is pinned just under the measured
+# total, so the next uncovered line fails the run. That failure is real, not jitter — the
+# measurement was checked for it on 2026-08-30 at 7963e75 (three full runs: two `-n auto`
+# under host load ~35-40 and one serial, each 11865 statements / 94 missed / 99.21%, with
+# byte-identical missed-line sets, plus twelve repeated parallel subset runs). So a coverage
+# drop is never an artefact of xdist or of a loaded box; look for the uncovered line.
+# --ignore: tests/browser is the opt-in rendered-browser tier. It needs Chromium and a
+# live server, it is not installed by `.[dev]`, and it is measured by no coverage
+# floor -- so the default run must not collect it. Naming it here rather than in a
+# stage's command line means no invocation can forget the flag.
+addopts = "--cov=driftless --cov-report=term-missing --cov-fail-under=99.2 --ignore=tests/browser"
 # CI installs this project NON-editable, so without this `import driftless` would
 # resolve to the site-packages copy while --cov measured the local ./driftless
 # tree — every run would report 0% and fail the floor. Pinning the checkout
 # onto sys.path makes the code under test and the code under measurement the
 # same files, and means CI exercises the checkout rather than a stale install.
-pythonpath = ["."]
+pythonpath = [".", "tests"]
 
 [tool.ruff]
 line-length = 100
@@ -103,3 +143,8 @@ disallow_untyped_decorators = false
 module = ["alembic", "alembic.*"]
 follow_imports = "skip"
 ignore_missing_imports = true
+
+[tool.coverage.report]
+# pytest-cov compares the *rounded* total to --cov-fail-under; at precision 0 a 99.2 floor
+# silently becomes 99.5. Two decimals make the comparison honest.
+precision = 2

@@ -1,0 +1,17 @@
+{# The KPI strip. .tiles/.tile/.value are base classes (driftless.css:79-82); this
+   macro is the only place their markup is written, so no page can re-type the shape
+   and drift out of step with another that renders the same figures.
+
+   ``id`` is optional: the rollup tiles carry a stable ``kpi-*`` id that tests and the
+   count-up hook address, while the configuration inventory renders a loop of counts
+   that nothing addresses individually. ``countup`` is likewise per-call and NOT a
+   page-wide default -- the animation is a dashboard flourish (driftless.js, "Count-up
+   on the home dashboard's KPI tiles"), so home passes it and the drill page does not.
+   Both were true before this macro; the difference is now an argument rather than
+   something two hand-copied blocks happen to disagree about.
+
+   Attribute order is load-bearing: ``id`` then ``class="value"``. The ``_tile``
+   helpers in tests/test_web_home.py and tests/test_web_drills.py match on it. #}
+{% macro tile(label, value, id=None, countup=False) -%}
+<div class="tile"><b>{{ label }}</b><span{% if id %} id="{{ id }}"{% endif %} class="value"{% if countup %} data-countup{% endif %}>{{ value }}</span></div>
+{%- endmacro %}

@@ -1,0 +1,167 @@
+name: Docker Publish
+
+# What a release provides beyond notes: `ghcr.io/back-road-creative/driftless`
+# tagged `<version>` and `latest`, built from the released tag's own tree.
+#
+# ci.yml builds this image on every pull request and pushes nothing; its own
+# comment records why it refuses docker/build-push-action and
+# docker/setup-buildx-action — they earn the extra third-party code on a runner
+# "when a build pushes, caches to a registry or goes multi-platform". This build
+# pushes, so they are here and not there. Neither job replaces the other: a green
+# PR build says the image can be made, this says one with that version on it is
+# somewhere a reader can pull from.
+#
+# Two triggers that collapse to one image. A pushed tag starts this directly;
+# release.yml dispatches it on the same tag once the release exists, because a
+# tag created by a GITHUB_TOKEN does NOT re-trigger `push: tags` workflows and
+# that path would otherwise publish notes naming an image nobody built. Both
+# routes build the same commit and push the same two names, so the concurrency
+# group can let whichever arrives second cancel the first without anyone having
+# to know which ran. Pushing is scoped to the published repository — meta step.
+
+on:
+  push:
+    tags:
+      # The shape release.yml already answers to, so the two never disagree
+      # about what a version tag looks like.
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Version tag to build, leading v required (e.g. v0.2.0)'
+        required: true
+      push:
+        description: 'Push to GHCR? `false` builds only — the dry run'
+        required: true
+        default: 'false'
+
+concurrency:
+  # Keyed on the ref rather than on the input, because release.yml dispatches
+  # with `--ref v<version>`: both routes land on the same key and collapse.
+  group: docker-publish-${{ github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Build and push the image for the tag
+    # The public repository reaches no self-hosted runner (no org runner group
+    # admits a public repository), so there it runs GitHub-hosted, which is free
+    # for a public repository; here, the self-hosted pool. See
+    # docs/testing-and-quality-gates.md.
+    runs-on: ${{ github.repository == 'Back-Road-Creative/driftless' && 'ubuntu-latest' || fromJSON('["self-hosted", "heavy"]') }}
+    timeout-minutes: 30
+    # The archive never pushes (the shell guard below sets PUSH=false there
+    # too), so a tag push in the archive should not spend a runner on a build
+    # nobody publishes. A manual dispatch can still exercise the build there.
+    if: github.repository == 'Back-Road-Creative/driftless' || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+      # The one write this needs, job-scoped like every other write here. Actions
+      # are pinned to the commit SHA of the tag beside them: a floating tag is a
+      # mutable pointer to somebody else's code.
+      packages: write
+    steps:
+      # BEFORE the checkout, because the checkout is what consumes the input:
+      # `actions/checkout` resolves `inputs.tag` as a git ref, so a dispatch
+      # carrying `0.6.1` died there with "A branch or tag with the name '0.6.1'
+      # could not be found" and the format check downstream — which names the
+      # real problem — never ran (v0.6.1, run 34880468332, 2026-09-14). The push
+      # trigger gets this for free from the glob at the top of the file; a
+      # dispatch input does not, so it is enforced here instead of trusting
+      # whatever was typed in.
+      - name: Refuse a dispatched tag the checkout cannot resolve
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "push" ]; then
+            exit 0
+          fi
+          if [[ ! "$INPUT_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::tag input '$INPUT_TAG' must look like v0.2.0" >&2
+            exit 1
+          fi
+
+      # Checked out at the ref the caller dispatched with, so a dispatched build
+      # uses the released tag's tree — not master-at-dispatch.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          # Full history and tags: the meta step below needs `git tag -l` to
+          # see every version tag to decide whether this one is the newest.
+          fetch-depth: 0
+
+      - name: Image tags, and whether this run publishes
+        id: meta
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_PUSH: ${{ inputs.push }}
+          EVENT: ${{ github.event_name }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "push" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+            PUSH=true
+          else
+            # Format already refused before the checkout ran; this only
+            # normalises. Normalised identically to the tag-push path — strip the leading
+            # `v` — so a dispatched build cannot publish `:v0.2.0` beside the
+            # `:0.2.0` the tag-push path would have written.
+            VERSION="${INPUT_TAG#v}"
+            PUSH="${INPUT_PUSH}"
+          fi
+          # Development happens in a private archive and only the published
+          # snapshot is readable. A version tag pushed to the archive would
+          # otherwise claim `back-road-creative/driftless` as a package attached
+          # to a private repository — an image no reader can pull, sitting on the
+          # name the pullable one needs. Build it wherever; push it only from the
+          # repository the site links to.
+          if [ "$REPOSITORY" != "Back-Road-Creative/driftless" ]; then
+            echo "::notice::$REPOSITORY is not the published repository — building without pushing"
+            PUSH=false
+          fi
+          # `latest` only ever moves forward: republishing an older tag must
+          # not point it backwards, so it is added only when this version is
+          # the newest `v*` tag the checkout knows about.
+          HIGHEST_TAG="$(git tag -l 'v*' | sort -V | tail -1)"
+          {
+            echo "push=${PUSH}"
+            echo "version=${VERSION}"
+            echo "tags<<DRIFTLESS_TAGS"
+            echo "ghcr.io/back-road-creative/driftless:${VERSION}"
+            if [ "v${VERSION}" = "$HIGHEST_TAG" ]; then
+              echo "ghcr.io/back-road-creative/driftless:latest"
+            fi
+            echo "DRIFTLESS_TAGS"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e  # v4.3.0
+
+      - name: Log in to GHCR
+        if: steps.meta.outputs.push == 'true'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build (and push when this run publishes)
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a  # v7.3.0
+        with:
+          context: .
+          push: ${{ steps.meta.outputs.push == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          # Labels, not build-args: the Dockerfile declares no `ARG VERSION`, and
+          # passing one it does not read is a warning that looks like wiring.
+          labels: |
+            org.opencontainers.image.source=https://github.com/Back-Road-Creative/driftless
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
+            org.opencontainers.image.description=Business, portfolio, program and project management for Back Road Creative
+            org.opencontainers.image.licenses=Apache-2.0

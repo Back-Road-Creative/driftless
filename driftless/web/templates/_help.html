@@ -1,0 +1,9 @@
+{# The ONE "How to read this page" block: a caller wraps its own copy in
+   {% call %}, which lands as caller() inside <details>. Native
+   <details>/<summary> needs no JS to expand and reads fine without CSS. #}
+{% macro how_to_read(title="How to read this page") %}
+<details class="how-to-read">
+  <summary>{{ title }}</summary>
+  {{ caller() }}
+</details>
+{% endmacro %}

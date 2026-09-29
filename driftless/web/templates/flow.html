@@ -1,0 +1,146 @@
+{# Burndown/burnup draw as inline SVG polylines, home.html's cost S-curve idiom — no
+   hue carries information (a solid line is remaining/scope, a dashed one is
+   completed), and every plotted point repeats as a table row beside it, gantt.html's
+   text-twin rule. Cumulative flow draws as a stacked-area chart: three polygons,
+   bottom-up (done, then in progress, then not started), each a DIFFERENT rated
+   token (gantt.html's own --ink/--muted-ink/--muted-bg trio) and each carrying its
+   own text label, so the bands read apart in greyscale or print, never by hue
+   alone — plus the same table twin every chart on this page carries. Every fill is
+   a base.html token; this template spells no colour. #}
+{% extends "base.html" %}
+{% block title %}Flow — {{ project.name }}{% endblock %}
+{% block content %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{% import "_empty.html" as empty %}
+{% import "_scroll.html" as scroll %}
+{% import "_tiles.html" as tiles %}
+{{ breadcrumbs.trail(project, "Flow", as_of | default(None)) }}
+<h1>Flow — {{ project.name }}</h1>
+<p><em>As of {{ as_of }}</em> · <a href="/projects/{{ project.id }}/hub?as_of={{ as_of }}">Project hub</a></p>
+
+{# The same tile strip home.html's dashboard renders (_tiles.html, home.html:29-40),
+   scoped to this project's own flow figures — every value here is the SAME number
+   already printed in the prose/tables below, never a second computation of it, so
+   the strip can never drift out of step with the page beneath it. #}
+<section class="tiles">
+{{ tiles.tile("Work in progress", wip, id="kpi-flow-wip") }}
+{{ tiles.tile("Throughput / wk", throughput, id="kpi-flow-throughput") }}
+{{ tiles.tile("Median cycle time (days)", cycle_time.median | or_no_data, id="kpi-flow-cycle") }}
+{{ tiles.tile("Median lead time (days)", lead_time.median | or_no_data, id="kpi-flow-lead") }}
+{{ tiles.tile("Likely completion", forecast.likely if forecast and forecast.likely else "no forecast", id="kpi-flow-forecast") }}
+</section>
+
+<h2>Work in progress and throughput</h2>
+<p>Work in progress <strong id="flow-wip">{{ wip }}</strong> item{{ wip | s }} ·
+   throughput (last 7 days) <strong id="flow-throughput">{{ throughput }}</strong> item{{ throughput | s }} finished</p>
+<p>Cycle time (started to done): median
+   <strong id="flow-cycle-median">{{ cycle_time.median | or_no_data }}</strong>{% if cycle_time.median is not none %} day{{ cycle_time.median | s }}{% endif %},
+   85th percentile <strong id="flow-cycle-p85">{{ cycle_time.p85 | or_no_data }}</strong>{% if cycle_time.p85 is not none %} day{{ cycle_time.p85 | s }}{% endif %}
+   ({{ cycle_time.count }} item{{ cycle_time.count | s }} measured).</p>
+<p>Lead time (created to done): median
+   <strong id="flow-lead-median">{{ lead_time.median | or_no_data }}</strong>{% if lead_time.median is not none %} day{{ lead_time.median | s }}{% endif %},
+   85th percentile <strong id="flow-lead-p85">{{ lead_time.p85 | or_no_data }}</strong>{% if lead_time.p85 is not none %} day{{ lead_time.p85 | s }}{% endif %}
+   ({{ lead_time.count }} item{{ lead_time.count | s }} measured).</p>
+
+<h2>Release forecast</h2>
+<p id="flow-forecast-summary">{{ forecast_summary }}</p>
+{% if forecast %}
+{% call scroll.wide("Release forecast band") %}
+<table>
+<caption class="sr-only">Best, likely and worst completion dates from recent sprint velocity</caption>
+<tr><th scope="col">Case</th><th scope="col">Velocity (pts/sprint)</th><th scope="col">Completes</th></tr>
+<tr><td>Best</td><td>{{ "%.2f"|format(forecast.velocity_best) }}</td><td>{{ forecast.best if forecast.best else "never at this velocity" }}</td></tr>
+<tr><td>Likely</td><td>{{ "%.2f"|format(forecast.velocity_likely) }}</td><td>{{ forecast.likely if forecast.likely else "never at this velocity" }}</td></tr>
+<tr><td>Worst</td><td>{{ "%.2f"|format(forecast.velocity_worst) }}</td><td>{{ forecast.worst if forecast.worst else "never at this velocity" }}</td></tr>
+</table>
+{% endcall %}
+{% endif %}
+
+<h2>Burndown and burnup</h2>
+{% if active_sprint %}
+<p>Active sprint <strong>{{ active_sprint.name }}</strong> ({{ active_sprint.start_date }} to {{ active_sprint.end_date }}). Drawn over the whole backlog — items carry no sprint of their own yet, so this is the project's flow across the sprint's calendar window, not that sprint's committed scope.</p>
+{% set W, H = 320, 150 %}
+{% if burndown %}
+{% set remaining = burndown | map(attribute="remaining") | list %}
+{% set ymax = ((remaining | max) or 1) * 1.15 %}
+{% set n = burndown | length %}
+<figure>
+<svg class="scurve" width="{{ W }}" height="{{ H }}" viewBox="0 0 {{ W }} {{ H }}" font-size="9" role="img" aria-label="Burndown: points remaining each day of the active sprint, from {{ "%.0f"|format(remaining[0]) }} to {{ "%.0f"|format(remaining[-1]) }}. The table below carries every day as text.">
+<line class="axis-baseline" x1="0" x2="{{ W }}" y1="{{ H - 14 }}" y2="{{ H - 14 }}"/>
+<polyline class="s-line" points="{% for v in remaining %}{{ (loop.index0 / (n - 1) * W) | round(2) if n > 1 else 0 }},{{ (H - 14 - v / ymax * (H - 14)) | round(2) }} {% endfor %}"/>
+<text class="curve-label" x="{{ W }}" y="{{ (H - 14 - remaining[-1] / ymax * (H - 14) - 4) | round(2) }}" text-anchor="end">{{ "%.0f"|format(remaining[-1]) }} remaining</text>
+</svg>
+</figure>
+{% call scroll.wide("Burndown as text") %}
+<table>
+<caption class="sr-only">Points remaining for the active sprint, one row per day</caption>
+<tr><th scope="col">Day</th><th scope="col">Remaining points</th></tr>
+{% for row in burndown %}
+<tr><td>{{ row.day }}</td><td>{{ "%.0f"|format(row.remaining) }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% endif %}
+{% if burnup %}
+{% set scope = burnup | map(attribute="scope") | list %}
+{% set completed = burnup | map(attribute="completed") | list %}
+{% set ymax = (([scope | max, completed | max] | max) or 1) * 1.15 %}
+{% set n = burnup | length %}
+<figure>
+<svg class="scurve" width="{{ W }}" height="{{ H }}" viewBox="0 0 {{ W }} {{ H }}" font-size="9" role="img" aria-label="Burnup: scope {{ "%.0f"|format(scope[-1]) }} points versus {{ "%.0f"|format(completed[-1]) }} completed. The table below carries every day as text.">
+<line class="axis-baseline" x1="0" x2="{{ W }}" y1="{{ H - 14 }}" y2="{{ H - 14 }}"/>
+<polyline class="s-line" points="{% for v in scope %}{{ (loop.index0 / (n - 1) * W) | round(2) if n > 1 else 0 }},{{ (H - 14 - v / ymax * (H - 14)) | round(2) }} {% endfor %}"/>
+<text class="curve-label" x="{{ W }}" y="{{ (H - 14 - scope[-1] / ymax * (H - 14) - 4) | round(2) }}" text-anchor="end">{{ "%.0f"|format(scope[-1]) }} scope</text>
+<polyline class="s-line ac" points="{% for v in completed %}{{ (loop.index0 / (n - 1) * W) | round(2) if n > 1 else 0 }},{{ (H - 14 - v / ymax * (H - 14)) | round(2) }} {% endfor %}"/>
+<text class="curve-label" x="{{ W }}" y="{{ (H - 14 - completed[-1] / ymax * (H - 14) + 11.2) | round(2) }}" text-anchor="end">{{ "%.0f"|format(completed[-1]) }} completed</text>
+</svg>
+</figure>
+<p class="legend"><span class="chip"></span>Scope (solid)<span class="chip"></span>Completed (dashed)</p>
+{% call scroll.wide("Burnup as text") %}
+<table>
+<caption class="sr-only">Scope and completed points for the active sprint, one row per day</caption>
+<tr><th scope="col">Day</th><th scope="col">Scope</th><th scope="col">Completed</th></tr>
+{% for row in burnup %}
+<tr><td>{{ row.day }}</td><td>{{ "%.0f"|format(row.scope) }}</td><td>{{ "%.0f"|format(row.completed) }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% endif %}
+<h2>Cumulative flow</h2>
+{% if cumulative_flow_levels %}
+{% set n = cumulative_flow_levels | length %}
+{% set totals = cumulative_flow_levels | map(attribute="total") | list %}
+{% set ymax = ((totals | max) or 1) * 1.15 %}
+{% macro fx(i) %}{{ (i / (n - 1) * W) | round(2) if n > 1 else 0 }}{% endmacro %}
+{% macro fy(v) %}{{ (H - 14 - v / ymax * (H - 14)) | round(2) }}{% endmacro %}
+{% set last = cumulative_flow_levels[-1] %}
+<figure>
+<svg class="scurve" width="{{ W }}" height="{{ H }}" viewBox="0 0 {{ W }} {{ H }}" font-size="9" role="img" aria-label="Cumulative flow: done, in progress and not-started item counts stacked per day, {{ last.total }} item{{ last.total | s }} total by the last day. The table below carries every day and band as text.">
+<line class="axis-baseline" x1="0" x2="{{ W }}" y1="{{ H - 14 }}" y2="{{ H - 14 }}"/>
+{# Done: the bottom band, between the axis (0) and the done level. #}
+<polygon data-band="done" points="{% for row in cumulative_flow_levels %}{{ fx(loop.index0) }},{{ fy(row.done) }} {% endfor %}{% for row in cumulative_flow_levels | reverse %}{{ fx(n - 1 - loop.index0) }},{{ fy(0) }} {% endfor %}" fill="var(--ink)"/>
+<text class="curve-label" x="{{ W }}" y="{{ fy(last.done / 2) }}" text-anchor="end">Done {{ last.done }}</text>
+{# In progress: between the done level and the wip level (done + in progress). #}
+<polygon data-band="in_progress" points="{% for row in cumulative_flow_levels %}{{ fx(loop.index0) }},{{ fy(row.wip) }} {% endfor %}{% for row in cumulative_flow_levels | reverse %}{{ fx(n - 1 - loop.index0) }},{{ fy(row.done) }} {% endfor %}" fill="var(--muted-ink)"/>
+<text class="curve-label" x="{{ W }}" y="{{ fy((last.done + last.wip) / 2) }}" text-anchor="end">In progress {{ last.wip - last.done }}</text>
+{# Not started: between the wip level and the total level (everything logged by that day). #}
+<polygon data-band="not_started" points="{% for row in cumulative_flow_levels %}{{ fx(loop.index0) }},{{ fy(row.total) }} {% endfor %}{% for row in cumulative_flow_levels | reverse %}{{ fx(n - 1 - loop.index0) }},{{ fy(row.wip) }} {% endfor %}" fill="var(--muted-bg)" stroke="var(--gridline)"/>
+<text class="curve-label" x="{{ W }}" y="{{ fy((last.wip + last.total) / 2) }}" text-anchor="end">Not started {{ last.total - last.wip }}</text>
+</svg>
+</figure>
+{% call scroll.wide("Cumulative flow as text") %}
+<table>
+<caption class="sr-only">Item counts by state, one row per day: not started, in progress, done</caption>
+<tr><th scope="col">Day</th><th scope="col">Not started</th><th scope="col">In progress</th><th scope="col">Done</th></tr>
+{% for row in cumulative_flow %}
+<tr><td>{{ row.day }}</td><td>{{ row.not_started }}</td><td>{{ row.in_progress }}</td><td>{{ row.done }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% endif %}
+{% else %}
+{% call empty.state("No active sprint as of " ~ as_of ~ " — there is no window to draw burndown, burnup or cumulative flow over", id="flow-empty") %}
+Add a sprint whose window contains this date (<code>POST /sprints</code>) to see the flow charts here; work in progress, throughput and the release forecast above still read every recorded backlog item.
+{% endcall %}
+{% endif %}
+{% endblock %}

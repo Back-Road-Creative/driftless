@@ -2,10 +2,14 @@
 
 Walks the process groups in lifecycle order (Initiating → Planning → Executing →
 Monitoring → Closing) and, within each, the catalog's processes in order, to find
-the next process that is not yet done and that the store can actually help
-complete — one with at least one output the wizard can *produce*. For that
-process it reports its PMBOK inputs (and whether each input-artifact already
-exists), its tools & techniques, and the outputs the wizard can produce.
+the next process that is not yet done. Every assessable process is a step now,
+whatever it offers: one with a producible output is a ``form`` step, one whose
+required output only resolves on read (nothing of its own to write) is a
+``derived`` step, and one with no tracked output at all is a ``reference`` step —
+kinds a form step never was, but a project can still stand to learn from. For
+that process it reports its PMBOK inputs (whether each already exists, and — for
+a missing one — which earlier process produces it), its tools & techniques, and
+the outputs it can produce.
 
 Pure and as-of-parameterised — it reads the store and the clock-free process-state
 engine, never the wall clock — so the same store always yields the same next
@@ -41,21 +45,36 @@ _DONE = (st.ProcessState.PRODUCED, st.ProcessState.SIGNED_OFF, st.ProcessState.W
 
 @dataclass(frozen=True)
 class InputStatus:
-    """One PMBOK input of a process and whether it exists in the store."""
+    """One PMBOK input of a process and whether it exists in the store.
+
+    ``produced_by`` names the earlier catalog process that outputs this kind —
+    set only while ``present`` is false, so a step can point at the prerequisite
+    to go work instead of just naming the gap. ``None`` means no catalog process
+    produces it at all (an input from outside the store).
+    """
 
     kind: str
     present: bool
+    produced_by: str | None = None
 
 
 @dataclass(frozen=True)
 class WizardStep:
-    """The next thing to do: a process, its inputs' state, and what to produce."""
+    """The next thing to do: a process, its inputs' state, and what to produce.
+
+    ``kind`` is ``"form"`` when the wizard can produce at least one output here,
+    ``"derived"`` when every tracked output instead resolves on read from inputs
+    already in the store, and ``"reference"`` when nothing about this process is
+    tracked at all — the page and the CLI render each honestly rather than
+    handing back a form with nothing on it.
+    """
 
     process_id: str
     name: str
     group: str
     area: str
     state: str
+    kind: str
     inputs: tuple[InputStatus, ...]
     tools_techniques: tuple[str, ...]
     outputs: tuple[str, ...]
@@ -67,14 +86,35 @@ class WizardStep:
         return all(i.present for i in self.inputs)
 
 
+def _produced_by(kind: str, this_process_id: str) -> str | None:
+    """The earliest catalog process (other than this one) whose outputs include
+    ``kind`` — the prerequisite step a missing input points a step at."""
+    for candidate in catalog.PROCESSES:
+        if candidate.id != this_process_id and kind in candidate.outputs:
+            return candidate.id
+    return None
+
+
+def _step_kind(process: object) -> str:
+    """``"form"`` / ``"derived"`` / ``"reference"`` — see ``WizardStep.kind``."""
+    if _producible(process):
+        return "form"
+    from driftless.pmbok.model import Process
+
+    assert isinstance(process, Process)
+    return "derived" if st.is_assessable(process) else "reference"
+
+
 def _step_for(process: object, project: Project, session: Session, as_of: date) -> WizardStep:
     from driftless.pmbok.model import Process
 
     assert isinstance(process, Process)
-    inputs = tuple(
-        InputStatus(kind, mapping.resolve(kind, project, session, as_of).present)
-        for kind in process.inputs
-    )
+
+    def _input(kind: str) -> InputStatus:
+        present = mapping.resolve(kind, project, session, as_of).present
+        return InputStatus(kind, present, None if present else _produced_by(kind, process.id))
+
+    inputs = tuple(_input(kind) for kind in process.inputs)
     producible = _producible(process)
     return WizardStep(
         process_id=process.id,
@@ -82,11 +122,20 @@ def _step_for(process: object, project: Project, session: Session, as_of: date) 
         group=process.group.value,
         area=process.area.value,
         state=st.process_state(process, project, session, as_of).value,
+        kind=_step_kind(process),
         inputs=inputs,
         tools_techniques=process.tools_techniques,
         outputs=process.outputs,
         producible=producible,
     )
+
+
+def step_for(session: Session, project: Project, process_id: str, as_of: date) -> WizardStep:
+    """One named process's step, regardless of whether it is ``next`` — the target
+    of a step's "produced by" link, so a reader can go work a prerequisite that
+    lifecycle order has not reached yet. ``KeyError`` for an unknown id, same as
+    ``catalog.get``."""
+    return _step_for(catalog.get(process_id), project, session, as_of)
 
 
 def next_step(
@@ -97,8 +146,10 @@ def next_step(
 ) -> WizardStep | None:
     """The next incomplete, store-assessable process — or ``None`` when nothing is left.
 
-    A process the wizard can produce nothing for is skipped along with the
-    unassessable ones: a step whose form offers no output is a dead end.
+    Not-assessable processes still do not enter here — the store has no tracked
+    output to judge them by at all — but a process the wizard cannot *produce*
+    anything for no longer is: it is returned as a ``derived`` or ``reference``
+    step (see ``WizardStep.kind``) instead of being skipped over as a dead end.
     ``groups`` restricts the search (e.g. just Initiating and Planning for
     onboarding); by default it walks every group in lifecycle order.
     """
@@ -109,8 +160,6 @@ def next_step(
         for process in catalog.by_group(group):
             if not st.is_assessable(process):
                 continue
-            if not _producible(process):
-                continue  # nothing to offer here — a form with no output is a dead end
             if st.process_state(process, project, session, as_of) in _DONE:
                 continue
             return _step_for(process, project, session, as_of)

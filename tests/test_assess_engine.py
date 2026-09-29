@@ -14,6 +14,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from driftless.assess import engine
+from driftless.assess.model import Assessment
 from driftless.db import Base, new_engine, new_session_factory
 from driftless.models import (
     Baseline,
@@ -87,6 +88,20 @@ def test_cost_is_red_and_integration_rolls_it_up(session: Session, project: Proj
     # Integration is worst-of; with cost red it must be red too.
     assert by_kind["integration"].status == "red"
     assert by_kind["scope"].status == "green"  # a stubbed area stays green
+    sentence = by_kind["integration"].threats[0].description
+    assert sentence.startswith("Overall health is red: red in ") and "cost" in sentence
+    assert "—" not in sentence, "an empty clause is left out, never printed as a dash"
+    # A red-only roll-up: no amber clause at all, rather than "; amber in —".
+    nine = tuple(a for a in by_kind.values() if a.kind != "integration")
+    only_red = tuple(
+        Assessment(a.kind, a.as_of, a.risk_score, "green") if a.status == "amber" else a
+        for a in nine
+    )
+    red_only = engine._integration(only_red, project, AS_OF).threats[0].description
+    assert (
+        red_only
+        == f"Overall health is red: red in {', '.join(a.kind for a in nine if a.status == 'red')}."
+    )
 
 
 def test_a_sign_off_suppresses_a_threat_until_it_regresses(
@@ -163,6 +178,29 @@ def test_top_threats_ranks_across_the_store(session: Session, project: Project) 
     assert threats, "the overspending project raises threats"
     weights = [engine.SEVERITY_WEIGHT[t.severity] for t in threats]
     assert weights == sorted(weights, reverse=True), "most severe first"
+
+
+def test_integration_coverage_is_the_worst_of_its_childrens(
+    session: Session, project: Project
+) -> None:
+    """Missing beats stale beats measured beats not-applicable — read straight off
+    ``_integration``'s own coverage ladder, one green nine-tuple per rung so the
+    worst-of never has a status to reason about instead."""
+
+    def _nine(coverage: str) -> tuple[Assessment, ...]:
+        return tuple(Assessment(f"k{i}", AS_OF, 0.0, "green", coverage=coverage) for i in range(9))  # type: ignore[arg-type]
+
+    all_na = _nine("not_applicable")
+    assert engine._integration(all_na, project, AS_OF).coverage == "not_applicable"
+
+    one_measured = (Assessment("k0", AS_OF, 0.0, "green", coverage="measured"), *all_na[1:])
+    assert engine._integration(one_measured, project, AS_OF).coverage == "measured"
+
+    one_stale = (Assessment("k0", AS_OF, 0.0, "green", coverage="stale"), *one_measured[1:])
+    assert engine._integration(one_stale, project, AS_OF).coverage == "stale"
+
+    one_missing = (Assessment("k0", AS_OF, 0.0, "green", coverage="missing"), *one_stale[1:])
+    assert engine._integration(one_missing, project, AS_OF).coverage == "missing"
 
 
 def test_assessment_regenerates_identically(session: Session, project: Project) -> None:

@@ -58,8 +58,10 @@ from driftless import models as m
 from driftless.api.app import app as _app  # noqa: F401  (import order: see test_perf_n1)
 from driftless.api.app import get_session
 from driftless.db import Base, new_engine, new_session_factory
-from driftless.web import create_router, pages
+from driftless.web import create_router
 from driftless.web.business_map import create_business_map_router
+from driftless.web.process_map import create_process_map_router
+from driftless.web.threat_board import create_threat_board_router
 from test_perf_n1 import AS_OF, JAN, assert_recorded, count_route
 
 N_PORTF, N_PROJ, MILES_PER, N_PEOPLE = 5, 6, 3, 4
@@ -74,7 +76,31 @@ PROJECT_PLANNED_COST, PROJECT_RISK_EXPOSURE = 10_000.0, 30_000.0
 # a mystery; keyed by path (minus any query string) so the parametrised test looks
 # its own baseline up rather than a fourth column. Each is flat in the project
 # count, and priced: deleting ``threat_cards``'s eager options costs /threats 112.
-MEASURED = {"/": 130, "/process-map": 17, "/threats": 54}
+# ``/`` and ``/threats`` both moved +3 (130 -> 133, 54 -> 57) when the risk
+# evaluator's "no response planned" rule started reading ``RiskResponse``
+# (``pmbok.risk_facts.gather``) for every red/amber project: one honest batched
+# query per walk through ``mapping.rows_for``, not a per-project one -- the
+# ``test_cost_per_extra_project_is_zero`` slope guard below still measures 0.0.
+# ``/`` and ``/process-map`` moved again (133 -> 142, 17 -> 20) when the scope
+# resolvers started reading ``Requirement``/``Deliverable``/``RequirementTrace``/
+# ``AcceptanceRecord`` for completeness: each is one honest batched query through
+# ``mapping.rows_for``/``mapping._grouped``, not a per-project one -- flat at
+# both FEW_PROJECTS and MANY_PROJECTS, so the slope guard still reads 0.0.
+# ``/`` and ``/process-map`` moved once more (157 -> 160, 25 -> 26): the
+# lessons-learned register resolves off ``LessonLearned`` now (one honest batched
+# statement per whole-store walk; ``/`` carries three, as above) -- flat at both
+# volumes, so the slope guard still reads 0.0.
+# ``/`` and ``/threats`` moved once more (160 -> 163, 57 -> 60): schedule.evaluate()
+# now reads TaskDependency too, one honest batched read -- flat at both volumes.
+# ``/`` and ``/process-map`` moved once more (163 -> 166, 26 -> 27): the new
+# ``project_calendars``/``schedule_data``/network-diagram resolvers read
+# ``ProjectCalendar`` and the ``TaskDependency`` join through one honest batched
+# query each, via ``mapping._grouped`` -- one query per prefetched-walk call, not
+# per project. ``/`` pays it three times over (the feed renders twice plus its
+# own ``business_process_cells`` call), same shape as every other three-times
+# bump recorded in ``test_perf_n1.MEASURED`` -- +3 there, +1 on the single-walk
+# ``/process-map``. Flat at both volumes, so the slope guard still reads 0.0.
+MEASURED = {"/": 166, "/process-map": 27, "/threats": 60}
 
 # Headroom is TWO statements, never "one per project": at N_PROJ = 6 that margin
 # is the price of the very defect these guard, so a one-statement-per-project
@@ -189,7 +215,12 @@ def _serve(
         app = FastAPI()
         app.include_router(create_router(AS_OF))
         app.include_router(create_business_map_router(AS_OF))
-        app.include_router(pages.create_pages_router(AS_OF))
+        # One include per router serving a MEASURED path. `pages.py` is being carved
+        # into per-controller modules, so a path this file prices can leave its module
+        # without any signal here but a 404 — which reads as a render failure, not a
+        # missing mount. Every future carve of a MEASURED path adds its router here.
+        app.include_router(create_threat_board_router(AS_OF))
+        app.include_router(create_process_map_router(AS_OF))
         app.dependency_overrides[get_session] = lambda: db
         with TestClient(app) as client:
             yield engine, client

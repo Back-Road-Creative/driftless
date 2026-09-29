@@ -1,17 +1,28 @@
 # Checks that this repo publishes its own work and nothing else — no other
 # project's name, no client's name, no path from an authoring machine.
 #
-# The scanner and its pattern set live once in Back-Road-Creative/.github. This
-# file is the whole of the per-repo configuration, deliberately: the repo's own
+# The scanner and its pattern set live once in Back-Road-Creative/.github (see
+# `uses:` below). This file is the whole of the per-repo configuration, deliberately: the repo's own
 # name is derived from ${{ github.repository }}, so there is nothing here to keep
 # in sync and nothing to go stale.
+#
+# `push:` carries NO branch filter: a branch pushed straight to the public
+# repository, with no pull request and nowhere near master, is scanned too. A
+# filter on master alone would leave every other branch unchecked.
+#
+# The job below only runs when this file is checked out AS the public repository. The
+# reusable workflow derives the name it scans FOR from `github.repository`, so run
+# unguarded on a checkout of this repository it would scan under the wrong name and pass
+# content that is only safe once published under the public one. ci.yml's `quality` job
+# runs the same scanner against a checkout of this repository, passing the public name
+# explicitly instead of trusting `github.repository`.
 name: leak-scan
 
 on:
   pull_request:
   push:
-    branches: [master]
 
 jobs:
   leak-scan:
+    if: github.repository == 'Back-Road-Creative/driftless'
     uses: Back-Road-Creative/.github/.github/workflows/leak-scan.yml@main

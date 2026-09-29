@@ -1,0 +1,49 @@
+{# Probability x impact scoring: every open risk placed on the standard 5x5 P x I matrix (driftless.calc.risk), ranked by score. Read-only — nothing here writes. #}
+{% extends "base.html" %}
+{% block title %}Probability and impact — {{ project.name }}{% endblock %}
+{% block content %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{% import "_assist.html" as assist %}
+{% import "_scroll.html" as scroll %}
+{{ breadcrumbs.trail(project, "Probability and impact", as_of) }}
+<h1>Probability and impact — {{ project.name }}</h1>
+<p><em>As of {{ as_of }}</em> · <a href="/projects/{{ project.id }}/hub?as_of={{ as_of }}">Project hub</a></p>
+<p>Every open risk's probability and impact place it on the 5x5 probability/impact matrix below: each axis is banded very low to very high,
+   and a risk's score is the product of its two band positions (1-25), read as low, moderate or high. {{ threshold_note }}</p>
+{{ assist.summary_strip([{"label": "Open risks", "value": rows|length},
+  {"label": "Highest score", "value": (rows[0].score if rows else "no data yet")},
+  {"label": "Band", "value": (rows[0].band if rows else "no data yet")}]) }}
+{% call assist.section("Matrix") %}
+{% if not rows %}
+{{ assist.empty("No open risks to place on the matrix.") }}
+{% else %}
+{% call scroll.wide("Probability by impact matrix") %}
+<table>
+<caption class="sr-only">Probability by impact matrix: score, band and open risk count per cell</caption>
+<tr><th scope="col">Probability \ Impact</th>{% for cell in matrix[0].cells %}<th scope="col">{{ cell.impact_level }}</th>{% endfor %}</tr>
+{% for row in matrix %}<tr><th scope="row">{{ row.probability_level }}</th>{% for cell in row.cells %}<td>{{ cell.value }} ({{ cell.band }}){% if cell.risks %} — {{ cell.risks|length }} risk{{ "s" if cell.risks|length != 1 else "" }}{% endif %}</td>{% endfor %}</tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% endif %}
+{% endcall %}
+{% call assist.section("Ranked risks") %}
+{% if not rows %}
+{{ assist.empty("No open risks to rank.") }}
+{% else %}
+{% call scroll.wide(project.name ~ " open risks ranked by score") %}
+<table>
+<caption class="sr-only">Open risks ranked by probability x impact score</caption>
+<tr><th scope="col">Risk</th><th scope="col">Probability band</th><th scope="col">Impact band</th><th scope="col">Score</th><th scope="col">Band</th></tr>
+{% for row in rows %}<tr><th scope="row">{{ row.risk.description }}</th><td>{{ row.probability_level }}</td><td>{{ row.impact_level }}</td><td>{{ row.score }}</td><td>{{ row.band }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Where this comes from", collapsed=True) %}
+<p>Technique: <strong>{{ provenance.technique }}</strong> · PMBOK-6 process
+   <strong>{{ provenance.process }}</strong> (Perform Qualitative Risk Analysis).</p>
+{% endcall %}
+{% endblock %}

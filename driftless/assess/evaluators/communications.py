@@ -15,7 +15,7 @@ from datetime import date
 
 from sqlalchemy.orm import Session
 
-from driftless.assess.model import Action, Assessment, Threat
+from driftless.assess.model import Action, Assessment, Coverage, Threat
 from driftless.models import Project
 from driftless.pmbok import mapping
 from driftless.pmbok.state import threat_subject_ref
@@ -67,4 +67,5 @@ def evaluate(session: Session, project: Project, as_of: date) -> Assessment:
             ref,
         ),
     )
-    return Assessment(KIND, as_of, score, "amber", (threat,), actions)
+    coverage: Coverage = "missing" if not status.present else "stale"
+    return Assessment(KIND, as_of, score, "amber", (threat,), actions, coverage)

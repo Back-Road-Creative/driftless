@@ -1,0 +1,105 @@
+{# One place every server-rendered chart is drawn, so a chart's axes, ticks and
+   legend are written once rather than reinvented per page. Every macro is a pure
+   function of the figures it is handed -- nothing here queries or computes a KPI,
+   it only lays geometry out over numbers the caller already has.
+
+   ``s_curve`` draws a planned-vs-actual (or planned-only) cumulative line at a
+   fixed 16:7 aspect (``viewBox``, ``width: 100%`` in driftless.css), with light
+   gridlines at 0/mid/max, x ticks at the first/mid/last sampled date, y ticks at
+   0/mid/max with a thousands separator, and an end label per series offset so two
+   close-finishing series never print on top of each other (the same push rule the
+   dashboard S-curve already proved: only the LOWER label moves, by a full line
+   height). A second series is dashed and, when ``rag_class`` is given, tinted by
+   it -- the one place a verdict colours a line, never the plan's own. #}
+{% macro s_curve(dates, series, aria_label, rag_class=none, w=320, h=140) %}
+{% set ml, mb, mt = 42, 26, 6 %}
+{% set plot_w, plot_h = w - ml, h - mb - mt %}
+{% set n = dates | length %}
+{% set span = (n - 1) if n > 1 else 1 %}
+{% set pmax_seen = [1] %}
+{% for label, values, dashed in series %}{% set _ = pmax_seen.append(values | max) %}{% endfor %}
+{% set pmax = pmax_seen | max %}
+{% set ymax = pmax * 1.15 %}
+{% set ends = [] %}
+{% for label, values, dashed in series %}
+{% set _ = ends.append((h - mb - values[-1] / ymax * plot_h) - 4) %}
+{% endfor %}
+{% set label_ys = [ends[0]] %}
+{% if ends | length == 2 %}
+{% set lo, hi = ([ends[0], ends[1]] | min), ([ends[0], ends[1]] | max) %}
+{% if hi - lo < 11.2 %}
+{# Within one label height: stack them. The lower label drops a full line, unless
+   that would print it over the x ticks, in which case the upper one rises instead. #}
+{% if lo + 11.2 <= h - mb - 2 %}{% set lo, hi = lo, lo + 11.2 %}{% else %}{% set lo, hi = hi - 11.2, hi %}{% endif %}
+{% endif %}
+{% set label_ys = [lo, hi] if ends[0] <= ends[1] else [hi, lo] %}
+{% endif %}
+<svg class="scurve" viewBox="0 0 {{ w }} {{ h }}" role="img" aria-label="{{ aria_label }}">
+{% for lvl in (0, 0.5, 1) %}
+{% set gy = (h - mb - pmax * lvl / ymax * plot_h) | round(2) %}
+<line class="gridline" x1="{{ ml }}" x2="{{ w }}" y1="{{ gy }}" y2="{{ gy }}"/>
+<text class="tick-label" x="{{ ml - 4 }}" y="{{ (gy + 3) | round(2) }}" text-anchor="end">{{ "{:,.0f}".format(pmax * lvl) }}</text>
+{% endfor %}
+{% for idx in (0, 1, 2) %}
+{% set di = 0 if idx == 0 else (n - 1 if idx == 2 else (n - 1) // 2) %}
+{% set tx = (ml if idx == 0 else (w if idx == 2 else ml + plot_w / 2)) | round(2) %}
+{% set anchor = "start" if idx == 0 else ("end" if idx == 2 else "middle") %}
+<text class="tick-label" x="{{ tx }}" y="{{ h }}" text-anchor="{{ anchor }}">{{ dates[di] }}</text>
+{% endfor %}
+{% for label, values, dashed in series %}
+{% set cls = "s-line ac" if dashed else "s-line" %}
+{% set pts %}{% for v in values %}{{ (ml + loop.index0 / span * plot_w) | round(2) if n > 1 else ml }},{{ (h - mb - v / ymax * plot_h) | round(2) }} {% endfor %}{% endset %}
+{% set label_y = label_ys[loop.index0] | round(2) %}
+{% if loop.last and rag_class %}
+<g class="{{ rag_class }}"><polyline class="{{ cls }}" points="{{ pts }}"/><text class="curve-label" x="{{ w }}" y="{{ label_y }}" text-anchor="end">{{ "{:,.0f}".format(values[-1]) }}</text></g>
+{% else %}
+<polyline class="{{ cls }}" points="{{ pts }}"/><text class="curve-label" x="{{ w }}" y="{{ label_y }}" text-anchor="end">{{ "{:,.0f}".format(values[-1]) }}</text>
+{% endif %}
+{% endfor %}
+</svg>
+{% if series | length > 1 %}
+<p class="legend"><span class="chip"></span>{{ series[0][0] }} (solid)<span class="chip {{ rag_class or '' }}"></span>{{ series[1][0] }} (dashed)</p>
+{% endif %}
+{% endmacro %}
+
+{# The portfolio treemap, unchanged from the dashboard's own layout other than
+   living in one place: real rectangles from :func:`gather.treemap_layout`
+   (area proportional to BAC, never two floating labels), RAG-filled, each a
+   keyboard-reachable link opening with a ``<title>`` naming the portfolio, its
+   BAC and its RAG as a word. #}
+{% macro treemap(rects, w, h, aria_label) %}
+<svg class="treemap" width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}" role="group" aria-label="{{ aria_label }}">
+{% for r in rects %}
+{% set label %}{{ r.name }} — {{ "{:,.0f}".format(r.bac) }} — {{ "no data" if r.rag == "unknown" else r.rag }}{% endset %}
+<a href="/portfolios/{{ r.id }}/rollup" tabindex="0" aria-label="{{ label }}"><title>{{ label }}</title>
+<rect class="tm {{ r.rag }}" x="{{ (r.x + 1) | round(2) }}" y="{{ (r.y + 1) | round(2) }}" width="{{ ([r.w - 2, 0] | max) | round(2) }}" height="{{ ([r.h - 2, 0] | max) | round(2) }}"/>
+{% for text, lx, ly in r.lines %}
+<text class="tm-label{{ ' tm-budget' if not loop.first }}" x="{{ lx | round(2) }}" y="{{ ly | round(2) }}">{{ text }}</text>
+{% endfor %}
+</a>
+{% endfor %}
+</svg>
+{% endmacro %}
+
+{# A small inline sparkline: cumulative actual cost climbing against a flat
+   reference line (a budget, a funding limit -- whatever the caller's flat
+   figure is), scaled with the same 1.15-headroom rule the S-curve uses so the
+   reference line never clips its own viewBox edge. #}
+{% macro sparkline(points, reference, w, h, css_class, aria_label) %}
+<svg class="{{ css_class }}" width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}" role="img" aria-label="{{ aria_label }}">
+{% set n = points | length %}
+{% set ymax = (([reference, points | max] | max) or 1) * 1.15 %}
+{% if reference > 0 %}<line class="burn-bac" x1="0" x2="{{ w }}" y1="{{ (h - reference / ymax * h) | round(2) }}" y2="{{ (h - reference / ymax * h) | round(2) }}"/>{% endif %}
+<polyline class="burn-ac" points="{% for v in points %}{{ (loop.index0 / (n - 1) * w) | round(2) if n > 1 else 0 }},{{ (h - v / ymax * h) | round(2) }} {% endfor %}"/>
+</svg>
+{% endmacro %}
+
+{# The one place a chart's own data table is tucked behind a toggle: closed by
+   default so a reader who wants the picture is not handed a wall of numbers
+   first, open on request for the reader who wants the table instead -- the
+   chart's accessible twin, never removed, just no longer forced open. #}
+{% macro figures(label) %}
+<details class="figures"><summary>{{ label }}</summary>
+{{ caller() }}
+</details>
+{% endmacro %}

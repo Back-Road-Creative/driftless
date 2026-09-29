@@ -126,11 +126,39 @@ def assemble_unreleased(changelog: str, fragments: list[Fragment]) -> str:
     return changelog[:body_start] + body + changelog[end:]
 
 
-def render_release(changelog: str, fragments: list[Fragment], version: str, day: str) -> str:
+# GitHub refuses a release body over 125,000 characters (HTTP 422). Mirrors the cap in
+# .github/workflows/release.yml, which also reserves room for the truncation notice and
+# image footer it appends — that workflow cap still applies and still truncates; this is
+# a cheap warning at fold time so an oversize section is caught before the tag exists,
+# not after (v0.4.0's ~145 KB section reached the API before this check existed).
+RELEASE_BODY_LIMIT = 125_000 - 1_500
+
+
+def render_release(
+    changelog: str,
+    fragments: list[Fragment],
+    version: str,
+    day: str,
+    allow_oversize: bool = False,
+) -> str:
     """Stamp the assembled Unreleased section as ``version``, and open a fresh one."""
     assembled = assemble_unreleased(changelog, fragments)
     stamped = assembled.replace(UNRELEASED, f"## [{version}] - {day}", 1)
-    return stamped.replace(f"## [{version}]", f"{UNRELEASED}\n\n## [{version}]", 1)
+    released = stamped.replace(f"## [{version}]", f"{UNRELEASED}\n\n## [{version}]", 1)
+    if not allow_oversize:
+        heading = f"## [{version}] - {day}"
+        start = released.index(heading) + len(heading)
+        next_heading = released.find("\n## ", start)
+        section = released[start:] if next_heading == -1 else released[start:next_heading]
+        size = len(section.encode("utf-8"))
+        if size > RELEASE_BODY_LIMIT:
+            raise ValueError(
+                f"the {version} release section is {size:,} bytes, over GitHub's "
+                f"release-body limit ({RELEASE_BODY_LIMIT:,} bytes, after the room the "
+                "workflow reserves for its truncation notice). The workflow will still "
+                "truncate it at publish time; pass --allow-oversize to release anyway."
+            )
+    return released
 
 
 def main(argv: list[str] | None = None, root: Path | None = None) -> int:
@@ -138,6 +166,11 @@ def main(argv: list[str] | None = None, root: Path | None = None) -> int:
     parser = argparse.ArgumentParser(description="Assemble CHANGELOG.md from changelog.d/.")
     parser.add_argument("--check", action="store_true", help="validate fragments and exit")
     parser.add_argument("--release", metavar="VERSION", help="fold fragments in as VERSION")
+    parser.add_argument(
+        "--allow-oversize",
+        action="store_true",
+        help="skip the GitHub release-body size check for --release",
+    )
     # Parsed as a real date here rather than checked later: releasing unlinks every
     # fragment, and a stamp like `- not-a-date` is only discovered once they are gone.
     parser.add_argument(
@@ -171,7 +204,9 @@ def main(argv: list[str] | None = None, root: Path | None = None) -> int:
             return 0
         # Rendered before anything is written or unlinked: a changelog this cannot fold
         # into is a message, not a traceback over half-removed fragments.
-        released = render_release(changelog, fragments, args.release, day.isoformat())
+        released = render_release(
+            changelog, fragments, args.release, day.isoformat(), args.allow_oversize
+        )
     except ValueError as error:
         print(f"changelog: {error}", file=sys.stderr)
         return 1

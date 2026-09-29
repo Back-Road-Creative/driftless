@@ -135,9 +135,30 @@ def test_the_browser_form_stores_the_live_score_not_the_posted_signal(
     )
 
 
-def test_the_json_route_stores_the_live_score_not_the_posted_signal(
-    client: TestClient, db: Session
-) -> None:
+def test_the_json_route_refuses_a_posted_signal(client: TestClient) -> None:
+    """``signal`` is not a field of ``SignOffIn`` at all, and the request base now
+    forbids any key it does not declare — so posting one is a 422 that never reaches
+    the row, strictly stronger than the old guarantee of a 201 that silently discarded
+    the claim. A caller who typo's a real field name gets the same protection."""
+    rejected = client.post(
+        "/sign-offs",
+        json={
+            "project_id": 1,
+            "subject_kind": "threat",
+            "subject_ref": COST,
+            "decision": "accepted",
+            "signal": ABSURD,
+            "as_of": AS_OF.isoformat(),
+        },
+    )
+
+    assert rejected.status_code == 422, rejected.text
+
+
+def test_the_json_route_stores_the_live_score(client: TestClient, db: Session) -> None:
+    """With no ``signal`` field left to post, the JSON route still lands the server's
+    own computed score — the same guarantee the browser-form case above pins, proven
+    here for the path a script or API client uses instead of the board."""
     live = _live_score(db, COST)
 
     created = client.post(
@@ -147,7 +168,6 @@ def test_the_json_route_stores_the_live_score_not_the_posted_signal(
             "subject_kind": "threat",
             "subject_ref": COST,
             "decision": "accepted",
-            "signal": ABSURD,
             "as_of": AS_OF.isoformat(),
         },
     )

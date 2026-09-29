@@ -1,0 +1,60 @@
+{# The one assistant-page shape every ``assist_*.html`` (and ``assist_department.html``)
+   renders through, so a page cannot drift from its siblings the way the twelve used to:
+   a ``.tile`` summary strip of the 3-5 figures that matter, at the top, then every
+   technique as its own ``.card`` — never a bare ``<h2>`` sitting over prose alone. #}
+
+{# Headline figures at the top of an assistant page: ``items`` is a list of
+   ``{label, value}`` mappings the calling page has already computed — this macro
+   never reaches for a figure of its own, it only lays out the ones handed to it.
+   Reuses the ``.tile`` primitive base.html/driftless.css already draws for the
+   dashboard rollup, so a reader meets the same shape everywhere one is used. #}
+{% macro summary_strip(items) %}
+{% import "_tiles.html" as tiles %}
+<div class="tiles assist-summary">
+{% for item in items %}
+  {{ tiles.tile(item.label, item.value) }}
+{% endfor %}
+</div>
+{% endmacro %}
+
+{# One technique, as its own card: a title, and — only where the page already
+   computed a reference link for this technique — the small "about this technique"
+   chip beside it. ``chip_href`` is the page's own already-computed href (a
+   ``reference_href`` or a ``techniques.<key>.href``); a section with no such link
+   of its own passes none and the card renders with no chip rather than a
+   fabricated one. The showcase exporter (``bin/driftless-showcase.py``) replaces an
+   unavailable target with ``<span class="showcase-unavailable">`` rather than
+   dropping the anchor, and driftless.css styles that span the same as a chip so an
+   exported page never reads as a broken link.
+
+   ``collapsed`` marks a card as reference material rather than an outcome the
+   page computed: it renders as a native ``<details>`` (no ``open``) so it reads
+   folded beneath the populated cards a reader came for, instead of competing
+   with them at the same visual weight — the ordering itself is unchanged, every
+   caller still places its own cards top to bottom. #}
+{% macro section(title, chip_href=None, collapsed=False) %}
+{% if collapsed %}
+<details class="card assist-card">
+  <summary><h2>{{ title }}</h2>
+    {% if chip_href %}<a class="tech-chip" href="{{ chip_href }}">about</a>{% endif %}
+  </summary>
+  {{ caller() }}
+</details>
+{% else %}
+<section class="card assist-card">
+  <div class="assist-card-head">
+    <h2>{{ title }}</h2>
+    {% if chip_href %}<a class="tech-chip" href="{{ chip_href }}">about</a>{% endif %}
+  </div>
+  {{ caller() }}
+</section>
+{% endif %}
+{% endmacro %}
+
+{# The one muted line a card prints in place of a body when it holds no rows —
+   the card's own header still carries the title, so this is never a second,
+   repeated one: "no bare h2 over nothing" becomes a header plus a single quiet
+   sentence naming the next step, never an empty box. #}
+{% macro empty(text) %}
+<p class="assist-empty">{{ text }}</p>
+{% endmacro %}

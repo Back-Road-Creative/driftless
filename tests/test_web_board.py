@@ -35,10 +35,11 @@ from test_web_csrf import Gate, _client
 gated = test_web_csrf.gated
 
 PAGE, BARE_PAGE = "/projects/1/board", "/projects/2/board"
-# Measured 2 — the project, then ONE query for its tasks with each task's workstream and
-# assignee joined into the same round trip — and identical with twelve more tasks. Two of
-# headroom; a lazy load per card trips the equality below before it reaches this.
-MAX_BOARD_STMTS = 4
+# Measured 3 — the project, ONE query for its tasks with each task's workstream and
+# assignee joined into the same round trip, and ONE grouped count of every task's
+# dependencies — and identical with twelve more tasks. Two of headroom; a lazy load
+# per card trips the equality below before it reaches this.
+MAX_BOARD_STMTS = 5
 _CLASS = re.compile(r'\sclass="[^"]*"')
 _SECTION = re.compile(r'<section[^>]*data-column="([^"]+)"[^>]*>(.*?)</section>', re.S)
 _CARD = re.compile(r'<li[^>]*data-task="([^"]+)"[^>]*>(.*?)</li>', re.S)
@@ -119,6 +120,19 @@ def test_each_task_sits_in_the_column_its_status_names(client: TestClient) -> No
     for shown in ("Edit", "Dana", "60%", "12"):
         assert shown in grade, f"a card omits {shown!r}: workstream, assignee, percent, estimate"
     assert "Unassigned" in _cards(columns["blocked"])["Colour"], "an unowned card says nothing"
+
+
+def test_a_card_shows_how_many_tasks_it_waits_for(client: TestClient, db: Session) -> None:
+    """Batched into one grouped count, never a lazy load per card (see the stmt test below)."""
+    cut, grade = db.get(m.Task, 1), db.get(m.Task, 2)
+    db.add(m.TaskDependency(predecessor=cut, successor=grade, kind="FS"))
+    db.commit()
+
+    columns = _columns(client.get(PAGE).text)
+    grade_card = _cards(columns["in_progress"])["Grade"]
+    cut_card = _cards(columns["todo"])["Cut"]
+    assert "Waits for 1 task" in grade_card
+    assert "Waits for" not in cut_card, "a task waiting on nothing prints no waits-for line"
 
 
 def test_blocked_reads_as_blocked_with_every_class_stripped(client: TestClient) -> None:

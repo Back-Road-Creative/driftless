@@ -32,6 +32,11 @@ class Principal:
     uid: int
     username: str
     role: str
+    #: Whether this identity is an agent Person's bound credential rather than a
+    #: human's — set only by ``driftless.auth.tokens.resolve`` (a cookie login is
+    #: always human); read by the sign-off write path to refuse an agent decision
+    #: unless ``DRIFTLESS_ALLOW_AGENT_SIGNOFF=1``.
+    is_agent: bool = False
 
 
 def resolve(db: Session, payload: dict[str, Any]) -> Principal | None:

@@ -126,3 +126,19 @@ def test_http_error_reports_status_and_server_detail(
     assert _run_seed(_args(monkeypatch, "--token", "t"), urlopen=api) != 0
     err = capsys.readouterr().err
     assert "401" in err and "invalid token" in err
+
+
+def test_http_error_with_a_non_json_body_falls_back_to_the_reason(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A server error body that is not JSON at all (a proxy's own HTML error
+    page, say) cannot yield a ``detail`` — ``_http_detail`` falls back to the
+    HTTP reason phrase rather than raising on the body it cannot parse."""
+    body = io.BytesIO(b"<html>not json</html>")
+    error = urllib.error.HTTPError(
+        "http://api.test/businesses", 500, "Internal Server Error", None, body
+    )
+    api = FakeApi(businesses=[], error=error)
+    assert _run_seed(_args(monkeypatch, "--token", "t"), urlopen=api) != 0
+    err = capsys.readouterr().err
+    assert "500" in err and "Internal Server Error" in err

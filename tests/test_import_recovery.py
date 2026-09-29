@@ -8,6 +8,7 @@ stderr instead of a traceback.
 """
 
 import importlib.util
+import io
 import json
 from pathlib import Path
 from typing import Any
@@ -138,3 +139,103 @@ def test_the_cli_prints_a_machine_readable_record_of_what_landed(
     lines = capsys.readouterr().err.strip().splitlines()
     assert json.loads(lines[1].removeprefix("landed: ")) == {"tasks": 2}
     assert "--skip 2" in lines[2]
+
+
+def _captured_requests(monkeypatch: pytest.MonkeyPatch, module: Any) -> list[Any]:
+    """Intercept urlopen so the poster's real headers can be read off the request."""
+    sent: list[Any] = []
+
+    class _Answer:
+        def __enter__(self) -> Any:
+            return io.BytesIO(b'{"id": 1}')
+
+        def __exit__(self, *exc: object) -> None:
+            return None
+
+    def _urlopen(request: Any) -> Any:
+        sent.append(request)
+        return _Answer()
+
+    monkeypatch.setattr(module.urllib.request, "urlopen", _urlopen)
+    return sent
+
+
+def test_every_posted_row_carries_a_distinct_idempotency_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Distinct per row, so two legitimately identical rows stay two rows -- a key derived
+    from payload CONTENT would swallow the second as a retry."""
+    module = _load()
+    sent = _captured_requests(monkeypatch, module)
+    post = module._http_poster("http://x", "t", "import-a")
+
+    post("/businesses", {"name": "One"})
+    post("/businesses", {"name": "One"})
+
+    keys = [request.headers["Idempotency-key"] for request in sent]
+    assert len(keys) == 2 and keys[0] != keys[1]
+
+
+def test_re_running_the_same_import_reproduces_the_same_keys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The recovery property: an interrupted run re-run from the start sends the keys it
+    already sent, so the store recognises those rows instead of duplicating them."""
+    module = _load()
+    first = _captured_requests(monkeypatch, module)
+    poster = module._http_poster("http://x", "t", "import-a")
+    poster("/businesses", {"name": "One"})
+    poster("/businesses", {"name": "Two"})
+
+    second = _captured_requests(monkeypatch, module)
+    replay = module._http_poster("http://x", "t", "import-a")
+    replay("/businesses", {"name": "One"})
+    replay("/businesses", {"name": "Two"})
+
+    assert [r.headers["Idempotency-key"] for r in first] == [
+        r.headers["Idempotency-key"] for r in second
+    ]
+
+
+def test_skip_resumes_onto_the_keys_the_interrupted_run_would_have_used(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``--skip N`` seeds the row counter, so a resumed run numbers rows the way the
+    interrupted one did. Without that seeding it would restart at 0 and every remaining
+    row would carry a fresh key -- silently reintroducing the duplicate."""
+    module = _load()
+    whole = _captured_requests(monkeypatch, module)
+    full = module._http_poster("http://x", "t", "import-a")
+    for name in ("One", "Two", "Three"):
+        full("/businesses", {"name": name})
+
+    rest = _captured_requests(monkeypatch, module)
+    resumed = module._http_poster("http://x", "t", "import-a", 2)
+    resumed("/businesses", {"name": "Three"})
+
+    assert rest[0].headers["Idempotency-key"] == whole[2].headers["Idempotency-key"]
+
+
+def test_a_different_id_imports_the_same_file_again_on_purpose(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Deliberate re-import must stay possible; the id is what separates it from a retry."""
+    module = _load()
+    sent = _captured_requests(monkeypatch, module)
+    module._http_poster("http://x", "t", "import-a")("/businesses", {"name": "One"})
+    module._http_poster("http://x", "t", "import-b")("/businesses", {"name": "One"})
+
+    assert sent[0].headers["Idempotency-key"] != sent[1].headers["Idempotency-key"]
+
+
+def test_the_default_import_id_follows_the_files_contents(tmp_path: Path) -> None:
+    """Same bytes, same import; edited bytes are a different import, because its rows are
+    no longer the ones already sent."""
+    module = _load()
+    one, two = tmp_path / "a.csv", tmp_path / "b.csv"
+    one.write_text("name\nOne\n")
+    two.write_text("name\nOne\n")
+
+    assert module.import_id_for(one) == module.import_id_for(two)
+    two.write_text("name\nTwo\n")
+    assert module.import_id_for(one) != module.import_id_for(two)

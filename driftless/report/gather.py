@@ -47,6 +47,7 @@ from driftless.models import (
     StatusSnapshot,
 )
 from driftless.models.records import OPEN_RISK_STATUSES
+from driftless.pmbok import flow_facts
 
 HIGH_EXPOSURE = 10_000.0  # the exposure a risk must clear to count against a project
 OPEN_RISKS = OPEN_RISK_STATUSES  # re-exported: driftless.web.project_hub reads gather.OPEN_RISKS
@@ -77,6 +78,24 @@ def cell(kpis: Kpis) -> dict[str, Any]:
         "actual": f"{kpis.actual_cost:,.0f}",
         "complete": f"{kpis.percent_complete * 100:.0f}%",
         "risks": kpis.open_high_risks,
+    }
+
+
+def flow_cell(kpis: Kpis) -> dict[str, str | int]:
+    """The three flow tiles' formatted values off ONE ``Kpis`` — home and the
+    drill pages both read this, so a flow figure on the dashboard can never
+    disagree with the same node's own drill page. ``no data yet`` (never 0) when no
+    child rolled up any agile evidence — ``calc.rollup`` already returns
+    ``None`` for exactly that case, the same "nothing measured" reading
+    :func:`cell` gives every other figure here."""
+    return {
+        "wip": kpis.wip if kpis.wip is not None else "no data yet",
+        "throughput_per_week": (
+            kpis.throughput_per_week if kpis.throughput_per_week is not None else "no data yet"
+        ),
+        "median_cycle_days": (
+            f"{kpis.median_cycle_days:.1f}" if kpis.median_cycle_days is not None else "no data yet"
+        ),
     }
 
 
@@ -140,6 +159,14 @@ def _project_node(
     status snapshots — overrides that fold with ``unknown``: an empty placeholder
     is no-data, not a mildly-concerning amber. ``snaps`` are the project's status
     snapshots up to ``as_of``, mirroring the batch ``costs``/``risks`` inputs.
+
+    WIP, throughput and median cycle time are read only for an agile or hybrid
+    project (``flow_facts.sprint_history``'s own gate) — a predictive project
+    has no backlog items by construction, so calling the flow adapter for one
+    would spend a query proving nothing. They stay ``None`` (the rollup's
+    ``no data yet``) rather than a false zero, and the read is batched inside this
+    walk's own ``adapters.prefetched`` scope like every other per-project read
+    here, so a store-wide rollup pays one query set for the lot.
     """
     snap = project_evm(project, costs, as_of)
     statuses = {milestone.status for milestone in project.milestones}
@@ -150,6 +177,11 @@ def _project_node(
     leaf_rag = max((milestone_rag, assessment_rag), key=lambda rag: SEVERITY_WEIGHT[rag])
     if snap.bac == 0 and not project.milestones and not snaps:
         leaf_rag = "unknown"
+    flow = (
+        flow_facts.flow_leaf_metrics(session, project, as_of)
+        if project.delivery_mode in ("agile", "hybrid")
+        else None
+    )
     return Node(
         "project",
         project.name,
@@ -159,6 +191,9 @@ def _project_node(
             Decimal(str(snap.ev / snap.bac)) if snap.bac else Decimal(0),
             sum(1 for r in risks if r.status in OPEN_RISKS and r.exposure >= HIGH_EXPOSURE),
             leaf_rag,
+            wip=flow.wip if flow else None,
+            throughput_per_week=flow.throughput if flow else None,
+            median_cycle_days=flow.median_cycle_days if flow else None,
         ),
     )
 
@@ -328,13 +363,13 @@ def find_node(
     return None
 
 
-_BUSINESS_CURVE_SAMPLES = 12  # matches pages.evm_curve's per-project sample count
+_BUSINESS_CURVE_SAMPLES = 12  # matches views.evm_curve's per-project sample count
 
 
 def sample_dates(start_candidates: Sequence[date], as_of: date, samples: int) -> tuple[date, ...]:
     """At most ``samples`` evenly-spaced DISTINCT dates from the earliest of
     ``start_candidates`` through ``as_of`` — the one clamp-and-sample window
-    ``business_curve``, ``home._burn_series`` and ``pages.evm_curve`` all read
+    ``business_curve``, ``home._burn_series`` and ``views.evm_curve`` all read
     through, so the three can no longer drift apart the way they did in #1532.
 
     Distinct because every consumer treats each date as one reading: a span
@@ -361,38 +396,51 @@ def sample_dates(start_candidates: Sequence[date], as_of: date, samples: int) ->
 def snapshot_sweep(
     project: Project, costs: Sequence[CostEntry]
 ) -> Callable[[date], evm.EarnedValueSnapshot]:
-    """``as_of -> adapters.snapshot_from(project, costs, as_of)`` with the
-    adaptation hoisted: the plan selection, the line sort and the three value-
-    object lists vary only with the project and its costs, yet the swept
+    """``as_of -> adapters.snapshot_from(project, costs, as_of)`` with each
+    baseline's adaptation hoisted: the line sort and the two plan-shaped value-
+    object lists vary only with WHICH baseline is in force, yet the swept
     S-curves rebuilt them at EVERY sample date — 165 adapter calls per dashboard
     GET at 5 projects, and the request cost scaled with tasks x samples instead
-    of tasks + samples (99ms -> 1177ms for 5 -> 300 tasks/project). Built once
-    here; each call runs only calc over the pre-adapted lists.
+    of tasks + samples (99ms -> 1177ms for 5 -> 300 tasks/project). Adapted
+    once per DISTINCT baseline id, memoized here as the sweep first meets it and
+    reused at every later sample that resolves to the same one. Approvals are
+    sparse, so a baseline approved mid-sweep costs one EXTRA adaptation, not one
+    per sample: the hoist survives at the cost that actually scales (tasks),
+    and :func:`adapters.plan_baseline` -- pure, no query, over the already-
+    loaded ``project.baselines`` -- is cheap enough to call at every date.
 
     The one as-of-dependent branch — ``snapshot_from`` refuses an ``as_of``
-    before the plan's earliest ``planned_start`` by dropping the lines — is
-    reproduced by swapping in the empty plan/progress lists those dropped lines
-    would have built. Everything else is the same code order over the same
-    sorts, so the floats sum identically and the rendered series stay
-    byte-identical; ``tests/test_gather_sampling.py`` pins the sweep equal to
-    the canonical adapter at every regime, so the pair cannot drift."""
-    baseline = adapters.plan_baseline(project)
-    lines = baseline.lines if baseline else []
-    begun = min((line.planned_start for line in lines), default=None)
-    ordered = sorted(lines, key=lambda line: line.task_id)
-    plan = [
-        evm.BaselineTask(str(x.task_id), x.planned_start, x.planned_finish, x.planned_cost)
-        for x in ordered
-    ]
-    done = [
-        evm.ProgressReport(str(x.task_id), date.min, x.task.percent_complete / 100) for x in ordered
-    ]
+    before the resolved plan's earliest ``planned_start`` by dropping the
+    lines — is reproduced per baseline by swapping in the empty plan/progress
+    lists those dropped lines would have built. Everything else is the same
+    code order over the same sorts, so the floats sum identically and the
+    rendered series stay byte-identical; ``tests/test_gather_sampling.py`` pins
+    the sweep equal to the canonical adapter at every regime, INCLUDING a
+    second baseline approved partway through the sampled window, so a caller
+    that flattened the curve onto one plan cannot pass quietly."""
     spend = [
         evm.CostEntry(c.incurred_on, c.amount)
         for c in sorted(costs, key=lambda c: (c.incurred_on, c.id))
     ]
+    adapted: dict[int, tuple[date | None, list[evm.BaselineTask], list[evm.ProgressReport]]] = {}
 
     def at(as_of: date) -> evm.EarnedValueSnapshot:
+        baseline = adapters.plan_baseline(project, as_of)
+        if baseline is None:
+            return evm.earned_value_snapshot([], [], spend, as_of)
+        if baseline.id not in adapted:
+            ordered = sorted(baseline.lines, key=lambda line: line.task_id)
+            begun = min((line.planned_start for line in ordered), default=None)
+            plan = [
+                evm.BaselineTask(str(x.task_id), x.planned_start, x.planned_finish, x.planned_cost)
+                for x in ordered
+            ]
+            done = [
+                evm.ProgressReport(str(x.task_id), date.min, x.task.percent_complete / 100)
+                for x in ordered
+            ]
+            adapted[baseline.id] = (begun, plan, done)
+        begun, plan, done = adapted[baseline.id]
         if begun is not None and as_of < begun:
             return evm.earned_value_snapshot([], [], spend, as_of)
         return evm.earned_value_snapshot(plan, done, spend, as_of)
@@ -405,7 +453,7 @@ def business_curve(
 ) -> dict[str, Any]:
     """Whole-business planned-vs-actual cost S-curve — sums PV(t)/AC(t) across
     every project at up to ``_BUSINESS_CURVE_SAMPLES`` :func:`sample_dates` from
-    the earliest baselined project's start to ``as_of``, mirroring ``pages.evm_curve``
+    the earliest baselined project's start to ``as_of``, mirroring ``views.evm_curve``
     at business scope. Each project is adapted ONCE through :func:`snapshot_sweep`,
     never re-adapted per sample. Pure and query-free (no ``Session`` at all):
     ``projects`` must carry eager-loaded baselines (as ``leaf_projects`` returns)
@@ -426,7 +474,7 @@ def business_curve(
     figures. :func:`adapters.plan_baseline` is the one approval rule; ``None`` from
     it means no approved plan, contributing no start, exactly as a project that was
     never baselined."""
-    plans = [b for b in (adapters.plan_baseline(p) for p in projects) if b is not None]
+    plans = [b for b in (adapters.plan_baseline(p, as_of) for p in projects) if b is not None]
     starts = [min(line.planned_start for line in b.lines) for b in plans if b.lines]
     if not starts:
         return {"points": []}

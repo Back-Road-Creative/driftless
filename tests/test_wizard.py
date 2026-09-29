@@ -73,15 +73,29 @@ def test_self_onboarding_capstone(session: Session, project: Project) -> None:
     Still unattended: the loop types nothing. What it no longer relies on is the
     *producer* inventing a value — every placeholder now comes from ``seed_fields``, the
     seeding side, which is exactly the caller that means them.
+
+    ``next_step`` no longer skips a derived step (nothing of its own to produce): it
+    is the step, honestly labelled, until the inputs it is waiting on land. Reaching
+    it, the loop does what a reader following its "produced by" pointers would —
+    produce whatever else in scope is still missing — the same escape a person or an
+    agent has, without the wizard picking a different process for them.
     """
+    from driftless.pmbok import catalog
+
     guard = 0
     while (step := engine.next_step(session, project, AS_OF, ONBOARDING)) is not None:
         made = False
-        for kind in step.producible:
+        candidates = step.producible or tuple(
+            kind
+            for group in ONBOARDING
+            for other in catalog.by_group(group)
+            for kind in engine._producible(other)
+        )
+        for kind in candidates:
             if not mapping.resolve(kind, project, session, AS_OF).present:
-                produce(session, project, kind, seed_fields(kind, AS_OF), AS_OF)
+                produce(session, project, kind, seed_fields(kind, AS_OF), AS_OF, "test")
                 made = True
-        assert made, f"stuck on {step.process_id} with no producible output"
+        assert made, f"stuck on {step.process_id} with no producible output anywhere in scope"
         guard += 1
         assert guard < 60, "onboarding should converge well within 60 steps"
 
@@ -110,12 +124,12 @@ def test_produce_validates_through_the_schema(session: Session, project: Project
 
     supplied = {"description": PROSE, "impact": "1000", "probability": "5.0"}  # > 1
     with pytest.raises(ValidationError):
-        produce(session, project, "risk_register", supplied, AS_OF)
+        produce(session, project, "risk_register", supplied, AS_OF, "test")
 
 
 def test_produce_rejects_an_unproducible_kind(session: Session, project: Project) -> None:
     with pytest.raises(KeyError):
-        produce(session, project, "project_management_plan", {}, AS_OF)
+        produce(session, project, "project_management_plan", {}, AS_OF, "test")
 
 
 def test_produce_refuses_a_narrative_kind_with_no_prose(session: Session, project: Project) -> None:
@@ -131,7 +145,7 @@ def test_produce_refuses_a_narrative_kind_with_no_prose(session: Session, projec
 
     for fields in ({}, {"body": "   "}):  # blank is the same nothing as absent
         with pytest.raises(ValueError):
-            produce(session, project, "assumption_log", fields, AS_OF)
+            produce(session, project, "assumption_log", fields, AS_OF, "test")
     assert not session.scalars(select(NarrativeArtifact)).all(), "a refused body wrote a row"
     assert not mapping.resolve("assumption_log", project, session, AS_OF).present
 
@@ -189,7 +203,7 @@ def test_produce_each_remaining_kind_makes_it_present(
     these kinds are prose, and the producer no longer writes prose nobody supplied.
     """
     assert not mapping.resolve(kind, project, session, AS_OF).present
-    produce(session, project, kind, seed_fields(kind, AS_OF), AS_OF)
+    produce(session, project, kind, seed_fields(kind, AS_OF), AS_OF, "test")
     assert mapping.resolve(kind, project, session, AS_OF).present
 
 

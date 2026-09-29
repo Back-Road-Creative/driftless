@@ -51,7 +51,8 @@ from test_web_csrf import _web_paths
 client, db = test_web_pages.client, test_web_pages.db
 
 _TEMPLATES = Path(__file__).resolve().parents[1] / "driftless/web/templates"
-_BASE_HTML = (_TEMPLATES / "base.html").read_text()
+_STATIC = Path(__file__).resolve().parents[1] / "driftless/web/static"
+_STYLESHEET = (_STATIC / "driftless.css").read_text()
 VIEWPORT = "width=device-width, initial-scale=1"
 BREAKPOINT = "max-width: 60rem"
 
@@ -134,17 +135,16 @@ def test_every_wide_table_scrolls_rather_than_clipping_and_the_scroll_is_reachab
 
 
 def test_no_page_local_style_declares_a_layout_property_base_owns() -> None:
-    """Layout lives in base.html so behaviour cannot diverge per page. A page may
-    still paint (colour, padding, alignment) — only containment is centralised."""
+    """Layout lives in driftless.css (linked from base.html) so behaviour cannot
+    diverge per page. A page may still paint (colour, padding, alignment) — only
+    containment is centralised."""
     offences = []
     for template in sorted(_TEMPLATES.glob("*.html")):
-        if template.name == "base.html":  # the stylesheet lives here; nothing else may
-            continue
         body = template.read_text()
         for css in _STYLE_BLOCK.findall(body) + _STYLE_ATTR.findall(body):
             offences += [
                 f"{template.name} declares {found.group(0)!r} in its own CSS — move it to a "
-                "class in base.html and apply that class here"
+                "class in driftless.css and apply that class here"
                 for found in _LAYOUT.finditer(css)
             ]
     assert not offences, "\n".join(offences)
@@ -152,8 +152,8 @@ def test_no_page_local_style_declares_a_layout_property_base_owns() -> None:
 
 def test_the_stylesheet_declares_exactly_one_width_breakpoint() -> None:
     """One well-chosen breakpoint beats three arbitrary ones; pinning it here is what
-    stops the second and third from arriving unargued (base.html says why 60rem)."""
-    assert [q.strip() for q in _WIDTH_QUERY.findall(_BASE_HTML)] == [BREAKPOINT], (
-        f"base.html must declare exactly one width media query, ({BREAKPOINT}) — the width "
-        "at which the dashboard's 36rem heatmap + 18rem rail + 1.5rem gap stops fitting"
+    stops the second and third from arriving unargued (driftless.css says why 60rem)."""
+    assert [q.strip() for q in _WIDTH_QUERY.findall(_STYLESHEET)] == [BREAKPOINT], (
+        f"driftless.css must declare exactly one width media query, ({BREAKPOINT}) — the "
+        "width at which the dashboard's 36rem heatmap + 18rem rail + 1.5rem gap stops fitting"
     )

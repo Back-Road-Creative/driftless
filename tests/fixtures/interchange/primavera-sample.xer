@@ -1,0 +1,13 @@
+ERMHDR	21.12	2026-09-22	Project	admin	admin	Sample	1	USD
+%T	TASK
+%F	task_id	task_code	task_name	target_drtn_hr_cnt
+%R	101	A1000	Design	24
+%R	102	A1010	Build	40
+%R	103	A1020	Test	16
+%R	104	A1030	Docs	8
+%E
+%T	TASKPRED
+%F	task_pred_id	task_id	pred_task_id	pred_type	lag_hr_cnt
+%R	1	102	101	PR_FS	0
+%R	2	103	102	PR_FS	0
+%E

@@ -1,0 +1,47 @@
+{# Decision tree / EMV calculator: a no-write what-if off GET params, the same
+   "type it, see it, nothing saved" contract assist_decisions's boxes use. #}
+{% extends "base.html" %}
+{% block title %}Decision tree — {{ project.name }}{% endblock %}
+{% block content %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{% import "_assist.html" as assist %}
+{{ breadcrumbs.trail(project, "Decision tree", as_of) }}
+<h1>Decision tree — {{ project.name }}</h1>
+<p><em>As of {{ as_of }}</em> ·
+   <a href="/projects/{{ project.id }}/hub?as_of={{ as_of }}">Project hub</a></p>
+
+{{ assist.summary_strip([
+  {"label": "Options compared", "value": branches | length},
+  {"label": "Best option", "value": best_name},
+  {"label": "Expected monetary value", "value": best_emv},
+]) }}
+
+<p>Enter each option as <code>name:probability=value,probability=value</code>, separated by
+   <code>;</code> — for example <code>drill:0.4=700000,0.6=-100000;do not drill:1.0=0</code>.
+   EMV is each outcome's probability times its value, summed across the option's outcomes;
+   an option's probabilities must sum to 1. Nothing here is saved.</p>
+
+<form method="get" action="/projects/{{ project.id }}/assist/decision-tree">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label for="dt-options">Options</label>
+  <input type="text" id="dt-options" name="options" value="{{ options }}">
+  <button type="submit" class="btn btn-primary">Compute</button>
+</form>
+
+{% if errors %}<ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}
+
+{% call assist.section("Expected monetary value") %}
+{% if not branches %}
+{{ assist.empty("Enter at least one option above to compute its EMV.") }}
+{% else %}
+<ul>
+{% for branch in branches %}
+<li>
+  <strong>{{ branch.name }}</strong>{% if branch.is_best %} — best option{% endif %}
+  <p>EMV: {{ branch.arithmetic }}</p>
+</li>
+{% endfor %}
+</ul>
+{% endif %}
+{% endcall %}
+{% endblock %}

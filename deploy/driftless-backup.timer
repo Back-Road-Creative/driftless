@@ -1,0 +1,16 @@
+[Unit]
+Description=Daily driftless database backup (with restore-verify)
+Documentation=file:/opt/driftless/OPERATIONS.md
+
+[Timer]
+# RPO is this period; OPERATIONS.md → Recovery objectives states the same number, and the two
+# are meant to be changed together.
+OnCalendar=*-*-* 03:00:00
+# Hosts that boot together should not dump together, and a fixed instant is a predictable one.
+RandomizedDelaySec=15m
+# The setting that decides whether "daily backups" is true: without it a host asleep or off at
+# 03:00 skips the day in silence. A schedule that silently depends on uptime is not a schedule.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

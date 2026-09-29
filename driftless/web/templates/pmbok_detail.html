@@ -1,29 +1,79 @@
 {% extends "base.html" %}
 {% block title %}{{ process.id }} {{ process.name }}{% endblock %}
-{# Two reading modes, one template. Without ``live`` this is the stateless ITTO
-   reference it has always been. With it — the map cell carried a project and the
-   as-of through the hop — every artifact kind also carries what THIS project's store
-   answers for it, and the knowledge area's assessment follows below. pages.py owns
-   every figure and every wash; this file only formats them. #}
+{# Two reading modes, one template. A library item is a technique, so its name and
+   its address come from the registry (``technique_name``/``technique_slug``) — the
+   same strings its own page titles itself with and is reached at; a non-library item
+   is an artifact kind, and reads its name and address off ``ARTIFACTS`` the same way
+   (``artifact_name``/``artifact_slug``), never humanized from the raw key. Without
+   ``live`` this is the stateless ITTO reference it has always been. With it — the map
+   cell carried a project and the as-of through the hop — every artifact kind also
+   carries what THIS project's store answers for it, the ITTO and map links carry the
+   same pair onward so the next hop is still about this project rather than theory,
+   and the knowledge area's assessment follows below. ``web/views.py``'s
+   ``process_in_project`` owns every figure and every wash, and
+   ``web/pmbok_reference.py`` is the route that asks for them; this file only formats
+   them.
+
+   The page explains the step before it lists anything: the summary, then why it
+   matters, what done looks like and a first-time tip — ``ProcessContent``'s own
+   fields, rendered verbatim. Only the summary is passed through ``gloss``: the filter
+   links each term's FIRST mention per text run, so glossing every field would link the
+   same word four times on one page rather than once. #}
 {% block content %}
-{% macro itto(items) %}
-<ul>{% for item in items %}<li>{{ item }}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{% import "_related.html" as related_block %}
+{% if live %}
+{{ breadcrumbs.trail(live.project, process.id ~ " " ~ process.name, live.as_of) }}
+{% else %}
+{{ breadcrumbs.theory("PMBOK", "/pmbok", process.id ~ " " ~ process.name) }}
+{% endif %}
+{# The project and the as-of as a query string, or nothing at all in theory mode —
+   built once here so every link below carries the identical pair. Autoescaping turns
+   its ``&`` into ``&amp;``, which is what an href must hold. #}
+{% set live_query = ("?project=" ~ live.project.id ~ "&as_of=" ~ live.as_of) if live else "" %}
+{% macro itto(items, anchor_prefix=None, library=False, query="") %}
+<ul>{% for item in items %}<li{% if anchor_prefix %} id="{{ anchor_prefix }}-{{ item | technique_slug }}"{% endif %}>{% if library %}<a href="/techniques/{{ item | technique_slug }}{{ query }}">{{ item | technique_name }}</a>{% else %}<a href="/artifacts/{{ item | artifact_slug }}{{ query }}">{{ item | artifact_name }}</a>{% endif %}
   {%- set cell = live and live.artifacts.get(item) %}
-  {%- if cell %} <span class="badge st-{{ cell.rank }}">{{ cell.label }} — {{ cell.detail }}</span>{% endif %}</li>{% endfor %}</ul>
+  {%- if cell %} <span class="badge st-{{ cell.rank }}">{{ cell.label }} — {{ cell.detail }}</span>{% endif %}
+  {%- set equivalence = (not library) and equivalences.get(item) %}
+  {%- if equivalence %} <br><small>How Scrum/Kanban projects satisfy this — counted from:
+    {{ equivalence.native_source }} — {{ equivalence.rule_in_plain_words }}</small>{% endif %}</li>{% endfor %}</ul>
 {% endmacro %}
 <h1>{{ process.id }} {{ process.name }}</h1>
+{% if definition and definition.plain_summary %}<p>{{ definition.plain_summary | gloss }}</p>{% endif %}
 <p><em>{{ process.group.value | humanize }} / {{ process.area.value | humanize }}</em> ·
    {% if live %}<a href="/projects/{{ live.project.id }}/process-map?as_of={{ live.as_of }}">&larr; {{ live.project.name }} process map</a>
-   {% else %}<a href="/pmbok">&larr; PMBOK reference</a>{% endif %}</p>
+   {% else %}<a href="/pmbok">&larr; PMBOK reference</a>{% endif %} ·
+   <a href="/map?focus=process:{{ process.id }}{% if live %}&amp;project={{ live.project.id }}&amp;as_of={{ live.as_of }}{% endif %}">See it on the map</a></p>
 {% if live %}
 <p>On <strong>{{ live.project.name }}</strong> as of {{ live.as_of }} this process reads
    <span class="badge st-{{ live.rank }}">{{ live.state | humanize }}</span>{% if not live.assessable %} —
    no output of this process is a kind the store tracks, so that reading is about this
    product, not about the project{% endif %}.</p>
 {% endif %}
-<h2>Inputs</h2>{{ itto(process.inputs) }}
-<h2>Tools &amp; Techniques</h2>{{ itto(process.tools_techniques) }}
-<h2>Outputs</h2>{{ itto(process.outputs) }}
+{% if definition %}
+{% if definition.why_bother %}<h2>Why it matters</h2><p>{{ definition.why_bother }}</p>{% endif %}
+{% if definition.done_when %}<h2>What done looks like</h2><p>{{ definition.done_when }}</p>{% endif %}
+{% if definition.first_time_tip %}<h2>First time tip</h2><p>{{ definition.first_time_tip }}</p>{% endif %}
+{% endif %}
+<h2>What you need (Inputs)</h2>{{ itto(process.inputs, query=live_query) }}
+<h2>How you do it (Tools &amp; Techniques)</h2>{{ itto(process.tools_techniques, anchor_prefix="tt", library=True, query=live_query) }}
+<h2>What you get (Outputs)</h2>{{ itto(process.outputs, query=live_query) }}
+{% if definition and definition.worked_example %}
+<h2>Worked example</h2>
+<p>{{ definition.worked_example }}</p>
+{% endif %}
+{% if definition and definition.pitfalls %}
+<h2>Common pitfalls</h2>
+<ul>{% for pitfall in definition.pitfalls %}<li>{{ pitfall }}</li>{% endfor %}</ul>
+{% endif %}
+<h2>How driftless helps</h2>
+{% if help_facts %}
+<ul>{% for fact in help_facts %}<li>{% if fact.kind == "technique" %}<a href="/techniques/{{ fact.key | technique_slug }}">{{ fact.key | technique_name }}</a> can be run here.
+  {%- else %}<a href="/artifacts/{{ fact.key | artifact_slug }}">{{ fact.key | artifact_name }}</a> can be created in the wizard.{% endif %}</li>{% endfor %}</ul>
+{% else %}
+<p>Driftless does not yet help run this process — no technique here is runnable and no output is producible in the wizard.</p>
+{% endif %}
 {% if live and live.assessment %}
 <h2>{{ process.area.value | humanize }} assessment</h2>
 <p>This project's {{ process.area.value | humanize }} reading as of {{ live.as_of }} is
@@ -36,7 +86,19 @@
 {% endfor %}
 {% if live.assessment.actions %}
 <h3>Recommended actions</h3>
-<ul>{% for a in live.assessment.actions %}<li><strong>{{ a.label }}</strong> — {{ a.rationale }}</li>{% endfor %}</ul>
+<ul>{% for a in live.assessment.actions %}<li><strong>{{ a.label }}</strong> — {{ a.rationale }}
+  — <a href="{{ a.reference_href }}">{{ a.technique }}</a>
+  {%- if a.launch_href %} — <a href="{{ a.launch_href }}">apply {{ a.technique }}</a>
+  {%- else %} (reference only — no assistant yet)
+  {%- endif %}</li>{% endfor %}</ul>
 {% endif %}
 {% endif %}
+{% if tailoring %}
+<p>Runs on: <strong>{{ tailoring.mode.value | humanize }}</strong> — {{ tailoring.reason }}</p>
+{% endif %}
+{% if runs %}
+<h2>Runs on this project</h2>
+<ul>{% for run in runs %}<li>Run on {{ run.as_of }} by {{ run.actor }} for {{ run.technique_key | technique_name }}</li>{% endfor %}</ul>
+{% endif %}
+{{ related_block.related(related) }}
 {% endblock %}

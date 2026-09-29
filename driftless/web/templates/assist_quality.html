@@ -1,0 +1,235 @@
+{# The quality workbench: control charts, a Pareto of measurement failures, a
+   sampling-plan what-if, a root-cause worksheet, a cost-of-quality what-if and an
+   audit checklist — every figure read straight off the project's own rows or typed
+   into a no-write what-if form, the same idiom assist_evm.html and
+   assist_procurement.html use for computed figures. #}
+{% extends "base.html" %}
+{% block title %}Quality workbench — {{ project.name }}{% endblock %}
+{% block content %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{% import "_empty.html" as empty %}
+{% import "_scroll.html" as scroll %}
+{% import "_assist.html" as assist %}
+{{ breadcrumbs.trail(project, "Quality workbench", as_of) }}
+<h1>Quality workbench — {{ project.name }}</h1>
+<p><em>As of {{ as_of }}</em> ·
+   <a href="/projects/{{ project.id }}/hub?as_of={{ as_of }}">Project hub</a></p>
+
+{{ assist.summary_strip([
+  {"label": "Metrics charted", "value": charts|length},
+  {"label": "Failing metrics", "value": pareto.entries|length},
+  {"label": "Open issues", "value": issues|length},
+  {"label": "Checklist lines", "value": checklist|length},
+]) }}
+
+{% call assist.section("Control charts") %}
+<p>One chart per metric with two or more dated readings as of {{ as_of }}: the mean,
+   ±3σ control limits worked out from the readings themselves, and the rule-of-seven
+   signal — seven readings running on the same side of the mean, a likely process
+   shift even while every point stays inside the limits.</p>
+{% if not charts %}
+{% call empty.state("No quality measurements recorded yet", id="charts-empty") %}
+Record a dated reading (<code>POST /quality-measurements</code>) against a target and it
+becomes this metric's first point; a chart draws once there are two.
+{% endcall %}
+{% else %}
+{% for entry in charts %}
+<h3>{{ entry.series.name }}</h3>
+{% if entry.geometry %}
+<figure class="control-chart">
+  <svg viewBox="0 0 320 140" width="320" height="140" role="img"
+       aria-label="Control chart for {{ entry.series.name }}, mean and ±3σ limits">
+    <line x1="40" x2="310" y1="{{ entry.geometry.mean_y }}" y2="{{ entry.geometry.mean_y }}"
+          stroke="var(--muted-ink)" stroke-width="1"/>
+    <line x1="40" x2="310" y1="{{ entry.geometry.ucl_y }}" y2="{{ entry.geometry.ucl_y }}"
+          stroke="var(--gridline)" stroke-width="1" stroke-dasharray="4 3"/>
+    <line x1="40" x2="310" y1="{{ entry.geometry.lcl_y }}" y2="{{ entry.geometry.lcl_y }}"
+          stroke="var(--gridline)" stroke-width="1" stroke-dasharray="4 3"/>
+    <polyline fill="none" stroke="var(--ink)" stroke-width="1.5"
+      points="{% for pt in entry.geometry.points %}{{ pt.x }},{{ pt.y }} {% endfor %}"/>
+    {% for pt in entry.geometry.points %}
+    <circle cx="{{ pt.x }}" cy="{{ pt.y }}" r="3.5"
+            class="{{ 'red' if pt.out_of_control else 'green' }}" fill="currentColor"/>
+    {% endfor %}
+  </svg>
+  {% call scroll.wide(entry.series.name ~ " readings as text") %}
+  <table>
+  <caption class="sr-only">{{ entry.series.name }} readings, mean and control limits, earliest first</caption>
+  <tr><th scope="col">Date</th><th scope="col">Reading</th><th scope="col">In control</th><th scope="col">In spec</th></tr>
+  {% for date, value in entry.series.readings %}
+  <tr><td>{{ date }}</td><td>{{ value }}{% if entry.series.unit %} {{ entry.series.unit }}{% endif %}</td>
+    <td>{{ "No" if loop.index0 in entry.series.chart.out_of_control else "Yes" }}</td>
+    <td>{{ "No" if loop.index0 in entry.series.chart.out_of_spec else "Yes" }}</td></tr>
+  {% endfor %}
+  </table>
+  {% endcall %}
+  <p>Mean <strong>{{ entry.series.chart.mean|round(3) }}</strong> ·
+     UCL <strong>{{ entry.series.chart.ucl|round(3) }}</strong> ·
+     LCL <strong>{{ entry.series.chart.lcl|round(3) }}</strong></p>
+  {% if entry.series.chart.run_signal %}<p>{{ entry.series.chart.run_signal }}</p>{% endif %}
+</figure>
+{% else %}
+<p>Only {{ entry.series.readings|length }} reading{{ "s" if entry.series.readings|length != 1 else "" }}
+   so far — a control chart needs at least two to estimate a spread.</p>
+{% endif %}
+{% endfor %}
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Pareto of measurement failures") %}
+<p>Every out-of-tolerance reading as of {{ as_of }}, grouped by the metric it measures and
+   ranked largest first, with the "vital few" categories that together reach 80% of the total.</p>
+{% if not pareto.entries %}
+{{ assist.empty("No reading has failed its tolerance as of this date — there is nothing to rank.") }}
+{% else %}
+{% call scroll.wide(project.name ~ " measurement-failure Pareto") %}
+<table>
+<caption class="sr-only">Measurement failures by metric, largest first, with cumulative share</caption>
+<tr><th scope="col">Metric</th><th scope="col">Failures</th><th scope="col">Share</th><th scope="col">Cumulative share</th></tr>
+{% for row in pareto.entries %}
+<tr><th scope="row">{{ row.category }}</th><td>{{ row.count }}</td>
+  <td>{{ "{:.0%}".format(row.share) }}</td><td>{{ "{:.0%}".format(row.cumulative_share) }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+<p>Vital few: <strong>{{ pareto.vital_few|join(", ") }}</strong> — fixing these first clears 80% of the failures.</p>
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Statistical sampling plan") %}
+<p>Sample size for estimating a proportion from a finite population, worst-case
+   p=0.5 so the plan never undersizes, finite-population-corrected. GET only; nothing typed here is saved.</p>
+<form method="get" action="/projects/{{ project.id }}/assist/quality">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label for="sampling-population">Population</label>
+  <input type="number" step="1" min="1" id="sampling-population" name="population"
+    value="{{ sampling.population if sampling.population is not none else '' }}">
+  <label for="sampling-confidence">Confidence</label>
+  <select id="sampling-confidence" name="confidence">
+    <option value="">--</option>
+    {% for level in sampling.confidence_options %}
+    <option value="{{ level }}" {{ "selected" if sampling.confidence == level else "" }}>{{ "{:.0%}".format(level) }}</option>
+    {% endfor %}
+  </select>
+  <label for="sampling-margin">Margin of error</label>
+  <input type="number" step="0.01" min="0.01" max="0.99" id="sampling-margin" name="margin"
+    value="{{ sampling.margin if sampling.margin is not none else '' }}">
+  <button type="submit" class="btn btn-primary">Compute</button>
+</form>
+{% if sampling.result %}
+<dl class="kv">
+<div><dt>Sample size</dt><dd>{{ sampling.result.sample_size }}</dd></div>
+</dl>
+<p id="sampling-formula">{{ sampling.result.formula }}</p>
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Root-cause worksheet") %}
+<p>Trace one open issue to its likely cause: a fixed six-category (method, machine, material,
+   people, measurement, environment) fishbone shape to fill in by hand, plus a five-whys chain.
+   Nothing here is saved.</p>
+{% if not issues %}
+{% call empty.state("No issues logged yet", id="issues-empty") %}
+Log one on the <a href="/projects/{{ project.id }}/raid?as_of={{ as_of }}">RAID log</a> and it becomes
+available to trace here.
+{% endcall %}
+{% else %}
+<form method="get" action="/projects/{{ project.id }}/assist/quality">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label for="root-cause-issue">Issue</label>
+  <select id="root-cause-issue" name="issue">
+    <option value="">-- pick an issue --</option>
+    {% for row in issues %}
+    <option value="{{ row.id }}" {{ "selected" if selected_issue and selected_issue.id == row.id else "" }}>{{ row.description }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit" class="btn btn-primary">Trace</button>
+</form>
+{% if fishbone %}
+<h3>Fishbone: {{ fishbone.effect }}</h3>
+{% call scroll.wide(project.name ~ " fishbone categories") %}
+<table>
+<caption class="sr-only">Fishbone categories for {{ fishbone.effect }}</caption>
+<tr><th scope="col">Category</th><th scope="col">Candidate causes</th></tr>
+{% for cause in fishbone.categories %}
+<tr><th scope="row">{{ cause.category }}</th><td>{{ cause.causes|join(", ") if cause.causes else "(fill in by hand)" }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+<h3>Five whys</h3>
+<form method="get" action="/projects/{{ project.id }}/assist/quality">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <input type="hidden" name="issue" value="{{ selected_issue.id }}">
+  {% for i in why_depth %}
+  <label for="why-{{ i }}">Why #{{ i + 1 }}</label>
+  <input type="text" id="why-{{ i }}" name="why" value="{{ why_answers[i] if i < why_answers|length else '' }}">
+  {% endfor %}
+  <button type="submit" class="btn btn-primary">Trace the chain</button>
+</form>
+{% if whys %}
+<p id="five-whys-root-cause">Candidate root cause: <strong>{{ whys.root_cause }}</strong></p>
+{% endif %}
+{% endif %}
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Cost of quality") %}
+<p>Conformance spend (prevention + appraisal) against non-conformance spend (internal +
+   external failure). The budget's own cost categories (labour, materials, services, travel,
+   contingency) carry no conformance/non-conformance split, so there is nothing stored to read
+   this from — type the four bands by hand below; nothing typed is saved.</p>
+<form method="get" action="/projects/{{ project.id }}/assist/quality">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label for="coq-prevention">Prevention</label>
+  <input type="number" step="0.01" min="0" id="coq-prevention" name="prevention"
+    value="{{ cost_of_quality.prevention if cost_of_quality.prevention is not none else '' }}">
+  <label for="coq-appraisal">Appraisal</label>
+  <input type="number" step="0.01" min="0" id="coq-appraisal" name="appraisal"
+    value="{{ cost_of_quality.appraisal if cost_of_quality.appraisal is not none else '' }}">
+  <label for="coq-internal">Internal failure</label>
+  <input type="number" step="0.01" min="0" id="coq-internal" name="internal_failure"
+    value="{{ cost_of_quality.internal_failure if cost_of_quality.internal_failure is not none else '' }}">
+  <label for="coq-external">External failure</label>
+  <input type="number" step="0.01" min="0" id="coq-external" name="external_failure"
+    value="{{ cost_of_quality.external_failure if cost_of_quality.external_failure is not none else '' }}">
+  <button type="submit" class="btn btn-primary">Compute</button>
+</form>
+{% if cost_of_quality.result %}
+<dl class="kv">
+<div><dt>Conformance</dt><dd>{{ cost_of_quality.result.conformance }}</dd></div>
+<div><dt>Non-conformance</dt><dd>{{ cost_of_quality.result.nonconformance }}</dd></div>
+<div><dt>Total</dt><dd>{{ cost_of_quality.result.total }}</dd></div>
+</dl>
+<p id="coq-interpretation">{{ cost_of_quality.result.interpretation }}</p>
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Audit checklist") %}
+<p>Read straight off the project's own quality management plan, one line per sentence — a
+   reading list for the audit, never a pass/fail record; nothing here is scored.</p>
+{% if not checklist %}
+{% call empty.state("No quality management plan filed yet", id="checklist-empty") %}
+File one through the <a href="/projects/{{ project.id }}/wizard?as_of={{ as_of }}">wizard</a> and
+its sentences become this checklist.
+{% endcall %}
+{% else %}
+<ol id="audit-checklist">
+{% for line in checklist %}
+<li>{{ line }}</li>
+{% endfor %}
+</ol>
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Where this comes from", collapsed=True) %}
+{% for key, prov in provenance.items() %}
+<p>Technique: <strong><a href="{{ prov.reference_href }}">{{ prov.technique }}</a></strong> ·
+   PMBOK-6 process <strong>{{ prov.process }}</strong> · as of <strong>{{ prov.as_of }}</strong> ·
+   source <strong>{{ prov.source }}</strong>.</p>
+{% endfor %}
+<p>Control charts, the Pareto split and statistical sampling name no closed-catalog technique of
+   their own — nothing to cite here beyond the plain formulas above.</p>
+{% endcall %}
+
+<p><a href="/projects/{{ project.id }}/hub?as_of={{ as_of }}">&larr; Back to {{ project.name }} hub</a></p>
+{% endblock %}

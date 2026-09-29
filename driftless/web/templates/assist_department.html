@@ -1,0 +1,253 @@
+{# The department workspace: nine sections, each read off rows the store already
+   holds. module docstring in assist_department.py explains the two that launch
+   (demand vs capacity, stakeholders) and why the rest are reference links only. #}
+{% extends "base.html" %}
+{% block title %}{{ department.name }} workspace — driftless{% endblock %}
+{% block content %}
+{% import "_empty.html" as empty %}
+{% import "_scroll.html" as scroll %}
+{% import "_assist.html" as assist %}
+<h1>{{ department.name }} workspace</h1>
+<p><em>As of {{ as_of }}</em> · <a href="/org/departments/{{ department.id }}?as_of={{ as_of }}">Department detail</a></p>
+
+{{ assist.summary_strip([
+  {"label": "Objectives", "value": objectives|length},
+  {"label": "Services", "value": operations.department_services|length},
+  {"label": "Open incidents", "value": controls|sum(attribute="open_incidents") if controls else 0},
+  {"label": "Budget total", "value": ("{:,.2f}".format(budget.total) if budget.lines else "no data yet")},
+]) }}
+
+{% call assist.section("Objectives & key results") %}
+<p>The strategic objectives {{ department.name }}'s own accountable projects actively contribute to,
+   graded from their metric evidence.</p>
+{% if objectives %}
+{% call scroll.wide(department.name ~ " objectives") %}
+<table>
+<caption class="sr-only">Objectives {{ department.name }} contributes to, with status</caption>
+<tr><th scope="col">Objective</th><th scope="col">Perspective</th><th scope="col">Status</th></tr>
+{% for o in objectives %}
+<tr><td>{{ o.objective }}</td><td>{{ o.perspective }}</td><td>{{ o.status }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No project this department is accountable for contributes to an objective yet", id="objectives-empty") %}
+Link one: <code>POST /scorecard-contributions</code> naming one of this department's projects.
+{% endcall %}
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Operating plan") %}
+<p>Services this department provides, and the recurring work it runs on its own cadence.</p>
+{% if operations.department_services %}
+{% call scroll.wide(department.name ~ " services") %}
+<table>
+<caption class="sr-only">Services {{ department.name }} provides, with owner</caption>
+<tr><th scope="col">Service</th><th scope="col">Owner</th><th scope="col">Description</th></tr>
+{% for s in operations.department_services %}
+<tr><td>{{ s.name }}</td><td>{{ s.owner }}</td><td>{{ s.description }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No service is catalogued yet", id="operating-plan-services-empty") %}
+Add one: <code>POST /department-services</code> with <code>{"department_id": {{ department.id }}}</code>.
+{% endcall %}
+{% endif %}
+{% if operations.recurring_work_items %}
+{% call scroll.wide(department.name ~ " recurring work") %}
+<table>
+<caption class="sr-only">Recurring work {{ department.name }} runs, with cadence and owner</caption>
+<tr><th scope="col">Name</th><th scope="col">Cadence</th><th scope="col">Owner</th><th scope="col">Next due</th></tr>
+{% for r in operations.recurring_work_items %}
+<tr><td>{{ r.name }}</td><td>{{ r.cadence }}</td><td>{{ r.owner }}</td><td>{{ r.next_due_on }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No recurring work is tracked yet", id="operating-plan-recurring-empty") %}
+Add one: <code>POST /recurring-work</code> with <code>{"department_id": {{ department.id }}}</code>.
+{% endcall %}
+{% endif %}
+{% endcall %}
+
+{% call assist.section("RACI", chip_href=techniques.raci.href) %}
+<p>Who is responsible, accountable, consulted and informed per service — responsible is the
+   service's own owner, accountable is {{ department.name }} itself, consulted is who holds a
+   stakeholder-proxy role on this department's projects, informed is who has raised work
+   against that service. Read more: <a href="{{ techniques.raci.href }}">{{ techniques.raci.display_name }}</a>.</p>
+{% if raci %}
+{% call scroll.wide(department.name ~ " RACI matrix") %}
+<table>
+<caption class="sr-only">RACI matrix for {{ department.name }}'s services</caption>
+<tr><th scope="col">Service</th><th scope="col">Responsible</th><th scope="col">Accountable</th><th scope="col">Consulted</th><th scope="col">Informed</th></tr>
+{% for r in raci %}
+<tr class="dept-raci"><td>{{ r.service }}</td><td>{{ r.responsible }}</td><td>{{ r.accountable }}</td><td>{{ r.consulted }}</td><td>{{ r.informed }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No service is catalogued yet, so there is nothing to hold a RACI row", id="raci-empty") %}
+Add one: <code>POST /department-services</code> with <code>{"department_id": {{ department.id }}}</code>.
+{% endcall %}
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Demand vs capacity", chip_href=techniques.demand_capacity.href) %}
+<p>Each person's remaining hours against their weekly capacity, classified the same way the
+   capacity heatmap washes its grid — never a second rule for over-allocated. {{ demand_capacity.open_work_requests }}
+   work item{{ "s" if demand_capacity.open_work_requests != 1 else "" }} are open against
+   {{ demand_capacity.total_capacity }} hrs/wk of roster capacity. Technique:
+   <a href="{{ techniques.demand_capacity.href }}">{{ techniques.demand_capacity.display_name }}</a>.</p>
+{% if demand_capacity.people %}
+{% call scroll.wide(department.name ~ " demand versus capacity") %}
+<table>
+<caption class="sr-only">Demand versus capacity for {{ department.name }}'s roster</caption>
+<tr><th scope="col">Person</th><th scope="col">Capacity (hrs/wk)</th><th scope="col">Remaining hours</th><th scope="col">Reading</th></tr>
+{% for p in demand_capacity.people %}
+<tr class="dept-demand"><td>{{ p.name }}</td><td>{{ p.capacity }}</td><td>{{ p.remaining_hours }}</td><td>{{ p.mark if p.mark else "under" }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("Nobody works here yet — capacity has nothing to weigh demand against", id="demand-capacity-empty") %}
+Add someone: <code>POST /people</code> with <code>{"department_id": {{ department.id }}}</code>.
+{% endcall %}
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Service levels", chip_href=techniques.service_levels.href) %}
+<p>Target versus a plain average cycle time over the service's completed work — arithmetic
+   only, no unit conversion assumed between the target's own measure and days.
+   Technique: <a href="{{ techniques.service_levels.href }}">{{ techniques.service_levels.display_name }}</a>.</p>
+{% if service_levels %}
+{% call scroll.wide(department.name ~ " service levels") %}
+<table>
+<caption class="sr-only">Service level targets for {{ department.name }}, measured</caption>
+<tr><th scope="col">Measure</th><th scope="col">Service</th><th scope="col">Target</th><th scope="col">Window</th><th scope="col">Measured</th></tr>
+{% for sl in service_levels %}
+<tr><td>{{ sl.measure }}</td><td>{{ sl.service }}</td><td>{{ sl.target }}</td><td>{{ sl.window }}</td><td>{{ sl.measured }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No service level is set yet", id="service-levels-empty") %}
+Add one: <code>POST /service-levels</code> with <code>{"department_id": {{ department.id }}}</code>.
+{% endcall %}
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Controls & incidents", chip_href=techniques.controls.href) %}
+<p>Each control's state, computed from its linked incidents and their evidence age —
+   never a stored status column. Technique:
+   <a href="{{ techniques.controls.href }}">{{ techniques.controls.display_name }}</a>.</p>
+{% if controls %}
+{% call scroll.wide(department.name ~ " controls and incidents") %}
+<table>
+<caption class="sr-only">Operating controls for {{ department.name }}, with open incidents and computed state</caption>
+<tr><th scope="col">Control</th><th scope="col">Owner</th><th scope="col">Open incidents</th><th scope="col">Worst severity</th><th scope="col">State</th><th scope="col">Evidence age (days)</th><th scope="col">Reasons</th></tr>
+{% for c in controls %}
+<tr class="dept-control"><td>{{ c.name }}</td><td>{{ c.owner }}</td><td>{{ c.open_incidents }}</td><td>{{ c.worst_severity }}</td><td class="rag {{ c.state }}">{{ c.state }}</td><td>{{ c.evidence_age_days }}</td><td>{{ c.reasons }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No operating control is recorded yet", id="controls-empty") %}
+Add one: <code>POST /operating-controls</code> with <code>{"department_id": {{ department.id }}}</code>.
+{% endcall %}
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Improvements", chip_href=techniques.improvements.href) %}
+<p>Proposed operating changes, with the owner carrying each one.
+   Technique: <a href="{{ techniques.improvements.href }}">{{ techniques.improvements.display_name }}</a>.</p>
+{% if operations.improvements %}
+{% call scroll.wide(department.name ~ " improvements") %}
+<table>
+<caption class="sr-only">Improvements proposed for {{ department.name }}, with owner and status</caption>
+<tr><th scope="col">What</th><th scope="col">Owner</th><th scope="col">Status</th></tr>
+{% for imp in operations.improvements %}
+<tr><td>{{ imp.what }}</td><td>{{ imp.owner }}</td><td>{{ imp.status }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No improvement is proposed yet", id="improvements-empty") %}
+Propose one: <code>POST /improvements</code> with <code>{"department_id": {{ department.id }}}</code>.
+{% endcall %}
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Budget & run rate", chip_href=techniques.budget.href) %}
+<p>This department's own budget lines rolled up by category, beside the run rate of
+   recorded spend on the projects it is accountable for — the same trailing
+   {{ budget.window }}-month average the project cost workbench prints, over those
+   projects together. Technique: <a href="{{ techniques.budget.href }}">{{ techniques.budget.display_name }}</a>.</p>
+{% if budget.lines %}
+{% call scroll.wide(department.name ~ " budget") %}
+<table>
+<caption class="sr-only">Budget lines held by {{ department.name }}</caption>
+<tr><th scope="col">Category</th><th scope="col">Planned</th></tr>
+{% for line in budget.lines %}
+<tr><td>{{ line.category }}</td><td>{{ "{:,.2f}".format(line.planned) }}</td></tr>
+{% endfor %}
+<tr><th scope="row">Total</th><td id="budget-total">{{ "{:,.2f}".format(budget.total) }}</td></tr>
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No budget line is held by this department yet", id="budget-empty") %}
+Add one: <code>POST /budget-lines</code> with <code>{"department_id": {{ department.id }}}</code>.
+{% endcall %}
+{% endif %}
+{% if budget.run_rate is not none %}
+<p>Run rate over the last {{ budget.window }} month{{ budget.window | s }}: <strong id="run-rate">{{ "{:,.2f}".format(budget.run_rate) }}</strong> per month.</p>
+{% else %}
+{% call empty.state("No recorded spend on this department's projects yet — there is no run rate to compute", id="run-rate-empty") %}
+Record some: <code>POST /cost-entries</code> naming one of this department's projects.
+{% endcall %}
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Vendors", chip_href=techniques.vendors.href) %}
+<p>Procurement agreements touching this department's own accountable projects.
+   Technique: <a href="{{ techniques.vendors.href }}">{{ techniques.vendors.display_name }}</a>.</p>
+{% if vendors %}
+{% call scroll.wide(department.name ~ " vendor agreements") %}
+<table>
+<caption class="sr-only">Vendor agreements on projects {{ department.name }} is accountable for</caption>
+<tr><th scope="col">Vendor</th><th scope="col">Project</th><th scope="col">Amount</th><th scope="col">Status</th></tr>
+{% for v in vendors %}
+<tr class="dept-vendor"><td>{{ v.vendor }}</td><td>{{ v.project }}</td><td>{{ v.amount }}</td><td>{{ v.status }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No vendor agreement touches a project this department is accountable for", id="vendors-empty") %}
+Add one: <code>POST /procurement-agreements</code> naming one of this department's projects.
+{% endcall %}
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Stakeholders", chip_href=techniques.stakeholders.href) %}
+<p>Who has a stake in this department's own projects, and how engaged they are — the
+   power/interest grid. Technique:
+   <a href="{{ techniques.stakeholders.href }}">{{ techniques.stakeholders.display_name }}</a>.</p>
+{% if stakeholders %}
+{% call scroll.wide(department.name ~ " stakeholders") %}
+<table>
+<caption class="sr-only">Stakeholders of projects {{ department.name }} is accountable for</caption>
+<tr><th scope="col">Stakeholder</th><th scope="col">Project</th><th scope="col">Interest</th><th scope="col">Influence</th><th scope="col">Comms cadence</th></tr>
+{% for s in stakeholders %}
+<tr class="dept-stakeholder"><td>{{ s.name }}</td><td>{{ s.project }}</td><td>{{ s.interest }}</td><td>{{ s.influence }}</td><td>{{ s.comms_cadence }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No stakeholder is recorded on a project this department is accountable for", id="stakeholders-empty") %}
+Add one: <code>POST /stakeholders</code> naming one of this department's projects.
+{% endcall %}
+{% endif %}
+{% endcall %}
+
+<p><a href="/org/departments/{{ department.id }}?as_of={{ as_of }}">&larr; {{ department.name }} detail</a></p>
+{% endblock %}

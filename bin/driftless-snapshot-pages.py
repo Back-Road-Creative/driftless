@@ -30,6 +30,14 @@ reads a wall clock, the as-of is pinned on every request, ids are insertion orde
 bundle is regenerable output, like ``reports/``: git-ignored, never committed — and
 written only into a directory this tool created or an empty one, since a rerun clears
 ``*.html`` and ``--out`` is whatever an operator typed.
+
+A page with a form ALSO carries a second value that moves with the token: the
+reproducibility receipt's sha256 (``driftless/web/receipt.py``) is deliberately hashed
+over the exact bytes served — CSRF field included, by design, so a saved copy of the
+real page verifies against it (``tests/test_report_receipt.py``). Normalizing the token
+in the served HTML without normalizing that derived digest would leave one value still
+moving after :func:`normalize` claimed to have stopped it, so the digest is normalized
+right alongside the token it is a function of.
 """
 
 from __future__ import annotations
@@ -47,21 +55,31 @@ from fastapi.testclient import TestClient
 
 from driftless.api.app import app, get_session
 from driftless.db import Base, new_engine, new_session_factory
+from driftless.db.session import temporary_factory
 from driftless.demo.cli import seed
 from driftless.demo.data import ANCHOR, demo_payload
 from driftless.pmbok import catalog
+from driftless.web.artifacts import BY_SLUG as ARTIFACT_BY_SLUG
 from driftless.web.errors import PageRoute
+from driftless.pmbok.methods import METHODS
+from driftless.web.techniques import BY_SLUG
 
 Fetch = Callable[[str], tuple[int, str]]
 
-#: The hidden input every form-bearing page carries, and the only value that differs
-#: between two runs at one anchor.
+#: The hidden input every form-bearing page carries, and the value that differs between
+#: two runs at one anchor.
 CSRF_VALUE = re.compile(r'(name="csrf_token" value=")[^"]*"')
 PLACEHOLDER = "csrf-token-normalized-for-the-snapshot"
+#: The reproducibility receipt's sha256 (``driftless/web/receipt.py``), on a
+#: form-bearing page a function of the CSRF token above — it moves for the same
+#: reason and is normalized alongside it, never separately from the value it hashes.
+RECEIPT_DIGEST = re.compile(r"(sha256 )[0-9a-f]{64}")
+DIGEST_PLACEHOLDER = "0" * 64
 
 #: Every kind a page route is parameterized by: ``{project_id}`` is filled from
 #: ``/projects``, and so on for the rest.
-COLLECTIONS = ("project", "portfolio", "program", "department")
+COLLECTIONS = ("project", "portfolio", "program", "department", "business")
+PLURALS = {"business": "businesses"}
 
 #: Dropped into a bundle directory the first time it is written, so a later run can tell
 #: a directory this tool owns from one an operator pointed it at by mistake.
@@ -115,13 +133,19 @@ def page_urls(
 
 
 def snapshot_name(url: str) -> str:
-    """The file a captured URL is written to: its path, flattened; ``/`` is the index."""
-    return (url.split("?")[0].strip("/").replace("/", "-") or "index") + ".html"
+    """The file a captured URL is written to: its path, flattened; ``/`` is the index.
+
+    A ``?query`` and a ``#fragment`` both name something other than a file -- a
+    parameter and an in-page anchor -- so neither survives into the name."""
+    path = url.split("?")[0].split("#")[0]
+    return (path.strip("/").replace("/", "-") or "index") + ".html"
 
 
 def normalize(html: str) -> str:
-    """Rendered HTML with the per-render CSRF token replaced by a fixed placeholder."""
-    return CSRF_VALUE.sub(rf'\g<1>{PLACEHOLDER}"', html)
+    """Rendered HTML with the per-render CSRF token, and the receipt digest that
+    hashes it in, both replaced by fixed placeholders."""
+    html = CSRF_VALUE.sub(rf'\g<1>{PLACEHOLDER}"', html)
+    return RECEIPT_DIGEST.sub(rf"\g<1>{DIGEST_PLACEHOLDER}", html)
 
 
 def capture(fetch: Fetch, urls: Iterable[str]) -> dict[str, str]:
@@ -178,12 +202,25 @@ def _bundle(client: TestClient, anchor: date) -> dict[str, str]:
 
     seed(post, demo_payload(anchor), patch)
     ids = {
-        f"{kind}_id": [str(row["id"]) for row in client.get(f"/{kind}s").json()]
+        f"{kind}_id": [
+            str(row["id"]) for row in client.get(f"/{PLURALS.get(kind, f'{kind}s')}").json()
+        ]
         for kind in COLLECTIONS
     }
     # The PMBOK detail page is keyed by a frozen catalog clause rather than a stored row:
     # all 49 render one template over different reference text, so one stands for them.
     ids["process_id"] = [catalog.PROCESSES[0].id]
+    # Same shape for the technique library: its pages are keyed by a slug the frozen
+    # registry decides, not by a stored row, and all of them render one template over
+    # different reference text — so one stands for them, as above.
+    ids["slug"] = [sorted(BY_SLUG)[0]]
+    # And for the method profiles: keyed by the frozen registry, one template.
+    ids["key"] = [sorted(METHODS)[0]]
+    # Same shape again for the artifact catalog: its detail page is keyed by
+    # ``{kind_slug}`` rather than ``{slug}`` precisely so it does not collide with the
+    # technique library's id above -- two different frozen-registry parameters sharing
+    # one name would fill both from the same list.
+    ids["kind_slug"] = [sorted(ARTIFACT_BY_SLUG)[0]]
     urls = page_urls(page_templates(app.routes), ids, anchor)
     return capture(fetch, [url for group in urls.values() for url in group])
 
@@ -207,7 +244,11 @@ def main(argv: list[str] | None = None) -> int:
         try:
             # https, as production serves: over http the Secure CSRF cookie is dropped, so
             # every render would remint and no form-bearing page could repeat itself.
-            pages = _bundle(TestClient(app, base_url="https://testserver"), args.anchor)
+            with (
+                temporary_factory(factory),
+                TestClient(app, base_url="https://testserver") as client,
+            ):
+                pages = _bundle(client, args.anchor)
         finally:
             app.dependency_overrides.pop(get_session, None)
 

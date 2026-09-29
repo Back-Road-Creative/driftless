@@ -8,21 +8,25 @@
 {% extends "base.html" %}
 {% block title %}Board — {{ project.name }}{% endblock %}
 {% block content %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
 {% import "_empty.html" as empty %}
+{{ breadcrumbs.trail(project, "Board", as_of | default(None)) }}
 <h1>Board — {{ project.name }}</h1>
+{# not dated — live task statuses: the hub link below deliberately carries no as_of #}
 <p><a href="/projects/{{ project.id }}/hub">Project hub</a> · {{ total }} task{{ "s" if total != 1 }} across {{ columns|length }} columns</p>
 {% if total %}
 <div class="board">
 {% for column in columns %}
   <section class="board-col" data-column="{{ column.status }}">
-    <h2 style="font-size:1rem">{{ column.status|humanize }} <span class="badge st-muted" data-count="{{ column.status }}">{{ column.count }}</span></h2>
+    <h2>{{ column.status|humanize }} <span class="badge st-muted" data-count="{{ column.status }}">{{ column.count }}</span></h2>
     {% if column.tasks %}
-    <ol style="list-style:none; padding:0; margin:0">
-      {% for task in column.tasks %}
+    <ol>
+      {% for card in column.tasks %}{% set task = card.task %}
       <li class="card" data-task="{{ task.name }}">
         <strong>{{ task.name }}</strong> <span class="badge st-muted">{{ task.status|humanize }}</span><br>
         {{ task.workstream.name }} · {{ task.assignee.name if task.assignee else "Unassigned" }}<br>
         {{ task.percent_complete }}% complete · {{ (task.estimate|string ~ " " ~ task.estimate_unit) if task.estimate is not none else "no estimate" }}
+        {% if card.waits_for %}<br>Waits for {{ card.waits_for }} task{{ "s" if card.waits_for != 1 }}{% endif %}
       </li>
       {% endfor %}
     </ol>

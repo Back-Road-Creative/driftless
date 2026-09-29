@@ -1,7 +1,7 @@
 """Every list endpoint hands back CSV as well as JSON.
 
 The format is answered at the one registration point every list route goes
-through (``api.app._reads``), so these tests walk the app's own route table
+through (``api.crud.reads``), so these tests walk the app's own route table
 rather than naming endpoints: an entity registered later is covered with no
 edit. The JSON bodies pinned below were captured *before* the parameter existed
 — the point of adding it is that today's callers cannot tell it was. The last
@@ -30,14 +30,14 @@ _IMPORTER = Path(__file__).resolve().parents[1] / "bin" / "driftless-import.py"
 
 MASTER_TASKS = (
     b'[{"name":"Colour grade","workstream_id":1,"status":"in_progress","estimate":40.0,'
-    b'"estimate_unit":"hours","actual_effort":null,"percent_complete":25,"assignee_id":null,'
-    b'"id":1},{"name":"Deliver master","workstream_id":1,"status":"todo","estimate":null,'
-    b'"estimate_unit":"hours","actual_effort":null,"percent_complete":0,"assignee_id":null,'
-    b'"id":2}]'
+    b'"estimate_unit":"hours","actual_effort":null,"percent_complete":25,"actual_finish":null,'
+    b'"forecast_finish":null,"assignee_id":null,"id":1,"row_revision":1},{"name":"Deliver master","workstream_id":1,"status":"todo",'
+    b'"estimate":null,"estimate_unit":"hours","actual_effort":null,"percent_complete":0,'
+    b'"actual_finish":null,"forecast_finish":null,"assignee_id":null,"id":2,"row_revision":1}]'
 )
 MASTER_MILESTONES = (
     b'[{"project_id":1,"name":"Rough cut locked","target_date":"2026-08-15",'
-    b'"baseline_date":null,"status":"pending","id":1}]'
+    b'"baseline_date":null,"status":"pending","id":1,"row_revision":1}]'
 )
 
 
@@ -151,11 +151,13 @@ def test_every_list_route_answers_both_formats(client: TestClient) -> None:
 
 
 def test_exported_columns_match_every_importer_kind() -> None:
-    """Export and import meet: the exported columns minus ``id`` are the kind's own."""
+    """Export and import meet: the exported columns minus the two server-managed
+    ones (``id``, and ``row_revision`` where the kind's row carries it) are the
+    kind's own."""
     out_for = dict(_list_routes())
 
     for kind, spec in _importer().CSV_KINDS.items():
-        exported = set(out_for[spec.path].model_fields) - {"id"}
+        exported = set(out_for[spec.path].model_fields) - {"id", "row_revision"}
         assert exported == set(spec.required) | set(spec.optional), kind
 
 
@@ -163,7 +165,8 @@ def test_an_export_imports_once_its_id_column_is_dropped(seeded: TestClient) -> 
     """Values survive the trip readably: ISO date in, ISO date out, blank cell omitted."""
     exported = seeded.get("/milestones", params={"format": "csv"}).text
     rows = [
-        {k: v for k, v in row.items() if k != "id"} for row in csv.DictReader(io.StringIO(exported))
+        {k: v for k, v in row.items() if k not in ("id", "row_revision")}
+        for row in csv.DictReader(io.StringIO(exported))
     ]
     calls: list[tuple[str, dict[str, Any]]] = []
 
@@ -206,7 +209,7 @@ def test_the_importers_payloads_round_trip_through_the_real_api(seeded: TestClie
     assert {k: created.json()[k] for k in body} == body, "the setup row must land as posted"
     exported = seeded.get("/milestones", params={"format": "csv"}).text
     originals = list(csv.DictReader(io.StringIO(exported)))
-    rows = [{k: v for k, v in row.items() if k != "id"} for row in originals]
+    rows = [{k: v for k, v in row.items() if k not in ("id", "row_revision")} for row in originals]
 
     def post(path: str, payload: dict[str, Any]) -> int:
         response = seeded.post(path, json=payload)

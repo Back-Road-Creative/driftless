@@ -59,9 +59,11 @@ env:
 jobs:
   audit:
     name: pip-audit
-    # GitHub-hosted, like every other pull-request job here: this one starts on a
-    # pull request anyone may open, so it must not run on a machine we own.
-    runs-on: ubuntu-latest
+    # On the public repository this starts on a pull request anyone may open, so
+    # there it must not run on a machine we own -- and cannot: no org runner group
+    # admits a public repository. GitHub-hosted there (free for a public
+    # repository); the self-hosted pool here. See docs/testing-and-quality-gates.md.
+    runs-on: ${{ github.repository == 'Back-Road-Creative/driftless' && 'ubuntu-latest' || fromJSON('["self-hosted", "heavy"]') }}
     timeout-minutes: 20
     steps:
       - name: Checkout

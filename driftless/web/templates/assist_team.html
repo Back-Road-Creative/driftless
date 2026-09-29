@@ -1,0 +1,268 @@
+{# The team assist page: every figure comes straight off the ResourceType,
+   ResourceBreakdown, ResponsibilityAssignment, Acquisition, TrainingRecord,
+   TeamAssessment, ConflictRecord and ConflictAction rows — nothing here is a
+   second computation, matching what driftless.pmbok.mapping's resource
+   resolvers read. #}
+{% extends "base.html" %}
+{% block title %}Team — {{ project.name }}{% endblock %}
+{% block content %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{% import "_scroll.html" as scroll %}
+{% import "_empty.html" as empty %}
+{% import "_assist.html" as assist %}
+{{ breadcrumbs.trail(project, "Team", as_of) }}
+<h1>Team — {{ project.name }}</h1>
+<p><em>As of {{ as_of }}</em> ·
+   <a href="/projects/{{ project.id }}/hub?as_of={{ as_of }}">Project hub</a> ·
+   <a href="/projects/{{ project.id }}/raid?as_of={{ as_of }}">RAID log</a></p>
+
+{{ assist.summary_strip([
+  {"label": "RBS nodes", "value": rbs_rows|length},
+  {"label": "RACI rows", "value": matrix|length},
+  {"label": "Open conflicts", "value": open_conflicts|length},
+  {"label": "Assessments filed", "value": assessments|length},
+]) }}
+
+{% call assist.section("Resource breakdown structure") %}
+{% if rbs_rows %}
+{% call scroll.wide(project.name ~ " resource breakdown structure") %}
+<table>
+<caption class="sr-only">The RBS as an indented tree, each node's resource type and quantity</caption>
+<tr><th scope="col">Resource type</th><th scope="col">Kind</th><th scope="col">Quantity</th></tr>
+{% for row in rbs_rows %}
+<tr><td>{{ ("&nbsp;&nbsp;" * row.depth) | safe }}{{ row.node.resource_type.name }}</td>
+<td>{{ row.node.resource_type.kind }}</td><td>{{ row.node.quantity }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+<p>Plain-text twin:</p>
+<pre id="rbs-text">{{ rbs_text }}</pre>
+{% else %}
+{% call empty.state("No RBS nodes yet", id="rbs-empty") %}
+Add one with <code>POST /resource-breakdowns</code> (this project's id and a resource type).
+{% endcall %}
+{% endif %}
+{% endcall %}
+
+{% call assist.section("RACI matrix") %}
+{% if matrix %}
+{% call scroll.wide(project.name ~ " RACI matrix") %}
+<table>
+<caption class="sr-only">Every filed responsibility assignment: who, what role, against what</caption>
+<tr><th scope="col">Person</th><th scope="col">Role</th><th scope="col">Against</th></tr>
+{% for row in matrix %}
+<tr><td>{{ row.assignment.person.name }}</td><td>{{ row.assignment.role }}</td><td>{{ row.target }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No assignments filed yet", id="matrix-empty") %}
+File one below once a deliverable or task and a person both exist.
+{% endcall %}
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Who lacks what") %}
+{% if open_acquisitions %}
+<p id="open-acquisitions">Open acquisitions: {% for a in open_acquisitions %}{{ a.resource_type.name }} ({{ a.status }}){% if not loop.last %}, {% endif %}{% endfor %}.</p>
+{% endif %}
+{% if untrained %}
+<p id="untrained-people">No training on record: {% for p in untrained %}{{ p.name }}{% if not loop.last %}, {% endif %}{% endfor %}.</p>
+{% endif %}
+{% if not open_acquisitions and not untrained %}
+{% call empty.state("Nothing outstanding", id="gaps-empty") %}
+Every acquisition is fulfilled and everybody has at least one training record.
+{% endcall %}
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Team-assessment trend") %}
+{% if assessments %}
+{% call scroll.wide(project.name ~ " team assessment trend") %}
+<table>
+<caption class="sr-only">Every dated team-assessment reading, append-only</caption>
+<tr><th scope="col">Assessed on</th><th scope="col">Dimension</th><th scope="col">Score</th><th scope="col">Actor</th></tr>
+{% for a in assessments %}
+<tr><td>{{ a.assessed_on }}</td><td>{{ a.dimension }}</td><td>{{ a.score }}</td><td>{{ a.actor }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No assessments filed yet", id="assessments-empty") %}
+Record one below.
+{% endcall %}
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Open conflicts") %}
+{% if open_conflicts %}
+{% call scroll.wide(project.name ~ " open conflicts") %}
+<table>
+<caption class="sr-only">Every unresolved conflict, its approach and its follow-up actions</caption>
+<tr><th scope="col">Raised</th><th scope="col">Parties</th><th scope="col">Approach</th><th scope="col">Actions</th></tr>
+{% for c in open_conflicts %}
+<tr><td>{{ c.raised_on }}</td><td>{{ c.parties }}</td><td>{{ c.approach }}</td>
+<td>{% for act in actions_by_conflict.get(c.id, []) %}{{ act.owner.name }}{% if act.due_on %} (due {{ act.due_on }}){% endif %}{% if act.done_on %} — done{% endif %}{% if not loop.last %}, {% endif %}{% else %}none logged{% endfor %}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No open conflicts", id="conflicts-empty") %}
+Log one below if one is raised.
+{% endcall %}
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Preview a resource clash") %}
+<p>Read-only — nothing here files an assignment. Pick a person and a task to see the
+   heatmap over-allocation that assignment WOULD cause before filing it below. No
+   auto-levelling: the reading is yours to act on or not.</p>
+{% if people and tasks %}
+<form method="get" action="/projects/{{ project.id }}/assist/team">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label for="preview-person">Person</label>
+  <select id="preview-person" name="preview_person_id">
+    {% for p in people %}<option value="{{ p.id }}" {{ "selected" if preview_person_id == p.id }}>{{ p.name }}</option>{% endfor %}
+  </select>
+  <label for="preview-task">Task</label>
+  <select id="preview-task" name="preview_task_id">
+    {% for t in tasks %}<option value="{{ t.id }}" {{ "selected" if preview_task_id == t.id }}>{{ t.name }}</option>{% endfor %}
+  </select>
+  <button type="submit" class="btn btn-secondary">Preview clash</button>
+</form>
+{% if clash_preview %}
+{% call scroll.wide("Clash preview: " ~ clash_preview.person ~ " with " ~ clash_preview.task) %}
+<table>
+<caption class="sr-only">{{ clash_preview.person }}'s weekly hours now, and with {{ clash_preview.task }} added</caption>
+<tr><th scope="col">Week</th><th scope="col">Now</th><th scope="col">With this assignment</th></tr>
+{% for week in clash_preview.weeks %}
+<tr><td>{{ week }}</td>
+  <td class="{{ clash_preview.current.cells[loop.index0].wash }}">{{ clash_preview.current.cells[loop.index0].hours }}h {{ clash_preview.current.cells[loop.index0].mark }}</td>
+  <td class="{{ clash_preview.proposed.cells[loop.index0].wash }}">{{ clash_preview.proposed.cells[loop.index0].hours }}h {{ clash_preview.proposed.cells[loop.index0].mark }}</td>
+</tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% if clash_preview.would_overallocate %}
+<p><strong>This assignment would push {{ clash_preview.person }} over capacity</strong> in at
+   least one week that is not already over.</p>
+{% endif %}
+{% elif preview_person_id and preview_task_id %}
+<p>Nothing to preview — the task carries no estimate or no planned window yet.</p>
+{% endif %}
+{% else %}
+{% call empty.state("No people or tasks to preview a clash against yet", id="clash-preview-empty") %}
+Add a person and a task first.
+{% endcall %}
+{% endif %}
+{% endcall %}
+
+{% call assist.section("File an assignment") %}
+{% if deliverables or tasks %}
+<form method="post" action="/projects/{{ project.id }}/assist/team/assignment">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label for="assign-person">Person</label>
+  <select id="assign-person" name="person_id">
+    {% for p in people %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+  </select>
+  <label for="assign-role">Role</label>
+  <select id="assign-role" name="role">
+    <option value="responsible" selected>responsible</option>
+    <option value="accountable">accountable</option>
+    <option value="consulted">consulted</option>
+    <option value="informed">informed</option>
+  </select>
+  <p>Against exactly one of the two — the deliverable field defaults to the first
+     WBS node when any exist, so the task field defaults to unset:</p>
+  <label for="assign-deliverable">Deliverable</label>
+  <select id="assign-deliverable" name="deliverable_id">
+    {% if not deliverables %}<option value="">—</option>{% endif %}
+    {% for d in deliverables %}<option value="{{ d.id }}">{{ d.wbs_code }} {{ d.name }}</option>{% endfor %}
+  </select>
+  <label for="assign-task">Task</label>
+  <select id="assign-task" name="task_id">
+    <option value="">—</option>
+    {% for t in tasks %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
+  </select>
+  <button type="submit" class="btn btn-primary">File assignment</button>
+</form>
+{% else %}
+{% call empty.state("No deliverable or task to assign against yet", id="assignment-empty") %}
+Add a WBS node or a task first.
+{% endcall %}
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Record an assessment") %}
+<form method="post" action="/projects/{{ project.id }}/assist/team/assessment">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label for="assess-date">Assessed on</label>
+  <input type="date" id="assess-date" name="assessed_on" value="{{ as_of }}" required>
+  <label for="assess-dimension">Dimension</label>
+  <input type="text" id="assess-dimension" name="dimension" maxlength="100" value="Performing" required>
+  <label for="assess-score">Score (0-100)</label>
+  <input type="number" id="assess-score" name="score" min="0" max="100" step="1" value="70" required>
+  <label for="assess-actor">Filed by</label>
+  <input type="text" id="assess-actor" name="actor" value="web">
+  <p><label for="assess-note">Note</label><br>
+     <textarea id="assess-note" name="note" rows="2" cols="50"></textarea></p>
+  <button type="submit" class="btn btn-primary">Record assessment</button>
+</form>
+{% endcall %}
+
+{% call assist.section("Log a conflict") %}
+<form method="post" action="/projects/{{ project.id }}/assist/team/conflict">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label for="conflict-raised">Raised on</label>
+  <input type="date" id="conflict-raised" name="raised_on" value="{{ as_of }}" required>
+  <label for="conflict-parties">Parties</label>
+  <input type="text" id="conflict-parties" name="parties" maxlength="2000" value="TBD" required>
+  <label for="conflict-approach">Approach</label>
+  <select id="conflict-approach" name="approach">
+    <option value="withdraw">withdraw</option>
+    <option value="smooth">smooth</option>
+    <option value="compromise">compromise</option>
+    <option value="force">force</option>
+    <option value="collaborate" selected>collaborate</option>
+  </select>
+  <label for="conflict-actor">Filed by</label>
+  <input type="text" id="conflict-actor" name="actor" value="web">
+  <button type="submit" class="btn btn-primary">Log conflict</button>
+</form>
+{% endcall %}
+
+{% call assist.section("Log a conflict action") %}
+{% if open_conflicts %}
+<form method="post" action="/projects/{{ project.id }}/assist/team/action">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label for="action-conflict">Conflict</label>
+  <select id="action-conflict" name="conflict_id">
+    {% for c in open_conflicts %}<option value="{{ c.id }}">{{ c.raised_on }} — {{ c.parties }}</option>{% endfor %}
+  </select>
+  <label for="action-owner">Owner</label>
+  <select id="action-owner" name="owner_id">
+    {% for p in people %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+  </select>
+  <label for="action-due">Due on</label>
+  <input type="date" id="action-due" name="due_on">
+  <button type="submit" class="btn btn-primary">Log action</button>
+</form>
+{% else %}
+{% call empty.state("No open conflict to act on", id="action-empty") %}
+Log a conflict above first.
+{% endcall %}
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Where this comes from", collapsed=True) %}
+<p>Technique: <strong>{{ provenance.technique }}</strong> · PMBOK-6 process
+   <strong>{{ provenance.process }}</strong> (Acquire Resources) · as of
+   <strong>{{ provenance.as_of }}</strong>.</p>
+{% endcall %}
+
+<p><a href="/projects/{{ project.id }}/hub?as_of={{ as_of }}">&larr; Back to {{ project.name }} hub</a></p>
+{% endblock %}

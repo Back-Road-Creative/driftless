@@ -87,6 +87,36 @@ def test_task_assignee_is_writable_and_person_tasks_mirrors_it(
     assert [t.name for t in person.tasks] == ["Grade"]
 
 
+def test_task_records_actual_and_forecast_finish(session: Session, project: Project) -> None:
+    stream = Workstream(name="Post", project=project)
+    task = Task(
+        name="Grade",
+        workstream=stream,
+        estimate_unit="hours",
+        actual_finish=date(2026, 6, 15),
+        forecast_finish=date(2026, 6, 20),
+    )
+    session.add(task)
+    session.commit()
+
+    stored = session.scalars(select(Task)).one()
+    assert stored.actual_finish == date(2026, 6, 15)
+    assert stored.forecast_finish == date(2026, 6, 20)
+
+
+def test_task_actual_and_forecast_finish_default_to_null(
+    session: Session, project: Project
+) -> None:
+    stream = Workstream(name="Post", project=project)
+    task = Task(name="Grade", workstream=stream, estimate_unit="hours")
+    session.add(task)
+    session.commit()
+
+    stored = session.scalars(select(Task)).one()
+    assert stored.actual_finish is None
+    assert stored.forecast_finish is None
+
+
 def test_project_names_a_responsible_department(session: Session, project: Project) -> None:
     delivery = Department(business=project.portfolio.business, name="Delivery")
     project.responsible_department = delivery

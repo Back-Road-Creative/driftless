@@ -1,0 +1,54 @@
+# The opt-in rendered-browser tier. Deliberately NOT part of ci.yml:
+#
+#   - it is not a required check, so a flake here never blocks a merge;
+#   - it installs Chromium (~150MB), which the required Tests job must not pay for
+#     on every one of ~38 PR runs a week;
+#   - it does not supersede bin/driftless-snapshot-pages.py. That tool's header
+#     argues against a browser dependency and it stays the required floor; this
+#     answers the question it explicitly cannot -- what the pages do once laid out.
+#
+# Run it on demand from the Actions tab, or read the nightly.
+#
+# No `concurrency:` group, on purpose. The accepted risk is that a nightly or
+# dispatched browser run collides with a PR's Tests job on the shared
+# self-hosted workstation -- see ci.yml lines 176-183 for the incident record
+# (#377/#387/#389: a concurrency group serialised runs and cancelled them
+# instead). Revisit only with a group that never cancels an in-progress run.
+name: Browser checks
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '40 4 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  browser:
+    name: Rendered pages (Chromium)
+    runs-on: [self-hosted, heavy]
+    # Not on the public repository, which reaches no self-hosted runner; the
+    # nightly browser pass is this repository's to run.
+    if: github.repository != 'Back-Road-Creative/driftless'
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies and Chromium
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install -q --upgrade pip
+          .venv/bin/pip install -q ".[dev,browser]" uvicorn  # named, never declared
+          .venv/bin/python -m playwright install chromium
+
+      - name: Rendered page checks
+        # addopts is overridden wholesale: the repo default carries the coverage
+        # floor and the --ignore that hides this directory from the default run.
+        run: .venv/bin/python -m pytest tests/browser -o addopts="" -q

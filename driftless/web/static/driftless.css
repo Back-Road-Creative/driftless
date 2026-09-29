@@ -1,0 +1,521 @@
+/* Single source of truth for the palette — RAG, surface, ink, every state wash, every
+   rule and gridline. This block is the ONLY place in driftless/web/templates a colour
+   literal may be written: tests/test_web_a11y.py fails any other template that spells
+   one (findings #11 / #21), so no colour can exist that it has not computed a WCAG
+   ratio for, in the light set and the dark re-point alike. */
+:root {
+  --rag-green: #1a7a3c;
+  --rag-amber: #9a6400;
+  --rag-red: #b3261e;
+  --rag-unknown: #6b6b6b;
+  --background: #ffffff; --ink: #1a1a1a; --muted-ink: #666666; --badge-ink: #ffffff; --focus: #0b4fd4;
+  --ok-bg: #e8f6ec; --warn-bg: #fdf3e2; --bad-bg: #fbeceb; --muted-bg: #f0f0f0; --signed-bg: #cfe8e8; --signed-ink: #145454;
+  --rule: #d6d6d6; --gridline: #8f8f8f;
+  /* Non-colour tokens, declared HERE ONLY. A type step, a spacing step and a radius
+     do not change with the theme — only the colours they are combined with do — so
+     they cascade into dark untouched and the re-point below stays what it says it is:
+     the list of things a dark scheme changes. Writing one into that block as well
+     would be a second copy of a value with no reason to differ, which is the shape
+     that drifts; tests/test_web_a11y.py holds the re-point to colours only. Each
+     token replaces a literal that was spelled more than once; --fs-base gains its
+     second spelling on the control surfaces below rather than being a rename. */
+  /* Type scale (14/16/20/28) and an 8-pt spacing scale (8/16/24/32), so a card's
+     padding and a heading's size are always one family of number rather than two
+     designers' guesses. tests/test_web_a11y.py pins every value. */
+  --fs-sm: 0.875rem; --fs-base: 1rem; --fs-lg: 1.25rem; --fs-xl: 1.75rem;
+  --space-sm: 0.5rem; --space-md: 1rem; --space-lg: 1.5rem; --space-xl: 2rem;
+  --radius-sm: 3px; --radius-md: 6px;
+}
+/* The page container, on body itself rather than a wrapping div: bounded to a
+   readable width, centred past it, with the horizontal gutter as padding (the
+   breakpoint comment above .charts below reasons from this same number). */
+body {
+  font-family: system-ui, sans-serif; font-size: var(--fs-base);
+  max-width: 1280px; margin: var(--space-xl) auto; padding: 0 var(--space-lg);
+  background: var(--background); color: var(--ink);
+}
+/* 32px top margin: the title is the first thing IN the page container, below the
+   masthead bar and the nav row, and needs to read as a new section rather than
+   crowd the row above it. */
+h1 { font-size: var(--fs-xl); margin-top: 2rem; }
+h2 { font-size: var(--fs-lg); }
+/* A paragraph or list item at the container's full width runs an unreadable line;
+   a table or a figure needs every pixel it can get, so neither is capped here. */
+p, li { max-width: 72ch; }
+/* Every link reads --ink now, never the default browser blue. The underline is
+   muted at rest (--muted-ink, already rated against --background in PAIRS) and
+   strengthens to currentColor on hover or focus, so the affordance survives
+   without colour as its only carrier. */
+a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--muted-ink); text-decoration-thickness: 1px; text-underline-offset: .15em; }
+a:hover, a:focus-visible { text-decoration-color: currentColor; }
+table { border-collapse: collapse; width: 100%; }
+figure { margin: 0 0 1rem; }
+th, td { border: 1px solid var(--rule); padding: var(--space-sm) var(--space-md); text-align: left; font-size: var(--fs-base); }
+/* A totals row reads as the sum of what sits above it: heavier ink and a heavier top edge, in the gridline ink the table already uses. */
+tfoot .totals th, tfoot .totals td { font-weight: 600; border-top: 2px solid var(--gridline); }
+/* The rollup table's PAINT, once: names left, figures right, RAG centred as a word, and
+   one indent step per level of the hierarchy. home.html and drill.html render the same
+   rollup, so these live here rather than as two copies free to drift apart on alignment
+   or padding — the ownership gate covers containment only and would not have seen it. */
+.rollup th, .rollup td { text-align: right; }
+.rollup th:first-child, .rollup td:first-child { text-align: left; }
+.rollup td.rag { text-align: center; font-size: var(--fs-sm); text-transform: uppercase; font-weight: 600; }
+.rollup tr.business td { font-weight: 700; } .rollup tr.portfolio td { font-weight: 600; }
+.rollup tr.program td:first-child { padding-left: 2rem; font-style: italic; }
+.rollup tr.project td:first-child { padding-left: 2rem; }
+.rollup tr.project.nested td:first-child { padding-left: 4rem; }
+.card { border: 1px solid var(--rule); border-radius: var(--radius-md); padding: 0.8rem; margin: var(--space-md) 0; }
+/* One rule per member of calc's RagStatus vocabulary, never per severity that happens
+   to reach a card today: green and unknown had none, so the rail's two data-signal
+   items (severity "unknown") drew no stripe and "no severity shown" read exactly like
+   "not a severity we style". tests/test_web_a11y.py walks RAG_SEVERITY, not this list. */
+.sev-red { border-left: 6px solid var(--rag-red); }
+.sev-amber { border-left: 6px solid var(--rag-amber); }
+.sev-green { border-left: 6px solid var(--rag-green); }
+.sev-unknown { border-left: 6px solid var(--rag-unknown); }
+.st-ok { background: var(--ok-bg); }
+.st-signed { background: var(--signed-bg); color: var(--signed-ink); }
+.st-warn { background: var(--warn-bg); }
+.st-bad { background: var(--bad-bg); }
+.st-muted { background: var(--muted-bg); color: var(--muted-ink); }
+dl.legend { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem var(--space-sm); margin: var(--space-md) 0; font-size: 0.8rem; }
+dl.legend dt { margin: 0; }
+dl.legend dd { margin: 0 1rem 0 0.15rem; }
+.badge { display: inline-block; padding: 0 0.3rem; border-radius: var(--radius-sm); font-size: var(--fs-sm); }
+.green { color: var(--rag-green); } .amber { color: var(--rag-amber); } .red { color: var(--rag-red); } .unknown { color: var(--rag-unknown); }
+.sev-badge { color: var(--badge-ink); padding: 0 .35rem; border-radius: var(--radius-sm); font-size: var(--fs-sm); text-transform: uppercase; font-weight: 600; }
+/* The badge PRINTS the severity as a word; the fill only reinforces it. Same closed
+   vocabulary — an unfilled badge is --badge-ink on the page, i.e. white on white. */
+.sev-red .sev-badge { background: var(--rag-red); } .sev-amber .sev-badge { background: var(--rag-amber); }
+.sev-green .sev-badge { background: var(--rag-green); } .sev-unknown .sev-badge { background: var(--rag-unknown); }
+/* The masthead: a full-width bar (a 1px rule under it, not a card floating in the
+   page) with the brand on the left and the utility links — Search, Sign in/out,
+   the as-of chip where a page carries one — right-aligned on the SAME row via
+   justify-content: space-between over exactly two children. Wraps to two lines
+   rather than overflowing on a narrow viewport, where "right-aligned" stops
+   applying (there is no longer a shared row to align across). */
+.masthead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-sm) var(--space-md); margin: 0 0 var(--space-md); border-bottom: 1px solid var(--rule); padding: .75rem 0; }
+.masthead-brand, .masthead-utility { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm) var(--space-md); }
+/* A logotype, not prose: the underline every other link carries would read as
+   the wordmark being the odd one out on its own row, not as a link like the rest. */
+.wordmark { text-decoration: none; font-weight: 600; letter-spacing: .06em; font-size: var(--fs-lg); }
+.masthead-project { color: var(--muted-ink); }
+/* _breadcrumbs.html's trail: reads smaller and quieter than body text, the way a
+   nav trail should sit under the title it leads to rather than compete with it. */
+.breadcrumbs { font-size: var(--fs-sm); color: var(--muted-ink); }
+/* _empty.html's ONE empty-state shape: a dashed box (never a solid --card border,
+   so it never reads as a populated card at a glance) around the title and the
+   next-step body every caller supplies. */
+.empty-state { border: 1px dashed var(--rule); border-radius: var(--radius-md); padding: var(--space-md); margin: var(--space-md) 0; }
+/* base.html's post-write banner: the same washed-green surface an OK status
+   already reads as, so a save confirmation does not look like plain prose. */
+.flash-message { background: var(--ok-bg); }
+/* threats.html's page links: laid out like the .rail lists elsewhere, not the
+   default block stack that ran each link onto its own line. */
+.pager { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm) var(--space-md); margin: var(--space-md) 0; }
+/* An intro paragraph, one step larger than body copy and muted, so it reads as
+   framing rather than the first sentence of the content it introduces. */
+.lede { font-size: var(--fs-lg); color: var(--muted-ink); }
+/* A source citation under a catalog entry: quiet metadata, not body prose. */
+.provenance { font-size: var(--fs-sm); color: var(--muted-ink); }
+/* The technique/artifact/glossary catalogs: three <dl> shapes, one per page, that
+   are the same term/definition list, so they share one rule rather than three
+   copies free to drift on spacing. */
+.technique-index, .artifact-index, .glossary { margin: 0 0 var(--space-md); }
+.technique-index dt, .artifact-index dt, .glossary dt { font-weight: 600; margin-top: var(--space-sm); }
+.technique-index dd, .artifact-index dd, .glossary dd { margin: 0 0 var(--space-sm); }
+/* method_detail.html's per-practice "Running it well" / "Going wrong looks like"
+   block: a quiet aside inside the practice's <dd>, set off from the summary and
+   crosswalk above it rather than reading as more of the same sentence. */
+.practice-content { margin-top: var(--space-sm); }
+.practice-content p { margin: 0; }
+.practice-content ul { margin: 0 0 var(--space-sm); padding-left: 1.1rem; font-size: var(--fs-sm); }
+/* scorecard.html's objective card: the name and its status badge share a row,
+   the badge pinned to the far end rather than trailing straight after the title. */
+.scorecard-objective header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-sm); }
+/* project_hub.html's per-area completeness readout: quiet metadata beside the
+   headline completeness figure, not a second headline. */
+.hub-area { font-size: var(--fs-sm); color: var(--muted-ink); }
+/* threats.html's per-project grouping heading: extra clearance above so a new
+   project's cards read as a new group, not a continuation of the one before it. */
+.project-group { margin-top: var(--space-lg); }
+/* scorecard.html's per-perspective section and its "nothing configured" line;
+   project_hub.html's own scorecard-contribution card reuses the same wash. */
+.scorecard-perspective { margin: 0 0 var(--space-lg); }
+.scorecard-empty { color: var(--muted-ink); }
+.scorecard-lens { margin: 0 0 var(--space-md); }
+/* project_hub.html's milestone table: the name column reads as a header word,
+   and a slipped badge sits a step off the status text it follows rather than
+   crowding it. */
+.ms-name { font-weight: 600; }
+.ms-slipped { margin-left: var(--space-sm); }
+.masthead-utility a { font-size: var(--fs-sm); }
+.as-of-chip { display: inline-block; background: var(--muted-bg); color: var(--muted-ink); padding: .15rem .6rem; border-radius: 999px; font-size: var(--fs-sm); }
+/* bin/driftless-showcase.py stamps this notice onto every exported page and carries
+   its own inline fallback style (a 2px --focus border) for a bundle viewed with no
+   server behind it; that script is not ours to edit. The element+class selector
+   here (0,0,1,1) outranks its bare class one (0,0,1,0) regardless of cascade
+   order, so an export that inlines driftless.css — every export does — renders
+   this slim muted bar instead of the shouted blue box. */
+aside.showcase-notice { border: none; border-bottom: 1px solid var(--rule); background: var(--muted-bg); color: var(--muted-ink); padding: var(--space-sm) 0; margin: 0 0 var(--space-md); font-size: var(--fs-sm); }
+/* Grouping is presentational only — every href stays reachable, never behind a
+   collapsible group or a JS-only disclosure (tests/test_web_click_path_bound.py
+   forbids exactly that). Three clusters (Work / Method / Organization) sit in
+   ONE row on a desktop-width viewport — 32px apart, each a column of its own
+   caption above its links — and wrap onto stacked rows on a narrow one, with
+   no second breakpoint: flex-wrap alone decides, off each cluster's own
+   content width, so nothing here needs the 60rem query below to know about. */
+.primary-nav { display: flex; flex-wrap: wrap; gap: 2rem; max-width: 100%; }
+/* A flex item's default min-width is its content's own, unshrunk — the browser's own
+   gotcha, not a design choice — so a cluster whose links outrun the viewport pushed
+   the WHOLE page wider than it rather than wrapping. min-width: 0 lets it shrink and
+   wrap its own links instead of stretching the page under every other row. */
+.nav-cluster { display: flex; flex-direction: column; gap: .3rem; min-width: 0; }
+.nav-cluster ul { display: flex; flex-wrap: wrap; gap: .3rem 1rem; list-style: none; margin: 0; padding: 0; font-size: .95rem; }
+.nav-group-label { color: var(--muted-ink); font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: .04em; }
+/* The mobile nav disclosure: a checkbox hidden off-screen (never display:none — that
+   would drop it from the accessibility tree) plus a label toggling it, both invisible
+   above the breakpoint where .primary-nav renders exactly as it always has. Below the
+   breakpoint (see @media further down) the label appears and the checkbox starts
+   unchecked, so the three clusters sit hidden until a reader opts in. */
+/* `display: none` above the breakpoint, not just `opacity: 0`: a 1px transparent
+   checkbox is still IN the accessibility tree, and its <label> is display:none at
+   this width, so a screen reader met an unlabelled control that toggles nothing
+   (axe "Form elements must have labels", #nav-toggle). base.html says this
+   control renders only at the mobile breakpoint; now the stylesheet agrees. */
+.nav-toggle-checkbox { display: none; position: absolute; width: 1px; height: 1px; opacity: 0; }
+.nav-toggle-label { display: none; cursor: pointer; font-weight: 600; padding: .4rem 0; }
+form.inline { display: inline; }
+/* LAYOUT lives here and nowhere else. tests/test_web_responsive.py fails any page-local
+   <style> or style= that declares display:flex/grid, flex, overflow or min-/max-width,
+   so a surface cannot lay itself out one way on the dashboard and another on the drill
+   page. Every row below wraps rather than clipping, which is what carries the design
+   down to a tablet without hiding a column. */
+.tiles { display: flex; flex-wrap: wrap; gap: 1rem; margin: 1rem 0 2rem; }
+.tile { border: 1px solid var(--rule); border-radius: var(--radius-md); padding: .7rem 1.2rem; min-width: 9rem; }
+.tile b { display: block; font-size: var(--fs-sm); text-transform: uppercase; color: var(--muted-ink); }
+.value { font-size: 1.6rem; font-weight: 600; }
+.command { display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: flex-start; }
+.command > .heat { flex: 3 1 36rem; min-width: 0; } .command > .rail { flex: 1 1 18rem; }
+.charts { display: flex; flex-wrap: wrap; gap: 1.5rem; margin: 0 0 1.5rem; }
+.chart-curve, .chart-treemap { flex: 1 1 22rem; min-width: 0; }
+.evm figcaption { font-size: .8rem; color: var(--muted-ink); margin-bottom: .2rem; }
+.evm p { font-size: .85rem; margin: .2rem 0; }
+.board { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start; }
+.board-col { flex: 1 1 12rem; min-width: 12rem; }
+.board-col h2 { font-size: 1rem; }
+.board-col ol { list-style: none; padding: 0; margin: 0; }
+.rings { display: flex; flex-wrap: wrap; gap: .6rem; margin: .6rem 0; }
+.rings > span { display: inline-flex; align-items: center; }
+.ring { vertical-align: middle; margin-right: .35em; }
+form.narrow { max-width: 22rem; }
+/* The one place a control's own surface is drawn, so the sign-off <select>, the
+   status-update <textarea> and every text <input> stop being browser-default and
+   start reading as part of the same system as a .card or a .badge. */
+input, select, textarea, button {
+  font-family: inherit; font-size: var(--fs-base);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--rule); border-radius: var(--radius-sm);
+  /* A <textarea> sizes itself from the `cols` default, in glyphs, knowing nothing
+     about the viewport -- and the padding above is added OUTSIDE that width, so
+     styling the control is what pushed it past the edge. On a 390px phone the
+     status page scrolled 23px sideways because of exactly this. Found by
+     tests/browser, which is the first gate in this repo that lays a page out. */
+  box-sizing: border-box; max-width: 100%;
+}
+/* Button hierarchy, layered on the control surface above (border, radius, padding
+   already apply to every <button>). Eight buttons shipped bare and identical, so
+   the primary submit of a form read exactly like an auxiliary sign-off beside it —
+   the eye had to read every label to find the one action the page was for. Filled
+   in --ink text on --badge-ink rather than --focus: --focus rates only 3:1 against
+   the page (it is a UI-boundary token, not a text one), and the focus ring's own
+   outline stacking on a --focus fill would land at 2.56:1 light / 1.70:1 dark
+   against the button beneath it. --badge-ink on --ink measures 17.40:1 light,
+   14.90:1 dark (test_web_a11y.py PAIRS) — both tokens already declared, so the
+   fill needs no new token and no dark re-point. .btn-secondary adds no fill,
+   so it reads as the lesser of a pair without competing with .btn-primary. */
+.btn { font-weight: 600; cursor: pointer; }
+.btn-primary { background: var(--ink); color: var(--badge-ink); border-color: var(--ink); }
+.btn-secondary { background: var(--background); color: var(--ink); }
+/* A grid too wide for the viewport SCROLLS; it never clips and nothing is ever hidden —
+   a manager on a tablet must not decide without the column that mattered. min-width:100%
+   keeps the desktop rendering (a table narrower than the box still fills it) while
+   width:max-content lets a wider one keep readable columns and scroll instead of
+   crushing them. _scroll.html is the only way one of these is written, so it always
+   carries tabindex=0 (a keyboard can scroll it) and a named role=region (a reader
+   announces it) — the affordance cannot be mouse-only by construction.
+   position:relative is LOAD-BEARING, not decoration. .sr-only below is position:absolute,
+   and an absolutely positioned box is laid out against its nearest POSITIONED ancestor —
+   with none, that is the initial containing block, which no intermediate overflow box
+   clips. So every off-screen span inside a grid wider than the viewport sat outside this
+   box's clip and stretched the DOCUMENT to the widest one's right edge: /process-map, 50
+   such spans, 2030px of document inside a 1280px viewport (475px of that reachable, 1357px
+   at 390px) while this box itself measured a correct 1232px and scrolled its own 2026px
+   internally. The container was never failing to constrain its table — it was failing to
+   BE the containing block for what the table's cells positioned out of it. One word makes
+   it one, for this and every wide surface after it. Found by tests/browser, the only tier
+   that lays a page out; tests/test_web_responsive.py sees the declared container and stops. */
+.scroll-x { overflow-x: auto; max-width: 100%; position: relative; }
+.scroll-x > table { min-width: 100%; width: max-content; }
+/* /process-map's business grid, and nothing else. Ten knowledge-area rows by six process
+   groups of stacked process chips is wider than any viewport and taller than most, so both
+   headings are FROZEN rather than scrolled away: the knowledge area pins to the left edge
+   while the process-group columns pass under it, and the group headings pin to the top edge
+   while the areas pass under them. A figure in the middle of the grid keeps both of the
+   words that say what it counts.
+   Vertical freezing needs a scrollport to freeze against, which is what the max-height is
+   for: this box already scrolls horizontally, and an unbounded height would leave `top: 0`
+   inert against a page the box does not scroll. 80vh keeps the grid one screen's worth and
+   never clips — past it the box scrolls, the same bargain as sideways.
+   The offsets: the frozen column's own width IS what a body cell must clear, so it is fixed
+   and border-box (11rem — the longest area name, "Stakeholder Management", wraps inside it
+   rather than truncating, and a 390px phone at 24.375rem keeps 13rem of grid to scroll).
+   Edges are box-shadow, not border: border-collapse merges a sticky cell's border into the
+   cell it slides over and the rule disappears at exactly the moment it is doing the work.
+   z-index orders four layers, and the order is not free: the frozen column (1) sits above
+   the body cells it slides over, the header row (2) above the column because thead comes
+   FIRST in the document and would otherwise paint under every row below it, and the corner
+   where the two bands cross (3) above both. */
+.scroll-x:has(> .process-grid) { max-height: 80vh; }
+.process-grid thead th { position: sticky; top: 0; z-index: 2; background: var(--background); box-shadow: 0 1px 0 var(--rule); }
+.process-grid .pg-area { position: sticky; left: 0; z-index: 1; background: var(--background); box-sizing: border-box; width: 11rem; min-width: 11rem; max-width: 11rem; overflow-wrap: anywhere; box-shadow: 1px 0 0 var(--rule); }
+.process-grid thead .pg-area { z-index: 3; box-shadow: 1px 0 0 var(--rule), 0 1px 0 var(--rule); }
+/* Keyboard and screen reader: a focus ring nothing removes, a skip link that
+   appears on focus ahead of the nav, and the off-screen text that keeps a colour
+   wash from being a state's only carrier (never display:none — that is unread). */
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.skip { position: absolute; left: -9999px; }
+.skip:focus { left: .5rem; top: .5rem; background: var(--background); padding: var(--space-sm); z-index: 2; }
+/* home.html's dashboard specifics, promoted out of that page's own page-local <style>
+   block: a class defined only there was invisible to every OTHER page whose markup used
+   it, which is how /org/heatmap's legend rendered .chip swatches with no box at all —
+   heatmap.html extends base.html, and base.html carries no <style> block of its own. */
+nav.businesses a { margin-right: 1rem; }
+td.burn { text-align: center; padding: .15rem .4rem; }
+svg.burn { display: block; margin: 0 auto; }
+.burn-ac { fill: none; stroke: currentColor; stroke-width: 1.5; }
+.burn-bac { stroke: var(--rag-unknown); stroke-width: 1; stroke-dasharray: 2 2; }
+td.burn-empty { text-align: center; color: var(--rag-unknown); }
+.rail li { font-size: .85rem; }
+.rail ol { list-style: none; margin: 0; padding: 0; } .rail .action { display: block; font-style: italic; margin: .2rem 0; }
+.chart-curve h2, .chart-treemap h2 { font-size: 1rem; margin: 0 0 .4rem; }
+.axis-baseline { stroke: var(--rag-unknown); stroke-width: 1; }
+.s-line { fill: none; stroke: currentColor; stroke-width: 2; }
+.s-line.ac { stroke-dasharray: 7 3; }
+/* A halo in the page colour under each end label: the two series meet the right
+   edge exactly where their figures print, so the label is read over the line. */
+text.curve-label { fill: currentColor; font-size: .7rem; paint-order: stroke; stroke: var(--background); stroke-width: 3px; stroke-linejoin: round; }
+text.tm-label { fill: var(--badge-ink); font-size: .75rem; }
+.legend { font-size: .8rem; }
+.chip { display: inline-block; width: .65rem; height: .65rem; border-radius: 2px; background: currentColor; margin: 0 .3rem 0 .8rem; }
+.legend .chip:first-child { margin-left: 0; }
+svg.treemap a { cursor: pointer; }
+rect.tm { stroke: none; }
+rect.tm.green { fill: var(--rag-green); } rect.tm.amber { fill: var(--rag-amber); }
+rect.tm.red { fill: var(--rag-red); } rect.tm.unknown { fill: var(--rag-unknown); }
+/* The method map: kind is carried by the shape's own radius, never fill alone. Wash
+   reuses the SAME .st-* classes the process-map cell prints, applied to fill (an SVG
+   shape has no background). */
+.node-shape { fill: var(--background); stroke: var(--ink); stroke-width: 1.5; }
+.node-technique .node-shape { rx: 999; }
+.node-artifact .node-shape { rx: 2; }
+.node text { font-size: var(--fs-sm); fill: var(--ink); }
+.node.focus .node-shape { stroke-width: 3.5; }
+.node.focus-neighbour .node-shape { stroke-width: 2.5; }
+.node.st-ok .node-shape { fill: var(--ok-bg); }
+.node.st-signed .node-shape { fill: var(--signed-bg); }
+.node.st-warn .node-shape { fill: var(--warn-bg); }
+.node.st-muted .node-shape { fill: var(--muted-bg); }
+/* --ink is not rated against these two washes; the badge's own text colour follows. */
+.node.st-signed text { fill: var(--signed-ink); }
+.node.st-muted text { fill: var(--muted-ink); }
+.edge { fill: none; stroke: var(--gridline); stroke-width: 1; }
+/* Tie kind is carried by the dash pattern, never by colour alone — four ties, four
+   patterns, so data-tie is legible in greyscale, in print, or with the wash removed. */
+/* Arrowheads: one <marker> per tie kind (method_map.html's own <defs>), so the
+   dash pattern is never the only thing saying which end is the target. */
+.edge-reads { stroke-dasharray: none; marker-end: url(#arrow-reads); }
+.edge-produces { stroke-dasharray: 6 3; marker-end: url(#arrow-produces); }
+.edge-used_by { stroke-dasharray: 2 2; marker-end: url(#arrow-used_by); }
+.edge-feeds { stroke-dasharray: 8 2 2 2; marker-end: url(#arrow-feeds); }
+/* Widened from 1 3 (period 4, same cycle length as used_by's 2 2) so the two
+   dotted ties no longer repeat on the same period at the .75px edge stroke
+   width -- still a tight dot with a wide gap either side (MP08). */
+.edge-part_of { stroke-dasharray: 1 5; marker-end: url(#arrow-part_of); }
+/* static/map.js's interaction layer — the only motion on this page, so it is
+   exactly what reduced-motion below turns off. */
+.node, .edge { transition: opacity 0.15s ease; }
+.map-active .node:not(.node-lit) .node-shape, .map-active .node:not(.node-lit) text { opacity: 0.35; }
+.map-active .edge:not(.edge-lit) { opacity: 0.2; }
+.node-lit .node-shape { filter: drop-shadow(0 0 3px currentColor); }
+.edge-lit { stroke: currentColor; stroke-width: 2; }
+.node-hidden, .edge-hidden { display: none; }
+.map-flow-only .edge:not(.edge-feeds) { display: none; }
+.map-panel { border: 1px solid var(--rule); border-radius: var(--radius-md); padding: var(--space-md); margin: var(--space-md) 0; }
+.map-filters fieldset { display: inline-block; border: 1px solid var(--rule); border-radius: var(--radius-sm); margin: 0 var(--space-md) var(--space-md) 0; padding: var(--space-sm); }
+.map-filters label { margin-right: var(--space-sm); font-size: var(--fs-sm); }
+/* ONE width breakpoint, and this is why 60rem (960px): the dashboard's command split is
+   36rem of heatmap + 18rem of rail + a 1.5rem gap = 55.5rem, which stops fitting inside
+   the page container's 1.5rem gutters at 58.5rem of viewport — so 60rem is the width the desktop
+   reading genuinely ends, not a device name. A landscape tablet (1024px) still gets the
+   two-column desktop layout; a portrait one (768px) gets the wrapped layout with wider
+   gutters reclaimed for content. Below it nothing is hidden or dropped: the flex rows
+   above wrap, .scroll-x scrolls, and the SVG charts scale on their viewBox. Two charts
+   carry the same figures as text: gantt.html repeats every bar and every mark as a row
+   of a real table underneath it, and home.html's cost S-curve repeats every sampled
+   date with its planned and actual totals. The rest do not — the portfolio treemap,
+   the weekly-status trend and the EVM curve have an aria-label and their own
+   in-SVG labels, and where text does sit under one (the EVM figures) it is the current
+   as-of position rather than the plotted series. That is a weaker guarantee, written
+   here as the weaker one on purpose: a comment claiming more than the markup gives is
+   what a reviewer trusts instead of checking. A second breakpoint would need its own
+   paragraph here; the test pins there being one. */
+@media (max-width: 60rem) {
+  body { margin: var(--space-md) auto; padding: 0 var(--space-md); }
+  .charts svg, figure svg { max-width: 100%; height: auto; }
+  .nav-toggle-checkbox { display: block; }
+  .nav-toggle-label { display: inline-block; }
+  .primary-nav { display: none; }
+  .nav-toggle-checkbox:checked ~ .primary-nav { display: flex; }
+}
+/* Dark theme (audit finding #21): one media query re-pointing EVERY token above
+   to a dark-legible variant — surface, ink and washes included, so no rule below
+   the :root block needs a dark twin and light mode is untouched. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --rag-green: #4cc77d;
+    --rag-amber: #e0a83e;
+    --rag-red: #f2665a;
+    --rag-unknown: #9a9a9a;
+    --background: #151515; --ink: #e8e8e8; --muted-ink: #999999; --badge-ink: #151515; --focus: #8ab4ff;
+    --ok-bg: #16301f; --warn-bg: #33280f; --bad-bg: #331815; --muted-bg: #232323; --signed-bg: #103836; --signed-ink: #e8e8e8;
+    --rule: #333333; --gridline: #6a6a6a;
+  }
+}
+/* Off entirely, not merely shortened — the same reduced-motion contract
+   driftless.js's count-up already honours. */
+@media (prefers-reduced-motion: reduce) {
+  .node, .edge { transition: none; }
+  .node-lit .node-shape { filter: none; }
+}
+/* charts (_chart.html): every server-rendered S-curve now scales to its column
+   at a fixed 16:7 aspect (320x140 viewBox) rather than a fixed pixel box, so it
+   reads full-width on a wide monitor and still shrinks on a phone without ever
+   clipping — the viewBox is the only thing that ever changes its geometry. Its
+   text scales with it, so a 44rem cap keeps a full-column chart's tick labels
+   at body size rather than headline size. */
+.scurve { width: 100%; max-width: 44rem; height: auto; display: block; aspect-ratio: 16 / 7; }
+.gridline { stroke: var(--gridline); stroke-width: .5; opacity: .35; }
+text.tick-label { fill: var(--muted-ink); font-size: .75rem; }
+/* The chart's own data table, tucked behind a toggle: closed by default so the
+   picture is what a reader meets first, one keystroke from the same rows the
+   chart's aria-label only summarises. */
+details.figures { margin-top: .4rem; }
+details.figures summary { cursor: pointer; color: var(--muted-ink); font-size: .85rem; }
+/* assistants */
+/* The one assistant-page shape _assist.html's macros draw: a summary strip of
+   tiles, then every technique as its own card with its title and an optional
+   "about this technique" chip, collapsing to one muted line when it holds no
+   rows. .assist-summary is only .tiles with its own margin, so a page can carry
+   the strip immediately under its intro paragraph without the dashboard's
+   larger bottom gap. */
+.assist-summary { margin: 0 0 1.5rem; }
+.assist-card { padding: 1rem 1.2rem; }
+.assist-card-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--space-sm); margin: 0 0 var(--space-sm); }
+.assist-card-head h2 { margin: 0; }
+.assist-empty { color: var(--muted-ink); margin: 0; }
+/* The technique chip: a small pill, never a full-width link, so "about this
+   technique" reads as chrome beside a card's title rather than a second
+   sentence of body copy. Named .tech-chip rather than .chip: that class
+   already draws the method-map legend's colour swatch (a small square,
+   background: currentColor), an unrelated shape this must not collide with.
+   showcase-unavailable (bin/driftless-showcase.py's own stand-in for a link
+   the export cannot serve) gets the same pill so an export never reads as a
+   broken link where a live render shows a chip. */
+.tech-chip { display: inline-block; padding: .1rem .5rem; border-radius: 999px; border: 1px solid var(--rule); font-size: var(--fs-sm); text-decoration: none; color: var(--muted-ink); }
+.tech-chip:hover, .tech-chip:focus-visible { color: var(--ink); text-decoration: underline; }
+span.showcase-unavailable { display: inline-block; padding: .1rem .5rem; border-radius: 999px; border: 1px solid var(--rule); font-size: var(--fs-sm); color: var(--muted-ink); }
+/* A small two-column key/value result — a reserve analysis, an EVM what-if — as
+   a definition list rather than a one-row-per-figure table: a real multi-row
+   listing (the cost aggregation by category, the risk register) stays a
+   <table>, which is what a reader can sort or scan a column of; a single
+   result's own figures read faster as a label stacked over its value. */
+dl.kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: var(--space-sm) var(--space-md); margin: 0 0 var(--space-md); }
+dl.kv div { border: 1px solid var(--rule); border-radius: var(--radius-sm); padding: .5rem .7rem; }
+dl.kv dt { font-size: var(--fs-sm); color: var(--muted-ink); margin: 0; }
+dl.kv dd { margin: 0; font-weight: 600; }
+/* /org/heatmap's capacity grid, and nothing else — three things a plain table could not
+   do. (1) The LOAD BAR. Every cell below the amber threshold used to paint identically,
+   so 5% of a person's week and 78% of one were the same blank box and the heat lived in
+   the digits alone. --load is that cell's own share, written by heatmap.html as an inline
+   custom PROPERTY (a value, not a layout rule — test_web_responsive's ownership gate
+   still owns display/overflow/min-/max-width) and drawn as a bar along the bottom edge in
+   currentColor, so it needs no token of its own. Length is not colour; and the percentage
+   prints as text beside it, which is what carries the reading where a fill is dropped
+   altogether — greyscale, forced-colours, print. (2) The FROZEN pair. Person and Capacity
+   pin to the left edge of .scroll-x while up to twenty-six week columns pass under them,
+   so a figure half way across still belongs to a name. Their widths are fixed and
+   border-box, and .hm-cap's left offset IS .hm-who's width — on any other number the two
+   overlap, which is why tests/test_web_heatmap.py reads both out of this file and compares
+   them. 8rem + 6rem = 14rem, so a 390px phone (24.375rem) still has grid left to scroll.
+   Names WRAP rather than truncate: nothing is hidden at a narrow width, here either.
+   (3) The legend chips. .chip's own currentColor fill is declared later in this file than
+   the .st-* washes and would otherwise flatten all four to one colour, so the wash needs
+   the extra class to win — the words beside them are the key regardless. */
+.heatmap-grid .hm-who, .heatmap-grid .hm-cap { position: sticky; z-index: 1; background: var(--background); box-sizing: border-box; overflow-wrap: anywhere; }
+.heatmap-grid .hm-who { left: 0; width: 8rem; min-width: 8rem; max-width: 8rem; }
+.heatmap-grid .hm-cap { left: 8rem; width: 6rem; min-width: 6rem; max-width: 6rem; box-shadow: 1px 0 0 var(--rule); }
+.heatmap-grid td.hm-cell { text-align: right; white-space: nowrap; background-image: linear-gradient(to right, currentColor 0 var(--load, 0%), transparent var(--load, 0%)); background-repeat: no-repeat; background-size: 100% 0.25rem; background-position: left bottom; }
+.hm-legend .chip { background: var(--background); border: 1px solid var(--gridline); }
+.hm-legend .chip.st-warn { background: var(--warn-bg); }
+.hm-legend .chip.st-bad { background: var(--bad-bg); }
+.hm-legend .chip.st-muted { background: var(--muted-bg); }
+/* _help.html's disclosure: a quiet card, no JS needed. */
+.how-to-read { border: 1px solid var(--rule); border-radius: var(--radius-md); padding: .6rem 1rem; margin: 0 0 var(--space-md); background: var(--muted-bg); }
+.how-to-read summary { cursor: pointer; font-weight: 600; }
+.how-to-read[open] summary { margin-bottom: var(--space-sm); }
+/* techniques.html: what a family IS, under its heading, and the support-tier key
+   above the tables. The tier is always a WORD in its own column, so neither the key
+   nor the cell carries meaning in colour or position that a reader without either
+   would lose. No colour of its own beyond the muted ink the rest of the page uses. */
+.family-note { color: var(--muted-ink); margin: 0 0 var(--space-sm); }
+.tier-legend { margin: 0 0 var(--space-md); }
+.tier-legend dt { font-weight: 600; }
+.tier-legend dd { margin: 0 0 var(--space-sm); color: var(--muted-ink); }
+/* _worksheet.html's printable form; @media print rules its textareas and chrome. */
+.worksheet { border: 1px solid var(--rule); border-radius: var(--radius-md); padding: 1rem 1.2rem; margin: 0 0 var(--space-lg); }
+.worksheet-section { border: 1px solid var(--rule); border-radius: var(--radius-sm); margin: 0 0 var(--space-md); padding: .6rem .8rem; }
+.worksheet-section legend { font-weight: 600; padding: 0 .4rem; }
+.worksheet-field { margin: 0 0 var(--space-sm); }
+.worksheet-textarea { display: block; width: 100%; box-sizing: border-box; margin-top: .3rem; font: inherit; }
+.worksheet-outputs { color: var(--muted-ink); }
+.worksheet-print-hint { color: var(--muted-ink); font-size: var(--fs-sm); }
+.worksheet-steps { list-style: none; margin: 0; padding: 0; } .worksheet-steps li { margin: 0 0 .4rem; }
+/* artifact_detail.html's per-field guidance line, inside the label so a screen reader reads it with the field. */
+.template-guidance { display: block; font-weight: 400; color: var(--muted-ink); font-size: var(--fs-sm); }
+@media print {
+  .masthead, nav[aria-label="Primary"], .flash-message { display: none; }
+  .worksheet { border: none; padding: 0; }
+  .worksheet-textarea {
+    border: none; resize: none; height: 4.5rem;
+    background-image: repeating-linear-gradient(to bottom, transparent, transparent 1.4rem, var(--rule) 1.4rem, var(--rule) calc(1.4rem + 1px));
+  }
+}
+/* ``_related.html``'s shared "Related" block: one section, its groups laid out as
+   a simple responsive grid of titled lists rather than one long column, so a
+   process page with eight groups still scans in a glance. No colour of its own —
+   only the rule/spacing tokens every other card already draws from, so the block
+   carries no new contrast pair for tests/test_web_a11y.py to check. */
+.related { border-top: 1px solid var(--rule); padding-top: var(--space-md); margin-top: var(--space-lg); display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: var(--space-md); }
+.related h2 { grid-column: 1 / -1; margin: 0 0 var(--space-md); }
+.related-group { margin: 0; }
+.related-group h3 { font-size: var(--fs-sm); color: var(--muted-ink); margin: 0 0 .25rem; }
+.related-group ul { margin: 0; padding-left: 1.1rem; }
+/* The Method hub (`/method`): one card per section, on the auto-fit grid `.related`
+   already uses. No colour of its own, so it adds no contrast pair to rate. */
+.method-hub { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: var(--space-md); margin: var(--space-md) 0 var(--space-lg); }
+.method-hub-card { border: 1px solid var(--rule); border-radius: var(--radius-md); padding: var(--space-md); }
+.method-hub-card h2 { font-size: var(--fs-lg); margin: 0 0 var(--space-sm); }
+.method-hub-card p { margin: 0 0 var(--space-sm); }
+.method-hub-count { font-size: var(--fs-sm); color: var(--muted-ink); }

@@ -153,7 +153,7 @@ def test_the_feed_is_deterministic_and_ties_break_by_id(session: Session) -> Non
 
 
 def test_trend_delta_worsened_improved_unchanged_new() -> None:
-    """Pure delta rule, matching ``web.pages._trend_delta`` bit for bit: rounded
+    """Pure delta rule, matching ``web.views._trend_delta`` bit for bit: rounded
     signed change drives up/down/flat, and no prior score reads 'new'."""
     assert feed.trend_delta(5.0, 3.0) == {"dir": "up", "amount": 2.0}
     assert feed.trend_delta(3.0, 5.0) == {"dir": "down", "amount": -2.0}

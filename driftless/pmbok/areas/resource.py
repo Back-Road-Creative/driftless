@@ -69,7 +69,6 @@ PROCESSES: tuple[Process, ...] = (
             "interpersonal_and_team_skills",
             "pre_assignment",
             "negotiation",
-            "acquisition",
             "virtual_teams",
         ),
         outputs=(
@@ -97,6 +96,7 @@ PROCESSES: tuple[Process, ...] = (
             "colocation",
             "virtual_teams",
             "interpersonal_and_team_skills",
+            "team_building",
             "recognition_and_rewards",
             "training",
             "individual_and_team_assessments",

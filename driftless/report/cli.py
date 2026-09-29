@@ -7,7 +7,9 @@ Each document declares its ``SCOPE``: project-scoped documents (the default,
 documents (``render(session, as_of)``) render once for the whole store. Output
 lands under ``<out>/<as-of>/`` — per project under a slugified subdirectory,
 business docs at the as-of root — and, because nothing reads the clock past the
-resolved ``as_of``, regenerates byte-identically.
+resolved ``as_of``, regenerates byte-identically. Every written document carries
+a trailing reproducibility receipt (``driftless.report.receipt``) naming the
+as-of, schema revision, build SHA and a sha256 of the document itself.
 """
 
 import argparse
@@ -25,6 +27,7 @@ from driftless.db.config import database_url
 from driftless.models import Project
 from driftless.pmbok import state
 from driftless.report import engine
+from driftless.report.receipt import attach_markdown_receipt
 
 
 def _slugify(name: str) -> str:
@@ -73,14 +76,14 @@ def _render_all(session: Session, out: Path, as_of: date) -> list[Path]:
                 text = module.render(session, as_of)
                 assert isinstance(text, str)
                 path = root / f"{slug}.md"
-                _write(path, text)
+                _write(path, attach_markdown_receipt(text, as_of))
                 written.append(path)
             else:
                 for project in projects:
                     text = module.render(session, project, as_of)
                     assert isinstance(text, str)
                     path = root / _slugify(project.name) / f"{slug}.md"
-                    _write(path, text)
+                    _write(path, attach_markdown_receipt(text, as_of))
                     written.append(path)
     return written
 

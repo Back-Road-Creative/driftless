@@ -7,10 +7,13 @@ name: Uptime check
 # walking away" and the admin guide's §5 are curls a human types, so a 2am outage
 # reached nobody until morning.
 #
-# GitHub-hosted, not the self-hosted runner: a probe sharing a box with the thing it
-# probes goes quiet in exactly the outage it exists to report, and takes a loopback
-# path no visitor uses. Hourly, because every fifteen minutes is ~2,900 billed
-# minutes a month (one-minute rounding) for detection nobody needs here.
+# Self-hosted (2026-08-29). A hosted probe was the ideal — a probe sharing a box
+# with the thing it probes goes quiet in exactly the outage it exists to report —
+# but this org buys no GitHub-hosted minutes, so every hosted run was refused in
+# seconds and the probe paged nobody. The pool has two runners, so one dead box
+# still leaves the other to probe and alert;
+# both dead is the case only an outside probe can cover.
+# Hourly, so a dead-and-restarted service is noticed within the hour.
 
 on:
   schedule:
@@ -27,7 +30,10 @@ permissions:
 jobs:
   probe:
     name: Probe /health
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, quick]
+    # Not on the public repository, which reaches no self-hosted runner. Watching
+    # the deployment is this repository's job, and its alert is not a public issue.
+    if: github.repository != 'Back-Road-Creative/driftless'
     timeout-minutes: 5
     steps:
       - name: Ask /health for a 200

@@ -121,14 +121,44 @@ _ENVIRONMENT = {
     "agreements_initial",
 }
 
+#: The eight groupings above, named and exposed for
+#: ``driftless.pmbok.artifact_content`` to build one ``ArtifactContent`` module
+#: per family from — so a kind added to a family here can be claimed by that
+#: family's content module, with no second list to keep in sync.
+FAMILIES: dict[str, frozenset[str]] = {
+    "plans": frozenset(_PLANS),
+    "baselines": frozenset(_BASELINES),
+    "documents": frozenset(_DOCUMENTS),
+    "performance": frozenset(_PERFORMANCE),
+    "procurement": frozenset(_PROCUREMENT),
+    "deliverables": frozenset(_DELIVERABLES),
+    "changes": frozenset(_CHANGES),
+    "environment": frozenset(_ENVIRONMENT),
+}
+
 #: The flat closed set every process input/output must be drawn from.
-ARTIFACT_KINDS: frozenset[str] = frozenset(
-    _PLANS
-    | _BASELINES
-    | _DOCUMENTS
-    | _PERFORMANCE
-    | _PROCUREMENT
-    | _DELIVERABLES
-    | _CHANGES
-    | _ENVIRONMENT
-)
+ARTIFACT_KINDS: frozenset[str] = frozenset().union(*FAMILIES.values())
+
+#: A kind that is not an independent process output but a named PART of another
+#: kind's bundle — PMBOK-6's own composition, not this catalog's invention. The
+#: WBS and its dictionary are components of the scope baseline (5.4 Create WBS's
+#: one output IS scope_baseline; the edition never lists the WBS as a separate
+#: output of any process), so no process names ``work_breakdown_structure`` in its
+#: own inputs/outputs — this is what explains it instead. ``pmbok.graph`` draws
+#: each entry as a ``part_of`` edge to its whole, so a component kind still
+#: connects in the method graph without a process pretending to produce it
+#: independently; ``tests/test_method_graph.py`` reads this map, never retypes it.
+COMPONENT_OF: dict[str, str] = {
+    "work_breakdown_structure": "scope_baseline",
+    # ``development_approach`` is carried as ``Project.delivery_mode`` (a field on
+    # the project record, per artifact_content/plans.py) rather than a document
+    # any process names — its whole is the plan it is a facet of.
+    "development_approach": "project_management_plan",
+    # The PMB is "the same three approved baselines above, read together" per
+    # artifact_content/baselines.py — it names three wholes at once (scope_,
+    # schedule_ and cost_baseline), and COMPONENT_OF holds exactly one key per
+    # part. Recording it against project_management_plan (which the PMB is
+    # itself a component of, alongside those three) is the honest single choice;
+    # picking one baseline arbitrarily among equals would not be.
+    "performance_measurement_baseline": "project_management_plan",
+}

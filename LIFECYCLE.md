@@ -16,6 +16,6 @@
 
 - Keep this service's `README.md` and `CHANGELOG.md` in step with what has
   actually shipped. (The pre-extraction build plan they were written against
-  stayed behind in the source monorepo and is no longer a reference anyone
-  can follow.)
+  stayed behind in the workspace monorepo this service was extracted out of,
+  so it is no longer a reference anyone here can follow.)
 - Review the state declaration above at the auto-review date.

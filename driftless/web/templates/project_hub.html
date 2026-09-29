@@ -11,28 +11,78 @@
    <a href="/projects/{{ project.id }}/process-map?as_of={{ as_of }}">Process map</a> ·
    <a href="/projects/{{ project.id }}/wizard?as_of={{ as_of }}">Wizard</a> ·
    <a href="/projects/{{ project.id }}/gantt?as_of={{ as_of }}">Schedule</a> ·
+   <a href="/projects/{{ project.id }}/schedule-health?as_of={{ as_of }}">Schedule health</a> ·
+   <a href="/projects/{{ project.id }}/baselines/diff?as_of={{ as_of }}">Baseline diff</a> ·
+   <a href="/projects/{{ project.id }}/gates?as_of={{ as_of }}">Gates</a> ·
+   <a href="/projects/{{ project.id }}/flow?as_of={{ as_of }}">Flow</a> ·
    {# no as_of: nothing the board renders is dated — see driftless/web/board.py #}
    <a href="/projects/{{ project.id }}/board">Board</a> ·
-   <a href="/projects/{{ project.id }}/status?as_of={{ as_of }}">Weekly status</a></p>
+   <a href="/projects/{{ project.id }}/status?as_of={{ as_of }}">Weekly status</a> ·
+   <a href="/projects/{{ project.id }}/status/inputs?as_of={{ as_of }}">Status inputs</a> ·
+   <a href="/projects/{{ project.id }}/raid?as_of={{ as_of }}">RAID log</a> ·
+   <a href="/projects/{{ project.id }}/assist/requirements?as_of={{ as_of }}">Requirements & WBS</a> ·
+   <a href="/projects/{{ project.id }}/assist/team?as_of={{ as_of }}">Team</a> ·
+   <a href="/projects/{{ project.id }}/assist/procurement?as_of={{ as_of }}">Procurement calculator</a> ·
+   <a href="/projects/{{ project.id }}/assist/cost?as_of={{ as_of }}">Cost workbench</a> ·
+   <a href="/projects/{{ project.id }}/assist/quality?as_of={{ as_of }}">Quality workbench</a> ·
+   <a href="/projects/{{ project.id }}/assist/closeout?as_of={{ as_of }}">Closeout</a> ·
+   <a href="/projects/{{ project.id }}/assist/schedule?as_of={{ as_of }}">Schedule network</a> ·
+   <a href="/projects/{{ project.id }}/assist/decisions?as_of={{ as_of }}">Decisions and meetings</a> ·
+   <a href="/projects/{{ project.id }}/assist/earned-value?as_of={{ as_of }}">Earned value calculator</a> ·
+   <a href="/projects/{{ project.id }}/assist/scope?as_of={{ as_of }}">Scope worksheet</a> ·
+   <a href="/projects/{{ project.id }}/assist/stakeholders?as_of={{ as_of }}">Stakeholder assist</a> ·
+   <a href="/projects/{{ project.id }}/assist/decision-tree?as_of={{ as_of }}">Decision tree</a> ·
+   <a href="/projects/{{ project.id }}/assist/risk-pi?as_of={{ as_of }}">Probability and impact</a> ·
+   <a href="/projects/{{ project.id }}/assist/risk-responses?as_of={{ as_of }}">Risk responses</a></p>
 <h2>Status</h2>
-<p>Process completeness <strong id="hub-completeness">{{ completeness }}</strong>
-{%- for area, label in ring_labels.items() %} · <span class="hub-area">{{ area|humanize }} {{ label }}</span>{%- endfor %}</p>
+<p>Process completeness <strong id="hub-completeness">{{ completeness }}</strong></p>
+<dl class="kv">
+{%- for area, label in ring_labels.items() %}
+<div><dt>{{ area|humanize }}</dt><dd><span class="hub-area">{{ area|humanize }} {{ label }}</span></dd></div>
+{%- endfor %}
+</dl>
+{% if evidence %}
+<p class="breadcrumbs">Earned value computed from evidence as of {{ evidence.as_of }}, {{ evidence.age_days }} day{{ evidence.age_days | s }} old.</p>
+{% endif %}
 {% if evm.current %}
-<p>EV <strong id="evm-ev">{{ evm.current.ev }}</strong> ·
-   CPI <strong id="evm-cpi">{{ evm.current.cpi if evm.current.cpi is not none else 'n/a' }}</strong> ·
-   SPI <strong id="evm-spi">{{ evm.current.spi if evm.current.spi is not none else 'n/a' }}</strong> ·
-   EAC <strong id="evm-eac">{{ evm.current.eac if evm.current.eac is not none else 'n/a' }}</strong> ·
-   Budget <strong id="evm-bac">{{ evm.bac }}</strong></p>
+<p>EV <strong id="evm-ev">{{ evm.current.ev | money }}</strong> ·
+   CPI <strong id="evm-cpi">{{ evm.current.cpi | or_no_data }}</strong> ·
+   SPI <strong id="evm-spi">{{ evm.current.spi | or_no_data }}</strong> ·
+   EAC <strong id="evm-eac">{{ evm.current.eac | money }}</strong> ·
+   Budget <strong id="evm-bac">{{ evm.bac | money }}</strong></p>
+<p>CV <strong id="evm-cv">{{ cv | money }}</strong> ({{ cv_words }}) ·
+   SV <strong id="evm-sv">{{ sv | money }}</strong> ({{ sv_words }})</p>
+<p><a href="/projects/{{ project.id }}/hub/costs?as_of={{ as_of }}">See the cost entries these figures are computed from</a>.</p>
 {% else %}
 {% call empty.state("No cost baseline yet — earned value has nothing to measure", id="evm-empty") %}
 Baseline the plan (<code>POST /baselines</code>, <code>POST /baseline-lines</code>) and record spend (<code>POST /cost-entries</code>); the <a href="/projects/{{ project.id }}/wizard?as_of={{ as_of }}">wizard</a> walks that order.
+{% endcall %}
+{% endif %}
+<h2>Flow</h2>
+<p>Work in progress <strong id="flow-tile-wip">{{ flow.wip }}</strong> item{{ flow.wip | s }} ·
+   throughput (last 7 days) <strong id="flow-tile-throughput">{{ flow.throughput }}</strong> item{{ flow.throughput | s }} ·
+   median cycle time <strong id="flow-tile-cycle">{{ flow.cycle_time_median | or_no_data }}</strong>{% if flow.cycle_time_median is not none %} day{{ flow.cycle_time_median | s }}{% endif %} ·
+   {% if flow.forecast_likely %}likely release <strong id="flow-tile-forecast">{{ flow.forecast_likely }}</strong>{% else %}<span id="flow-tile-forecast">no release forecast yet</span>{% endif %}.
+   <a href="/projects/{{ project.id }}/flow?as_of={{ as_of }}">See the flow page</a>.</p>
+<h2>Scorecard strategy</h2>
+{% if scorecard_lenses %}
+{% for lens in scorecard_lenses %}
+<div class="card scorecard-lens sev-{{ lens.status }}">
+  <span class="badge sev-badge">{{ lens.status }}</span>
+  <strong>{{ lens.objective }}</strong> · {{ lens.perspective|humanize }} · {{ lens.contribution_type }} contribution
+  {% if lens.metrics %}<ul>{% for metric in lens.metrics %}<li>{{ metric.name }}: <span class="{{ metric.status }}">{{ metric.status }}</span> ({{ metric.coverage }})</li>{% endfor %}</ul>{% else %}<p><em>No metric evidence configured — unknown.</em></p>{% endif %}
+</div>
+{% endfor %}
+{% else %}
+{% call empty.state("No scorecard contribution linked yet — unknown", id="scorecard-lens-empty") %}
+Link this project to an objective (<code>POST /scorecard-contributions</code>), or <a href="/scorecard">view the balanced scorecard</a>.
 {% endcall %}
 {% endif %}
 <h2>Live threats</h2>
 {% for t in threats %}
 <div class="card sev-{{ t.severity }}" data-threat="{{ t.id }}">
   <span class="badge sev-badge">{{ t.severity }}</span>
-  <strong>{{ t.kind|humanize }}</strong> · score {{ t.score }} — {{ t.description }}
+  <strong>{{ t.kind|humanize }}</strong> · score {{ "%.2f"|format(t.score) }} — {{ t.description }}
 </div>
 {% else %}
 <p><em>No live threats.</em></p>
@@ -41,6 +91,9 @@ Baseline the plan (<code>POST /baselines</code>, <code>POST /baseline-lines</cod
 <p>Open risks <strong id="raid-risks">{{ raid.risks }}</strong> ·
    open issues <strong id="raid-issues">{{ raid.issues }}</strong> ·
    open change requests <strong id="raid-changes">{{ raid.changes }}</strong></p>
+<p>Risk reserve suggested: <strong id="risk-reserve-suggested">{{ "{:,.2f}".format(risk_reserve_suggested) }}</strong>
+   — the open register's residual exposure, from the
+   <a href="/projects/{{ project.id }}/assist/risk-responses?as_of={{ as_of }}">risk-response planner</a>.</p>
 <h2>Milestones</h2>
 {% if milestones %}
 {% call scroll.wide("Milestones") %}

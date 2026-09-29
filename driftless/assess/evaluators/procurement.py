@@ -39,7 +39,7 @@ def evaluate(session: Session, project: Project, as_of: date) -> Assessment:
     """Assess the project's procurement health as of ``as_of``."""
     agreements = adapters.project_rows(session, ProcurementAgreement, project.id)
     if not agreements:
-        return Assessment(KIND, as_of, 0.0, "green")
+        return Assessment(KIND, as_of, 0.0, "green", coverage="not_applicable")
 
     disputed = [a for a in agreements if a.status == "disputed"]
     expired_active = [

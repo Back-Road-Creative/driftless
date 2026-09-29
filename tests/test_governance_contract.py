@@ -43,6 +43,15 @@ SCAFFOLD_TAG = re.compile(r"^\s*</[\w:.-]+>\s*$")
 # filesystem, which is identical on every machine that runs it, so the Dockerfile and
 # the compose files say them correctly and often.
 MACHINE_PATH = re.compile(r"/(?:home|Users)/[\w.-]+/[\w./-]*")
+# A repository in this org that is not this one. The lookahead has to end the name:
+# `\b` closed it before, and a word boundary sits between `driftless` and the `-` of
+# a hyphenated sibling name, so the private sibling — the one name this guard exists to
+# keep out of a public snapshot — was the one name it could not see. `.git` is allowed
+# through because a clone URL carries it and still names this repo (docs/admin-guide.md).
+# `.github` is the org's own public shared-config repo (workflows here call its reusable
+# leak-scan.yml), so it is exempted the same way this repo's own name is, not treated as
+# a foreign sibling.
+FOREIGN_REPO = re.compile(rf"{ORG}/(?!(?:driftless|\.github)(?:\.git)?(?![\w.-]))[\w.-]+")
 
 # Heading text at # or ##, matched case-insensitively: a top-level section, not a
 # sub-heading that happens to share the word.
@@ -107,13 +116,7 @@ def test_the_changelog_carries_no_authoring_scaffold() -> None:
 
 def test_the_only_repository_this_tree_names_is_this_one() -> None:
     """Naming a private sibling tells a reader it exists, who owns it and what is in it.
-    The *reason* a shape was borrowed from one is worth keeping; the name never is.
-    Two names are the repo's own to say: itself, and the org's public CI home, which the
-    leak-scan caller must name to call it. The lookahead ends each allowed name rather
-    than using ``\\b``: a word boundary sits between ``driftless`` and the ``-`` of a
-    hyphenated sibling, so the ``\\b`` form could not see the one repo it existed to
-    catch. A trailing ``.`` (sentence prose, ``.git``) still ends the name."""
-    foreign = re.compile(rf"{ORG}/(?!(?:driftless|\.github)(?:\.git)?(?![\w-]))[\w.-]+")
+    The *reason* a shape was borrowed from one is worth keeping; the name never is."""
     tracked = tracked_files()
     assert tracked, "git listed no tracked files, so this scan read nothing to pass on"
     named = [
@@ -122,9 +125,33 @@ def test_the_only_repository_this_tree_names_is_this_one() -> None:
         for number, line in enumerate(
             (ROOT / name).read_bytes().decode("utf-8", "replace").splitlines(), 1
         )
-        if (found := foreign.search(line))
+        if (found := FOREIGN_REPO.search(line))
     ]
     assert not named, "a repository the reader cannot open is named here:\n" + "\n".join(named)
+
+
+@pytest.mark.parametrize(
+    ("repository", "is_foreign"),
+    [
+        ("driftless", False),  # this repo
+        ("driftless.git", False),  # this repo, as a clone URL ends it
+        ("driftless-archive", True),  # the private sibling `\b` could not see
+        ("driftless-archive.git", True),
+        ("driftless_archive", True),
+        ("driftless.github", True),  # a longer name that merely starts with `.git`
+        ("rigscore", True),
+        (".github", False),  # the org's public shared-config repo
+        (".github.git", False),  # ditto, as a clone URL ends it
+        (".githubx", True),  # a longer name that merely starts with `.github`
+    ],
+)
+def test_the_guard_reads_the_whole_repository_name(repository: str, is_foreign: bool) -> None:
+    """The scan above only reports what this pattern sees, so a hole in the pattern is a
+    silent pass over the whole tree rather than a failure anyone reads. It had one: the
+    lookahead ended on ``\\b``, which is satisfied by the ``-`` of a hyphenated sibling
+    name, so the sibling whose name this repo is snapshotted away from was the single name that
+    could never be flagged. These cases fail if that boundary comes back."""
+    assert bool(FOREIGN_REPO.search(f"https://github.com/{ORG}/{repository}")) is is_foreign
 
 
 def test_no_tracked_file_names_a_path_only_one_machine_has() -> None:

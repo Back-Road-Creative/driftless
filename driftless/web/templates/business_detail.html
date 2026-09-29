@@ -1,0 +1,50 @@
+{# Business Detail Page: Business hierarchy and process rollup overview #}
+{% extends "base.html" %}
+{% block title %}{{ business.name }} — driftless{% endblock %}
+{% block content %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{% import "_empty.html" as empty %}
+{{ breadcrumbs.top(business.name) }}
+<h1>{{ business.name }}</h1>
+<p><em>As of {{ as_of }}</em></p>
+
+<section>
+  <article class="card">
+    <h2>Process Completeness</h2>
+    <p><strong id="business-completeness">{{ completeness }}</strong></p>
+  </article>
+</section>
+
+<h2>Portfolios</h2>
+{% if portfolios %}
+<ul>
+  {% for p in portfolios %}
+  <li>
+    <h3><a href="/portfolios/{{ p.id }}/rollup?as_of={{ as_of }}">{{ p.name }}</a></h3>
+    {% if p.programs %}
+    <ul>
+      {% for prg in p.programs %}
+      <li>
+        <h4><a href="/programs/{{ prg.id }}/rollup?as_of={{ as_of }}">{{ prg.name }}</a></h4>
+        {% if prg.projects %}
+        <ul>
+          {% for prj in prg.projects %}
+          <li><a href="/projects/{{ prj.id }}/hub?as_of={{ as_of }}">{{ prj.name }}</a></li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+{% call empty.state("No portfolios registered for this business entity", id="portfolios-empty") %}
+Register one with <code>POST /portfolios</code> with <code>{"business_id": {{ business.id }}}</code>.
+{% endcall %}
+{% endif %}
+
+<p><a href="/">&larr; Back to Dashboard</a></p>
+{% endblock %}

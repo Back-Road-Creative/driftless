@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Method profiles{% endblock %}
+{# The agile method profiles Driftless describes alongside the PMBOK-6 predictive
+   catalog. web/methods.py owns the ordering; this file only formats it. #}
+{% block content %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{{ breadcrumbs.theory(None, None, "Methods") }}
+<h1>Method profiles</h1>
+<p class="lede"><em>This page explains how Scrum and Kanban work and how their practices line up
+   with the standard project-management steps they most resemble.</em></p>
+<p>Reference only: nothing here reads a project or a date.</p>
+<p>{{ methods|length }} methods · {{ fully_crosswalked_count }} fully crosswalked · {{ guide_only_count }} with a guide-only practice</p>
+<p>A practice is <a href="/glossary#crosswalk">crosswalked</a> when it names the PMBOK-6 process or
+   technique it most nearly resembles; "fully crosswalked" means every practice in the method has
+   one. A "guide-only" practice has no PMBOK-6 equivalent to name — it is explained by its own
+   guide alone, the way a guide-only technique elsewhere in Driftless has no assistant built for it.</p>
+<dl class="technique-index">
+  {% for method in methods %}
+  <dt><a href="/methods/{{ method.key }}">{{ method.display_name }}</a></dt>
+  <dd>{{ method.plain_summary }}</dd>
+  {% endfor %}
+</dl>
+{% endblock %}

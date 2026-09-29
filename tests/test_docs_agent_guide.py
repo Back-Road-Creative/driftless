@@ -25,10 +25,10 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 
 from driftless import cli
-from driftless.api import app as app_module
 from driftless.api.app import app
 from driftless.api.secure import TokenGate
 from driftless.db import Base, new_engine, new_session_factory
+from driftless.db import session as db_session
 from driftless.db.changelog import register_changelog
 
 GUIDE = Path(__file__).resolve().parents[1] / "docs" / "agent-guide.md"
@@ -80,7 +80,13 @@ class Guide:  # the guide's execution state: the variables it names, and the las
         return source
 
     def run(self, block: Block) -> None:
-        runners = {"cli": self._cli, "http": self._http, "sql": self._sql, "json": self._json}
+        runners = {
+            "cli": self._cli,
+            "http": self._http,
+            "sql": self._sql,
+            "json": self._json,
+            "mcp": self._mcp,
+        }
         runners.get(block.kind, self._text)(block)
 
     def _cli(self, block: Block) -> None:
@@ -111,6 +117,32 @@ class Guide:  # the guide's execution state: the variables it names, and the las
             rows = db.execute(text(self.expand(block.body).strip()))
             self.raw = json.dumps([dict(row._mapping) for row in rows], default=str)
 
+    def _mcp(self, block: Block) -> None:
+        """``docs/agent-guide.md`` §6 runs the tool-dispatch layer directly
+        (:mod:`driftless.mcp.tools`) -- exactly the layer an MCP client's call reaches,
+        with no stdio transport in between: a JSON body names a tool and its args, a
+        bare ``token`` string arrives instead of a header, and ``as_of`` is a date
+        rather than a query parameter, so the resource tools take the shared
+        ``TestClient`` this fixture already built."""
+        from datetime import date
+
+        from driftless.mcp import tools
+
+        payload = json.loads(self.expand(block.body))
+        fn = getattr(tools, payload["tool"])
+        args = dict(payload.get("args", {}))
+        if "as_of" in args:
+            args["as_of"] = date.fromisoformat(args["as_of"])
+        needs_client = payload["tool"] in {
+            "create_resource",
+            "list_resource",
+            "get_resource",
+            "update_resource",
+            "delete_resource",
+        }
+        result = fn(self.client, **args) if needs_client else fn(**args)
+        self.raw = json.dumps(result, default=str)
+
     def _json(self, block: Block) -> None:
         answered, gone = leaves(json.loads(self.raw)), "<no such path in the answer>"
         documented = leaves(json.loads(block.body)).items()
@@ -128,7 +160,7 @@ def guide(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Guide]:
     engine = new_engine(url := f"sqlite:///{tmp_path / 'guide.db'}")
     Base.metadata.create_all(engine)
     register_changelog(factory := new_session_factory(engine))
-    monkeypatch.setattr(app_module, "_factory", factory)
+    monkeypatch.setattr(db_session, "_factory", factory)
     client = TestClient(TokenGate(app, SHARED))  # no default credential: each block shows its own
     variables = {"DRIFTLESS_DATABASE_URL": url, "AGENT_PASSWORD": PASSWORD}
     yield Guide(client, factory, monkeypatch, variables)

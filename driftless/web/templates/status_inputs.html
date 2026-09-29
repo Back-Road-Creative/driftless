@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Status snapshots — {{ project.name }}{% endblock %}
+{% block content %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{% import "_scroll.html" as scroll %}
+{% import "_empty.html" as empty %}
+{{ breadcrumbs.trail(project, "Status snapshots", as_of) }}
+<h1>Status snapshots — {{ project.name }}</h1>
+<p><em>As of {{ as_of }}</em> — every recorded reading behind the percent-complete
+   trend and RAG shown on this project's
+   <a href="/projects/{{ project.id }}/status?as_of={{ as_of }}">weekly status</a> page.
+   RAG severity ranks <code>green &lt; amber &lt; red</code> (unknown lowest); the
+   colour on each row below is the operator's own threshold judgement at the time,
+   recorded here, never derived from a formula.</p>
+{% if snapshots %}
+{% call scroll.wide("Status snapshots") %}
+<table>
+<caption class="sr-only">Status snapshots for {{ project.name }}, in recording order</caption>
+<tr><th scope="col">Id</th><th scope="col">Taken on</th><th scope="col">Percent</th><th scope="col">RAG</th></tr>
+{% for snap in snapshots %}
+<tr><td>{{ snap.id }}</td><td>{{ snap.taken_on }}</td><td>{{ snap.percent_complete }}%</td><td>{{ snap.rag_status }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No status snapshots yet — there is nothing behind the trend", id="snapshots-empty") %}
+Save one from the <a href="/projects/{{ project.id }}/status?as_of={{ as_of }}">weekly status</a> form.
+{% endcall %}
+{% endif %}
+{% endblock %}

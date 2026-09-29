@@ -38,6 +38,14 @@ def contingency_held(session: Session, project: Project, remaining_budget: float
     return min(held, remaining_budget)
 
 
+def stored_contingency_line(session: Session, project: Project) -> float | None:
+    """The raw ``contingency`` ``BudgetLine`` amount, uncapped — for a reference display
+    that shows what is stored, not what a snapshot's remaining budget would cap it to
+    (that reading is :func:`contingency_held`). ``None`` when no such line exists."""
+    lines = adapters.project_rows(session, BudgetLine, project.id)
+    return next((line.planned_amount for line in lines if line.category == "contingency"), None)
+
+
 def contingency_assessment(
     session: Session, project: Project, snapshot: evm.EarnedValueSnapshot, as_of: date
 ) -> forecast.ContingencyAssessment:

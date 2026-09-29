@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Balanced scorecard — driftless{% endblock %}
+{% block content %}
+{% import "_empty.html" as empty %}
+<h1>Balanced scorecard</h1>
+<p>All four operating perspectives. <strong>As of {{ as_of }}</strong>, missing strategy or evidence is shown as <strong>unknown</strong>, not treated as green.</p>
+
+{% if not has_objectives %}
+{% call empty.state("No strategic objectives configured", id="scorecard-empty") %}
+Start the balanced scorecard with the validated <code>POST /strategic-objectives</code> resource, then define metrics and record dated observations. <a href="/org/configuration">Review organization configuration</a>.
+{% endcall %}
+{% endif %}
+
+{% for perspective in rows %}
+<section class="scorecard-perspective" aria-labelledby="perspective-{{ perspective.key }}">
+  <h2 id="perspective-{{ perspective.key }}">{{ perspective.label }}</h2>
+  {% if not perspective.objectives %}
+  <p class="scorecard-empty">No objective configured for this perspective — <span class="unknown">unknown</span>.</p>
+  {% else %}
+  {% for objective in perspective.objectives %}
+  <article class="scorecard-objective">
+    <header><h3>{{ objective.name }}</h3><span class="sev-{{ objective.status }}"><span class="badge sev-badge">{{ objective.status }}</span></span></header>
+    {% if objective.owner %}<p>Owner: {{ objective.owner }}</p>{% endif %}
+    <p>Lifecycle: <strong>{{ objective.lifecycle }}</strong></p>
+    {% if objective.projects %}<p>Supporting projects: {{ objective.projects | join(", ") }}</p>{% endif %}
+    {% if not objective.metrics %}
+    <p class="scorecard-empty">No metric defined — <span class="unknown">unknown</span>.</p>
+    {% else %}
+    <table>
+      <caption class="sr-only">Metrics for {{ objective.name }}</caption>
+      <thead><tr><th scope="col">Metric</th><th scope="col">Reading</th><th scope="col">Coverage</th></tr></thead>
+      <tbody>{% for metric in objective.metrics %}<tr>
+        <th scope="row">{{ metric.name }}{% if metric.unit %} ({{ metric.unit }}){% endif %}</th>
+        <td><span class="sev-{{ metric.evaluation.status }}"><span class="badge sev-badge">{{ metric.evaluation.status }}</span></span>{% if metric.evaluation.value is not none %} — {{ metric.evaluation.value }}{% endif %}</td>
+        <td>{{ metric.evaluation.coverage }}</td>
+      </tr>{% endfor %}</tbody>
+    </table>
+    {% endif %}
+  </article>
+  {% endfor %}
+  {% endif %}
+</section>
+{% endfor %}
+{% endblock %}

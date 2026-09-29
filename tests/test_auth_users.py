@@ -33,6 +33,11 @@ def _add(db_url: str, name: str, role: str, password: str, mp: pytest.MonkeyPatc
     return cli.main(["user", "add", "--username", name, "--role", role, "--db-url", db_url])
 
 
+def _passwd(db_url: str, name: str, password: str, mp: pytest.MonkeyPatch) -> int:
+    mp.setattr(sys, "stdin", io.StringIO(f"{password}\n"))  # on stdin, never in argv
+    return cli.main(["user", "passwd", name, "--db-url", db_url])
+
+
 def test_a_short_password_is_refused_before_anything_is_stored(
     db_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -48,6 +53,16 @@ def test_a_short_password_is_refused_before_anything_is_stored(
     with new_session_factory(new_engine(db_url))() as session:
         assert session.scalars(select(User)).all() == []  # nothing reached the store
     assert _add(db_url, "jp", "admin", "a" * 12, monkeypatch) == 0  # exactly the floor passes
+
+
+def test_no_db_url_anywhere_is_refused_before_anything_connects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Neither ``--db-url`` nor an env var: ``_open`` refuses before opening a store."""
+    for name in ("DRIFTLESS_DATABASE_URL", "PMHUB_DATABASE_URL", "PMHUB_DB_URL"):
+        monkeypatch.delenv(name, raising=False)
+    with pytest.raises(SystemExit, match="no database URL"):
+        cli.main(["user", "list"])
 
 
 def test_the_defaults_are_safe_and_the_role_check_refuses_an_invented_role(db_url: str) -> None:
@@ -97,3 +112,135 @@ def test_disable_revokes_live_sessions_and_enable_does_not_bring_them_back(
         # Signing in works again, but the counter never walks back: those cookies stay dead.
         assert restored.is_active is True and restored.session_epoch == 1
     assert cli.main(["user", "disable", "ghost", "--db-url", db_url]) != 0  # no such user
+
+
+def test_passwd_rotates_the_hash_and_bumps_the_session_epoch(
+    db_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Rotation is a revocation: the old password dies and the epoch bump is what does it.
+
+    Without the bump a rotated password would leave every cookie the old password
+    issued still valid — the same idiom ``disable`` already uses.
+    """
+    assert _add(db_url, "jp", "admin", _PW, monkeypatch) == 0
+    factory = new_session_factory(new_engine(db_url))
+    new_pw = "a-different-passphrase"  # pragma: allowlist secret
+    assert _passwd(db_url, "jp", new_pw, monkeypatch) == 0
+    with factory() as session:
+        rotated = session.scalars(select(User)).one()
+        assert not verify_password(_PW, rotated.password_hash)  # the old password is dead
+        assert verify_password(new_pw, rotated.password_hash)
+        assert rotated.session_epoch == 1  # the bump is the revocation
+    assert _passwd(db_url, "ghost", new_pw, monkeypatch) != 0  # no such user
+    with pytest.raises(SystemExit, match="12 characters"):
+        _passwd(db_url, "jp", "short", monkeypatch)
+    with factory() as session:
+        untouched = session.scalars(select(User)).one()
+        assert untouched.session_epoch == 1  # the refused rotation never touched the store
+
+
+def test_add_stores_an_optional_email_and_list_shows_it(
+    db_url: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    mp = monkeypatch
+    mp.setattr(sys, "stdin", io.StringIO(f"{_PW}\n"))
+    assert (
+        cli.main(
+            [
+                "user",
+                "add",
+                "--username",
+                "jp",
+                "--role",
+                "admin",
+                "--email",
+                "jp@example.test",
+                "--db-url",
+                db_url,
+            ]
+        )
+        == 0
+    )
+    with new_session_factory(new_engine(db_url))() as session:
+        stored = session.scalars(select(User)).one()
+        assert stored.email == "jp@example.test"
+    capsys.readouterr()
+    assert cli.main(["user", "list", "--db-url", db_url]) == 0
+    assert "jp@example.test" in capsys.readouterr().out
+
+
+def test_add_without_email_leaves_it_unset(db_url: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    assert _add(db_url, "jp", "admin", _PW, monkeypatch) == 0
+    with new_session_factory(new_engine(db_url))() as session:
+        assert session.scalars(select(User)).one().email is None
+
+
+def test_add_refuses_an_email_without_an_at_sign(
+    db_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sys, "stdin", io.StringIO(f"{_PW}\n"))
+    with pytest.raises(SystemExit, match="not a valid email"):
+        cli.main(
+            [
+                "user",
+                "add",
+                "--username",
+                "jp",
+                "--role",
+                "admin",
+                "--email",
+                "not-an-address",
+                "--db-url",
+                db_url,
+            ]
+        )
+    with new_session_factory(new_engine(db_url))() as session:
+        assert session.scalars(select(User)).all() == []  # refused before the row
+
+
+def test_email_subcommand_sets_and_clears_the_address(
+    db_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert _add(db_url, "jp", "admin", _PW, monkeypatch) == 0
+    assert (
+        cli.main(["user", "email", "jp", "--address", "jp@example.test", "--db-url", db_url]) == 0
+    )
+    with new_session_factory(new_engine(db_url))() as session:
+        assert session.scalars(select(User)).one().email == "jp@example.test"
+    assert cli.main(["user", "email", "jp", "--clear", "--db-url", db_url]) == 0
+    with new_session_factory(new_engine(db_url))() as session:
+        assert session.scalars(select(User)).one().email is None
+    assert cli.main(["user", "email", "ghost", "--address", "x@y.test", "--db-url", db_url]) != 0
+    with pytest.raises(SystemExit, match="not a valid email"):
+        cli.main(["user", "email", "jp", "--address", "nope", "--db-url", db_url])
+
+
+def test_oidc_subject_subcommand_binds_clears_and_refuses_a_duplicate(
+    db_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert _add(db_url, "jp", "admin", _PW, monkeypatch) == 0
+    assert _add(db_url, "amy", "viewer", _PW, monkeypatch) == 0
+    assert (
+        cli.main(["user", "oidc-subject", "jp", "--subject", "alice-sub", "--db-url", db_url]) == 0
+    )
+    with new_session_factory(new_engine(db_url))() as session:
+        stored = session.scalars(select(User).where(User.username == "jp")).one()
+        assert stored.oidc_subject == "alice-sub"
+    # a second user cannot bind the same subject — the store's uniqueness, not a
+    # racy pre-check
+    assert (
+        cli.main(["user", "oidc-subject", "amy", "--subject", "alice-sub", "--db-url", db_url]) != 0
+    )
+    assert cli.main(["user", "oidc-subject", "jp", "--clear", "--db-url", db_url]) == 0
+    with new_session_factory(new_engine(db_url))() as session:
+        assert session.scalars(select(User).where(User.username == "jp")).one().oidc_subject is None
+    assert cli.main(["user", "oidc-subject", "ghost", "--subject", "x", "--db-url", db_url]) != 0
+
+
+def test_no_database_url_at_all_is_a_clean_system_exit(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No ``--db-url`` and nothing in the environment: ``_open`` refuses before it ever
+    tries to connect, naming both ways a caller could have supplied one."""
+    for name in ("DRIFTLESS_DATABASE_URL", "PMHUB_DATABASE_URL", "PMHUB_DB_URL"):
+        monkeypatch.delenv(name, raising=False)
+    with pytest.raises(SystemExit, match="no database URL"):
+        cli.main(["user", "list"])

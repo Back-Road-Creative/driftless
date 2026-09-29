@@ -1,0 +1,38 @@
+{# The ONE error alert a page renders, so a hand-copied refusal cannot drift the way
+   login.html and wizard.html once did: byte-identical markup in both, until one of
+   the two changed and nothing said the other had fallen out of step.
+   tests/test_web_a11y.py fails any template that writes
+   <div class="card sev-red" role="alert"> itself rather than importing this.
+   role="alert" is what makes a screen reader announce the message the moment it
+   lands in the DOM, without the reader having to find it first; the caller keeps
+   the "if error or field_errors" branch, since a page with neither renders nothing
+   at all and testing that here would only move the same guard one file over.
+
+   ``fields`` is the refusal's field-keyed half: {id: message} for whichever inputs
+   the refusal names, in POSTED order. Each renders as a link to #id, so a keyboard
+   or screen-reader user reaches the exact control the message is about instead of
+   hunting the form by hand. A caller sets EITHER ``message`` (unattributable prose —
+   most refusals, since a producer's own exception text is never parsed for a field
+   name it does not structurally carry) OR one entry of ``fields`` naming the field
+   it is about, never both for the same wording — the list would otherwise repeat
+   the paragraph a screen reader just heard. Most refusals still carry no ``fields``
+   at all, so the macro degrades to exactly the old single-paragraph shape.
+
+   The message text also carries its own id, {field_id}-error, on a <span> INSIDE the
+   <a> rather than on the <li> or <a> itself — a caller's own control (id="{field_id}")
+   points ``aria-describedby`` at it, so a reader landing on the field in isolation,
+   never following the link, still hears why it was refused. The id sits one level
+   in specifically so the <li><a href="#id"> opening two elements — what a keyboard
+   user's focus and every existing caller key off — stays byte-identical. #}
+{% macro error(message, fields={}) %}
+<div class="card sev-red" role="alert">
+  {% if message %}<p>{{ message }}</p>{% endif %}
+  {% if fields %}
+  <ul>
+    {% for field_id, field_message in fields.items() %}
+    <li><a href="#{{ field_id }}"><span id="{{ field_id }}-error">{{ field_message }}</span></a></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</div>
+{% endmacro %}

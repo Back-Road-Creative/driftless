@@ -31,8 +31,10 @@ PROCESSES: tuple[Process, ...] = (
         outputs=(
             "procurement_management_plan",
             "procurement_strategy",
+            "bid_documents",
             "procurement_statement_of_work",
             "source_selection_criteria",
+            "independent_cost_estimates",
         ),
     ),
     Process(

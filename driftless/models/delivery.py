@@ -30,7 +30,8 @@ from driftless.db import Base
 from driftless.models.hierarchy import Project, Task, one_of
 
 if TYPE_CHECKING:  # annotations only — ``records`` imports this module, so the name
-    from driftless.models.records import ChangeRequest  # resolves off the class registry
+    from driftless.models.agile import Release  # resolves off the class registry
+    from driftless.models.records import ChangeRequest  # (``agile`` imports this module too)
 
 BASELINE_STATUSES = ("draft", "approved", "superseded")
 MILESTONE_STATUSES = ("pending", "at_risk", "met", "missed")
@@ -51,6 +52,7 @@ class Baseline(Base):
     version: Mapped[int]
     status: Mapped[str] = mapped_column(String(20), default="draft")
     approved_at: Mapped[datetime | None] = mapped_column(default=None)
+    row_revision: Mapped[int] = mapped_column(nullable=False, default=1, server_default="1")
 
     project: Mapped[Project] = relationship()
     lines: Mapped[list["BaselineLine"]] = relationship(back_populates="baseline")
@@ -79,6 +81,7 @@ class BaselineLine(Base):
     planned_start: Mapped[date]
     planned_finish: Mapped[date]
     planned_cost: Mapped[float]
+    row_revision: Mapped[int] = mapped_column(nullable=False, default=1, server_default="1")
 
     baseline: Mapped[Baseline] = relationship(back_populates="lines")
     task: Mapped[Task] = relationship()
@@ -96,12 +99,20 @@ class Milestone(Base):
     target_date: Mapped[date]
     baseline_date: Mapped[date | None] = mapped_column(default=None)
     status: Mapped[str] = mapped_column(String(20), default="pending")
+    row_revision: Mapped[int] = mapped_column(nullable=False, default=1, server_default="1")
 
     project: Mapped[Project] = relationship()
 
 
 class Sprint(Base):
-    """An agile time-box. Velocity is derived from ``completed_points``, never stored."""
+    """An agile time-box. Velocity is derived from ``completed_points``, never stored.
+
+    ``goal``, ``release_id`` and the review/retrospective columns are what an
+    "iteration" needs beyond the plain time-box: a stated goal, the ``Release``
+    it belongs to, and the evidence that the two closing ceremonies actually
+    happened (``driftless.models.agile`` module docstring — added here rather
+    than as a parallel table, because an iteration IS this row).
+    """
 
     __tablename__ = "sprint"
     __table_args__ = (
@@ -117,5 +128,18 @@ class Sprint(Base):
     end_date: Mapped[date]
     committed_points: Mapped[int] = mapped_column(default=0)
     completed_points: Mapped[int] = mapped_column(default=0)
+    goal: Mapped[str | None] = mapped_column(String(2000), default=None)
+    release_id: Mapped[int | None] = mapped_column(
+        ForeignKey("release.id"), default=None, index=True
+    )
+    review_held_on: Mapped[date | None] = mapped_column(default=None)
+    review_notes: Mapped[str | None] = mapped_column(String(2000), default=None)
+    retrospective_held_on: Mapped[date | None] = mapped_column(default=None)
+    retrospective_notes: Mapped[str | None] = mapped_column(String(2000), default=None)
+    row_revision: Mapped[int] = mapped_column(nullable=False, default=1, server_default="1")
 
     project: Mapped[Project] = relationship()
+    # Writable side of the release link: attach a sprint to a release by setting
+    # ``sprint.release``; ``Release.sprints`` is the read-only mirror (its own
+    # module docstring), so the FK has one owner.
+    release: Mapped["Release | None"] = relationship("Release")

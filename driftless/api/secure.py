@@ -11,13 +11,17 @@ exceptions: the health probe (``/health``) is passed through uncredentialed so a
 orchestrator can check the app without one — it answers whether the store replies
 and nothing more, which is what makes it safe to leave open, where ``/health/ready``
 names a revision and stays gated — ``/static`` assets are public, and so is the login
-surface itself, because a cookie has to be obtainable before it can be presented. With no token configured the gate stays open — local
-development — and warns once so a token forgotten in production is loud, not silent.
+surface itself, because a cookie has to be obtainable before it can be presented.
+Constructed directly with no token, :class:`TokenGate` itself stays open — that is
+how the suite builds one — but :func:`create_secured_app`, what the container
+actually runs, now REFUSES TO START on that same absence unless
+``DRIFTLESS_ALLOW_UNAUTHENTICATED=1`` opts in for local development, in which case
+it warns once so open is loud, not silent, either way.
 
 Which of the three authenticated the request is stamped on the scope beside the
 principal, because CSRF turns on exactly that: a cookie is ambient — a browser attaches
 it to whatever another origin causes — and a header never is, so a form POST authenticated
-by a bearer needs no double-submit pair (:func:`driftless.web.pages._require_pair_unless_bearer`).
+by a bearer needs no double-submit pair (:func:`driftless.web.credentials.require_pair_unless_bearer`).
 
 A cookie and a per-user token both resolve to one ``Principal`` carrying a *role*,
 and this is where it is enforced: a signed-in viewer, and the tokens they hold, may
@@ -33,10 +37,14 @@ presented no credential at all, at a page address, is redirected to the sign-in 
 (:meth:`TokenGate._refuse_anonymous`); every other refusal keeps the JSON body a
 script already parses, byte for byte.
 
-The two kinds default in opposite directions on purpose. No token → open, because
-that half only *withholds* access. No ``DRIFTLESS_SESSION_SECRET`` → no cookie can
-ever authorize, because that half *grants* an identity and an unsigned cookie is
-a forgeable one (see :mod:`driftless.auth.sessions`).
+The two kinds default in opposite directions on purpose, at the class itself: no
+token → open, because that half only *withholds* access, where no
+``DRIFTLESS_SESSION_SECRET`` → no cookie can ever authorize, because that half
+*grants* an identity and an unsigned cookie is a forgeable one (see
+:mod:`driftless.auth.sessions`). ``create_secured_app`` tightens the token half
+further still — a deployment forgetting the token is a worse failure than a
+deployment forgetting the secret is loud about, so it refuses to start rather than
+silently opening (see :func:`create_secured_app`).
 
 Wrapping the app rather than editing it keeps this file disjoint from the API
 code (it only imports the finished app), and the same ``app`` object serves both
@@ -47,6 +55,7 @@ this file's.
 from __future__ import annotations
 
 import hmac
+import json
 import logging
 import os
 import re
@@ -61,24 +70,40 @@ from starlette.routing import BaseRoute
 from starlette.types import Message, Receive, Scope, Send
 
 from driftless.api.app import app
+from driftless.api.versioning import API_PREFIX
 
-# The gate's own store lookup comes from the API's *own* lazy factory: whichever of
-# the gate and the first route arrives first builds the single factory (and registers
-# the changelog listener) and the other borrows it. Two engines against one SQLite
-# file is a real bug. It is ``session_scope`` and not the ``get_session`` dependency
-# because that one now credits its writes to the request's signed-in user, which needs
-# a ``Request`` this middleware does not have — and the gate's lookup is a read that
-# credits nobody.
-from driftless.api.app import session_scope
+# The gate's own store lookup comes from the db layer's own lazy factory: whichever
+# of the gate and the first route arrives first builds the single factory (and
+# registers the changelog listener) and the other borrows it. Two engines against
+# one SQLite file is a real bug. It is ``session_scope`` and not the ``get_session``
+# dependency because that one now credits its writes to the request's signed-in
+# user, which needs a ``Request`` this middleware does not have — and the gate's
+# lookup is a read that credits nobody.
+from driftless.db.session import session_scope
 from driftless.auth import principal, sessions, tokens
-from driftless.web import pages
-from driftless.web.errors import PageRoute, read_only_page
+from driftless.web import credentials
+from driftless.web.errors import PageRoute, admin_only_page, read_only_page
 
 logger = logging.getLogger("driftless.secure")
 SessionScope = Callable[[], AbstractContextManager[Session]]
 
 TOKEN_ENV = "DRIFTLESS_API_TOKEN"
 LEGACY_TOKEN_ENV = "PMHUB_API_TOKEN"  # pre-rename name, honoured for one cycle
+# The startup refusal's one override, in the idiom of ``DRIFTLESS_ALLOW_SCHEMA_AHEAD``
+# (:mod:`driftless.api.app`): a name that says exactly what it grants, checked for the
+# exact string "1" so a leftover non-empty value left by some other tool cannot opt in
+# by accident. See :func:`create_secured_app`.
+ALLOW_UNAUTHENTICATED_ENV = "DRIFTLESS_ALLOW_UNAUTHENTICATED"
+# Run with NO shared bearer at all: every request must carry a per-user credential, so
+# every write lands with an actor. Checked for the exact string "1", like its siblings.
+#
+# This is how the permanent shared bootstrap credential is *retired* rather than made
+# attributable. Teaching ``DRIFTLESS_API_TOKEN`` to resolve a principal was the other
+# option and is worse: it reverses the recorded decision that the bootstrap credential
+# is un-role-gated, and it would silently put a name on the one honest on-behalf-of
+# write the service has (see :func:`driftless.api.deps.signer`). Not using the shared
+# credential reverses nothing — it just stops being in the picture.
+REQUIRE_USER_AUTH_ENV = "DRIFTLESS_REQUIRE_USER_AUTH"
 _HEALTH_PATH = "/health"
 _STATIC_ROOT = "/static"
 _BEARER = "Bearer "  # the scheme, matched exactly — see :func:`_bearer`
@@ -95,17 +120,110 @@ _AUTH_PATHS = frozenset({_LOGIN_PATH, "/logout"})
 # it as a GET, so a form POSTed from a page whose session died lands on the form rather
 # than replaying itself at it.
 _SEE_OTHER = 303
-# Role gating splits on the METHOD, not on the route: everyone signed in reads, only
-# ``_WRITE_ROLES`` write. Doing it here rather than per route is what makes it robust
-# by construction — a write route added later is gated whether or not anyone remembers
-# to ask. Anything outside this set counts as a write, so an unlisted method fails closed.
+# Role gating's FLOOR splits on the METHOD, not on the route: everyone signed in
+# reads, only ``_WRITE_ROLES`` write at all. Doing the floor here rather than per
+# route is what makes it robust by construction — a write route added later is
+# gated whether or not anyone remembers to ask. Anything outside this set counts as
+# a write, so an unlisted method fails closed. ``_PRIVILEGED_PATHS`` below adds a
+# second, narrower tier on top of this floor for the one write that needs it — it
+# can only ever raise the bar an unclassified route already clears, never lower it,
+# so the robustness argument above still holds for every route this file has not named.
 _READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
-# ``viewer`` — the column default — is the one role left out. There is deliberately no
-# admin-only tier: user management is the ``driftless user`` CLI, and a tier nothing
-# needs yet would be a guess (the roles themselves: ``driftless/models/auth.py``).
+# ``viewer`` — the column default — is the one role left out of ordinary writes
+# (the roles themselves: ``driftless/models/auth.py``).
 _WRITE_ROLES = frozenset({"admin", "contributor"})
+# SUPERSEDES the earlier decision that there was deliberately no admin-only tier
+# (docs/decisions-superseded.md, "Administration boundary"): a sign-off is a
+# governance act, not an edit — it can permanently suppress or restore a live
+# threat, and the ledger it appends to is by design never patched or deleted
+# (see :func:`driftless.services.sign_offs.create_sign_off`). Two addresses reach
+# that ONE write: ``POST /sign-offs`` calls ``create_sign_off``, and the browser
+# form at ``POST /sign-off`` calls the same service rather than its own row
+# (:func:`driftless.web.sign_off.sign_off`) — both are named here, or the page form
+# would quietly reopen the hole gating only the JSON route would leave. Derived
+# and compared as an exact set against the live route table in
+# ``tests/test_secure.py``, so neither a stale entry here nor a third route
+# reaching the same write can drift from this list unnoticed.
+#
+# The versioned twin of the JSON route is the THIRD address, and it is built from
+# ``API_PREFIX`` rather than typed out: this check matches a path literally, so a
+# versioned route the list does not name reaches ``create_sign_off`` without the
+# admin floor. That is a privilege hole, not a routing detail, and it is exactly
+# what the exact-set test above caught when ``/api/v1`` was introduced. Any future
+# prefix must be composed here the same way. (The page form is NOT versioned —
+# HTML pages take no prefix, so there is no twin of ``/sign-off`` to name.)
+_PRIVILEGED_PATHS = frozenset({"/sign-offs", "/sign-off", API_PREFIX + "/sign-offs"})
 _WRITE_DENIED = b'{"detail":"writes need the contributor or admin role"}'
+_PRIVILEGED_DENIED = b'{"detail":"this action needs the admin role"}'
 _UNAUTHENTICATED = b'{"detail":"missing or invalid bearer token"}'
+# The two reasons a request never reaches ``self._inner`` -- see :func:`_log_refusal`.
+# ``_REASON_UNAUTHENTICATED`` covers both true anonymity and a credential that was
+# presented but resolved nobody (a wrong bearer, a forged or stale cookie) -- the
+# gate cannot and does not distinguish those for the *response* (see
+# :meth:`TokenGate._refuse_anonymous`), so the refusal log does not invent a finer
+# split either.
+_REASON_UNAUTHENTICATED = "unauthenticated"
+_REASON_INSUFFICIENT_ROLE = "insufficient_role"
+
+
+def _log_refusal(scope: Scope, reason: str, *, who: principal.Principal | None = None) -> None:
+    """Record a refusal this gate answers itself, on its own ``driftless.secure``
+    logger -- the module already has one, for the route-table and dev-mode
+    warnings above.
+
+    Nothing else sees this request: the gate sits OUTSIDE the app
+    (:func:`create_secured_app`), and a refusal returns without ever calling
+    ``self._inner`` -- so the request log (:mod:`driftless.api.logging`) and the
+    metrics middleware (:mod:`driftless.api.metrics`), both installed *inside*
+    the app this gate wraps, never run for it. Without this line a burst of
+    rejected credentials -- credential stuffing, a misconfigured client looping
+    on 401, a revoked token still in use -- is indistinguishable in every other
+    signal this service emits from no traffic at all.
+
+    INFO, deliberately, not the WARNING this module already uses for genuine
+    misconfiguration (an unreadable route table, a deployment running open): a
+    refusal is ordinary, expected traffic under normal operation -- a scanner
+    probing the API, a stale client, a viewer clicking a write button their role
+    does not grant -- and :mod:`driftless.api.logging` sets the same precedent,
+    logging every request, failed or not, at INFO. Raising this to WARNING would
+    make routine 401/403 traffic indistinguishable, in an operator's filters,
+    from the conditions this module already reserves that level for.
+
+    **Never the credential.** Not the presented token, not any part or hash of
+    it, not the ``Authorization`` or ``Cookie`` header -- :mod:`driftless.api.logging`
+    states the rule this line has to honour just as strictly: a credential in a
+    log line is a leak, and a log is copied to places the database is not. There
+    is deliberately nothing here to redact, because nothing about the
+    credential is ever read for this purpose in the first place.
+
+    ``who`` -- the resolved principal -- is included only for a write refusal.
+    By the time that branch runs the caller has already authenticated (a cookie
+    or a per-user token resolved *someone*; only their role was insufficient),
+    so naming them is not a credential disclosure -- it is the fact an operator
+    most needs to act on a repeated 403: whose account keeps asking for access
+    it does not have. A 401 resolves no principal at all, so there is no name
+    to log there, only the request's own shape.
+
+    No ``request_id``: :mod:`driftless.api.logging` mints and stamps that id
+    from *inside* the app this gate wraps, so a refused request -- which never
+    reaches ``self._inner`` -- is never assigned one. Inventing an id here would
+    be a second, disconnected generator with nothing on the other end to
+    correlate against, which is worse than the line simply not carrying one.
+    """
+    if not logger.isEnabledFor(logging.INFO):
+        return
+    client = scope.get("client")
+    record: dict[str, object] = {
+        "ts": datetime.now(UTC).isoformat(timespec="milliseconds"),
+        "event": "refused",
+        "reason": reason,
+        "method": scope.get("method", "GET"),
+        "path": scope.get("path", ""),
+        "client": client[0] if client else None,
+    }
+    if who is not None:
+        record["username"] = who.username
+    logger.info(json.dumps(record))
 
 
 def _leaves(route: BaseRoute) -> list[BaseRoute]:
@@ -150,7 +268,7 @@ def _page_patterns(inner: object) -> tuple[re.Pattern[str], ...]:
         return ()
 
 
-def _is_open_path(path: str) -> bool:
+def is_open_path(path: str) -> bool:
     """Whether ``path`` is public — the health probe, a static asset, or sign-in.
 
     ``/static`` and ``/static/…`` are open; ``/static-export`` or a future
@@ -212,11 +330,17 @@ class TokenGate:
         inner: object,
         token: str | None,
         *,
+        require_identity: bool = False,
         session_scope: SessionScope = session_scope,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._inner = inner
         self._token = token
+        # Default ``False`` so ``token=None`` keeps meaning "open", which is what the
+        # existing callers and their tests pin. The new mode is opt-in and explicit:
+        # no shared bearer AND no anonymous access, so every admitted request has a
+        # principal and every write it makes is attributable.
+        self._require_identity = require_identity
         self._session_scope = session_scope
         self._pages = _page_patterns(inner)  # read once here, so a test rebuilds by re-wrapping
         self._clock = clock  # cookie expiry is the one clock here, threaded in like every as-of
@@ -226,7 +350,7 @@ class TokenGate:
             await self._inner(scope, receive, send)  # type: ignore[operator]
             return
         path = scope.get("path", "")
-        if _is_open_path(path):  # a public asset needs no identity, so none is looked up
+        if is_open_path(path):  # a public asset needs no identity, so none is looked up
             await self._inner(scope, receive, send)  # type: ignore[operator]
             return
         token, (who, kind) = self._token, self._credential(scope)
@@ -234,11 +358,16 @@ class TokenGate:
             # Resolved once per request: role gating, the audit actor and the CSRF rule all
             # read what this stamps, and none of them looks a credential up a second time.
             state = scope.setdefault("state", {})
-            state[pages.CREDENTIAL_KEY], state["principal"] = kind, who
+            state[credentials.CREDENTIAL_KEY], state["principal"] = kind, who
         if who is not None and _refuses_write(scope, who):  # before ``_inner``: no route, no row
-            await self._refuse_write(scope, receive, send)
+            await self._refuse_write(scope, receive, send, who)
             return
-        if token is None or who is not None or _authorized(scope, token):
+        # Open only when there is no shared bearer AND nothing asked for identity. The
+        # ``token is not None`` guard preserves the old short-circuit exactly: with a
+        # token configured this is the same test as before, and with none configured
+        # the old code never reached ``_authorized`` either.
+        open_access = token is None and not self._require_identity
+        if open_access or who is not None or (token is not None and _authorized(scope, token)):
             await self._inner(scope, receive, send)  # type: ignore[operator]
             return
         await self._refuse_anonymous(scope, receive, send)
@@ -262,6 +391,7 @@ class TokenGate:
         expiry still reaches the form — the cookie's ``max-age`` is the session TTL, so a
         browser drops it before the signature goes stale and presents nothing next time.
         """
+        _log_refusal(scope, _REASON_UNAUTHENTICATED)
         if _anonymous(scope) and self._is_page(scope):
             await RedirectResponse(_LOGIN_PATH, status_code=_SEE_OTHER)(scope, receive, send)
             return
@@ -272,18 +402,32 @@ class TokenGate:
         path = scope.get("path", "")
         return any(pattern.match(path) for pattern in self._pages)
 
-    async def _refuse_write(self, scope: Scope, receive: Receive, send: Send) -> None:
+    async def _refuse_write(
+        self, scope: Scope, receive: Receive, send: Send, who: principal.Principal
+    ) -> None:
         """The 403: the designed page when the request addressed a page, else the JSON body.
 
-        Keyed on the path alone, not on the method — a viewer POSTing to a read-only
-        page address is still a reader at a page address, and a browser should never
-        be handed a JSON dump. Every other surface, the API included, is byte for byte
-        what it was: no page route matches, so nothing changes.
+        Which SURFACE answers is keyed on the path alone, not on the method — a viewer
+        POSTing to a read-only page address is still a reader at a page address, and a
+        browser should never be handed a JSON dump. Every other surface, the API
+        included, is byte for byte what it was: no page route matches, so nothing changes.
+
+        Which WORDING it carries is keyed on the tier that refused, on both surfaces.
+        ``who`` reached ``_WRITE_ROLES`` and was still refused only by way of
+        :data:`_PRIVILEGED_PATHS` — that is the one branch in :func:`_refuses_write`
+        that can turn a writer away — so the role IS the reason, read back rather than
+        re-derived from the path, which would be a second copy free to drift from the
+        first. It matters because the two readers need opposite instructions: a viewer
+        is told to ask for contributor access, and telling a contributor the same would
+        send them to ask for the role they already hold.
         """
+        _log_refusal(scope, _REASON_INSUFFICIENT_ROLE, who=who)
+        admin_only = who.role in _WRITE_ROLES
         if self._is_page(scope):
-            await read_only_page(Request(scope))(scope, receive, send)
+            page = admin_only_page if admin_only else read_only_page
+            await page(Request(scope))(scope, receive, send)
             return
-        await _respond(send, 403, _WRITE_DENIED)
+        await _respond(send, 403, _PRIVILEGED_DENIED if admin_only else _WRITE_DENIED)
 
     def _credential(self, scope: Scope) -> tuple[principal.Principal | None, str | None]:
         """The identity behind this request's credential, and WHICH kind carried it.
@@ -297,19 +441,19 @@ class TokenGate:
         The kind rides along because CSRF turns on it and nothing else can tell: only an
         *ambient* credential can be forged cross-site, so a cookie request presents the
         double-submit pair and a bearer one has nothing to prove
-        (:func:`driftless.web.pages._require_pair_unless_bearer`). DECIDED: the shared
+        (:func:`driftless.web.credentials.require_pair_unless_bearer`). DECIDED: the shared
         ``DRIFTLESS_API_TOKEN`` resolves nobody but is stamped all the same — it is a
         header a caller attached deliberately, which is the whole of that argument, and
         it stays the un-role-gated bootstrap credential it already was.
         """
         who = self._from_cookie(scope)
         if who is not None:
-            return who, pages.COOKIE_CREDENTIAL
+            return who, credentials.COOKIE_CREDENTIAL
         who = self._from_token(scope)
         if who is not None:
-            return who, pages.TOKEN_CREDENTIAL
+            return who, credentials.TOKEN_CREDENTIAL
         if self._token is not None and _authorized(scope, self._token):
-            return None, pages.SHARED_CREDENTIAL
+            return None, credentials.SHARED_CREDENTIAL
         return None, None
 
     def _from_cookie(self, scope: Scope) -> principal.Principal | None:
@@ -349,7 +493,7 @@ class TokenGate:
         if not presented.startswith(tokens.PREFIX):
             return None  # not one of ours — ``resolve`` agrees, without a session opened
         with self._session_scope() as db:
-            return tokens.resolve(db, presented)
+            return tokens.resolve(db, presented, self._clock())
 
 
 def _anonymous(scope: Scope) -> bool:
@@ -367,15 +511,24 @@ def _anonymous(scope: Scope) -> bool:
 
 
 def _refuses_write(scope: Scope, who: principal.Principal) -> bool:
-    """Whether ``who``'s role forbids this request's method.
+    """Whether ``who``'s role forbids this request.
 
     Only reached once a principal resolved, so a request carrying nothing but the
     shared bearer token is NOT role gated — DECIDED: ``DRIFTLESS_API_TOKEN`` is the
     bootstrap/admin credential and keeps full write access. A signed-in viewer is
     gated even with no token configured, because the identity is what is being
     checked, not the token.
+
+    Two tiers, both fail closed on the SAME floor: any write method outside
+    ``_READ_METHODS`` needs at least ``_WRITE_ROLES`` — an unrecognised path gets
+    exactly that floor and nothing weaker, whether or not this file ever names it.
+    A path in ``_PRIVILEGED_PATHS`` narrows the floor further, to ``admin`` alone.
     """
-    return scope.get("method", "GET") not in _READ_METHODS and who.role not in _WRITE_ROLES
+    if scope.get("method", "GET") in _READ_METHODS:
+        return False
+    if who.role not in _WRITE_ROLES:
+        return True
+    return scope.get("path", "") in _PRIVILEGED_PATHS and who.role != "admin"
 
 
 def _authorized(scope: Scope, token: str) -> bool:
@@ -404,11 +557,61 @@ async def _respond(send: Send, status: int, body: bytes) -> None:
 
 
 def create_secured_app() -> TokenGate:
-    """Wrap the API in the token gate, reading the token from the environment."""
+    """Wrap the API in the token gate, reading the token from the environment.
+
+    A missing token used to serve the whole API open with only a warning in a log
+    nobody reads — a forgotten secret silently widening access, the fail-open
+    configuration bug. It now REFUSES to start unless ``ALLOW_UNAUTHENTICATED_ENV``
+    opts in explicitly: a process that will not start is loud, an open API is not.
+
+    Three configurations, and only three:
+
+    * ``REQUIRE_USER_AUTH_ENV=1`` — no shared bearer; every request presents a per-user
+      cookie or ``dfl_…`` token, so every write it makes names an actor. This is the
+      configuration to deploy: mint a service account with ``driftless user add`` and
+      ``driftless token add`` and give it to the client that used to hold the shared one.
+    * ``TOKEN_ENV`` set — the shared bootstrap credential, un-role-gated, writes landing
+      ``actor=None``. Still supported, still what a fresh install starts on.
+    * Neither, plus ``ALLOW_UNAUTHENTICATED_ENV=1`` — open, for local development.
+
+    Setting the first two together is refused rather than resolved. Either the operator
+    thinks the shared credential still works (it does not, in this mode) or that this
+    mode is on (it would be, silently disabling a configured secret) — and a wrong
+    mental model about which credentials authorize is the failure this module exists
+    to prevent, so it fails at startup where it is loud.
+    """
     token = os.environ.get(TOKEN_ENV) or os.environ.get(LEGACY_TOKEN_ENV) or None
+    if os.environ.get(REQUIRE_USER_AUTH_ENV) == "1":
+        if token is not None:
+            raise RuntimeError(
+                f"{REQUIRE_USER_AUTH_ENV}=1 and {TOKEN_ENV} are both set — refusing to "
+                f"start. In this mode the shared credential does not authorize anything; "
+                f"unset it, or unset {REQUIRE_USER_AUTH_ENV} to keep using it."
+            )
+        return TokenGate(app, None, require_identity=True)
     if token is None:
+        if os.environ.get(ALLOW_UNAUTHENTICATED_ENV) != "1":
+            raise RuntimeError(
+                f"{TOKEN_ENV} is unset — refusing to start an unauthenticated API. "
+                f"Set {TOKEN_ENV} (or the legacy {LEGACY_TOKEN_ENV}), set "
+                f"{REQUIRE_USER_AUTH_ENV}=1 to require a per-user credential instead, "
+                f"or set {ALLOW_UNAUTHENTICATED_ENV}=1 to run open for local development."
+            )
         logger.warning("%s is unset — the API is running open (development mode).", TOKEN_ENV)
     return TokenGate(app, token)
 
 
-secured = create_secured_app()
+def __getattr__(name: str) -> TokenGate:
+    """Build ``secured`` lazily, on first access rather than at import.
+
+    Most of the test suite imports this module only for :class:`TokenGate` and never
+    touches ``secured`` at all — building it eagerly here would make every one of
+    those imports pay :func:`create_secured_app`'s startup refusal, so the whole
+    suite would need the token (or the dev-mode opt-in) just to collect. Only an
+    actual resolution of the attribute — uvicorn's ``driftless.api.secure:secured`` —
+    pays the check, exactly once, which is also the only place the refusal is meant
+    to fire.
+    """
+    if name == "secured":
+        return create_secured_app()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

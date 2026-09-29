@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+{% block title %}The method map{% endblock %}
+{% import "_scroll.html" as scroll %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{% import "_related.html" as related_block %}
+{% block scripts %}<link rel="stylesheet" href="/static/map.css"><script src="/static/map.js" defer></script>{% endblock %}
+{% block content %}
+{% if project %}
+{{ breadcrumbs.trail(project, focus_label if slice == "focus" else "Map", as_of) }}
+{% elif slice == "focus" %}
+{{ breadcrumbs.theory("Map", overview_href, focus_label) }}
+{% else %}
+{{ breadcrumbs.theory(None, None, "Map") }}
+{% endif %}
+<h1>The method map</h1>
+{% if notice %}<p class="map-notice" role="status">{{ notice }}</p>{% endif %}
+<p class="lede">This map shows every process, technique and artifact this product knows, and how they connect to each other.</p>
+{# MP29: the longer shapes/lines explainer DH11's comment (below) pointed at,
+   now collapsed under its own <details> so the drawing is not pushed below
+   five paragraphs, 28 chips and 19 legend rows of prose first. The sentence
+   "Every shape links to its own page; ... handful of nodes." stays
+   byte-identical -- bin/driftless-showcase.py's MAP_COPY matches it literally
+   to rewrite this page's copy for the static export, and a reword or rewrap
+   would silently stop that replacement from landing (it did, in PR 510). #}
+<details>
+<summary>How to read this map</summary>
+<p>Every process, technique and artifact this catalog knows, with every tie between them
+   drawn as a line. Three kinds, one shape each:
+   <span aria-hidden="true">{{ kind_marks.process }}</span> a <strong>process</strong> —
+   a step the method names, drawn as a filled square, tinted by its knowledge area;
+   <span aria-hidden="true">{{ kind_marks.technique }}</span> a <strong>technique</strong> —
+   a way of doing one, drawn as a filled dot;
+   <span aria-hidden="true">{{ kind_marks.artifact }}</span> an <strong>artifact</strong> —
+   a document or record a process reads or produces, drawn as a filled diamond.
+   Every shape links to its own page; a technique or artifact's own name shows on
+   hover, on keyboard focus, or once a filter narrows the map to a handful of nodes.
+   A shape's summary and its ties show while you hover it or tab to it; press Space
+   on a shape you have tabbed to to keep them up.</p>
+</details>
+{# DH11: a short, always-present orientation block, written in the same
+   <details> shape as the block MP29 collapsed above so the page is not
+   restructured twice. #}
+<details>
+<summary>How to read this page</summary>
+<p>Shapes are process, technique or artifact; fill colour is knowledge area or
+   technique family; a dashed line is optional. The legend below spells out every
+   shape, fill and line. Filters and search narrow what is drawn; Fit/100%/+/&minus;
+   zoom the picture; a shape's own summary and ties show on hover, focus, or Space.</p>
+</details>
+{% if project %}
+<p><em>As of {{ as_of }}</em> — process nodes are washed with
+   <strong>{{ project.name }}</strong>'s own reading, the same one
+   <a href="/projects/{{ project.id }}/process-map?as_of={{ as_of }}">its process map</a> prints.
+   ("Washed" means each process node's colour and mark show that project's own state for it —
+   see <a href="/projects/{{ project.id }}/wizard?as_of={{ as_of }}">the onboarding wizard</a>
+   for the questions that state comes from.)</p>
+{% else %}
+{% if projects %}
+<p>Shown without any project's reading. Washing means colouring each process node with a
+   project's own state for it — see a project's progress washed onto these
+   processes: {% for p in projects %}<a href="/map?project={{ p.id }}&amp;as_of={{ as_of }}">{{ p.name }}</a>{% if not loop.last %} · {% endif %}{% endfor %}
+   — or see every project on <a href="/">the dashboard</a>.</p>
+{% else %}
+<p>Shown without any project's reading — there is no project yet to wash it with. Washing
+   means colouring each process node with a project's own state for it.</p>
+{% endif %}
+{% endif %}
+{# What this page is showing, and the way to every other read of it. The numbers come
+   from GraphView.counts() -- measured against GRAPH.size(), never typed here -- and
+   the sentence is composed here, which is why the view hands over no wording. #}
+<p class="map-count">Showing {{ counts.nodes }} of {{ counts.total_nodes }} nodes; {{ counts.edges }} relevant ties.</p>
+<p class="map-views">
+{%- if slice == "all" %}Every node and every tie at once, for exhaustive reading and export. <a href="{{ overview_href }}">Back to the process overview</a>.
+{%- elif slice == "focus" %}{{ focus_label }} and everything it touches. <a href="{{ overview_href }}">Back to the process overview</a> · <a href="{{ whole_graph_href }}">Show the whole graph</a>.
+{%- else %}The processes in lifecycle order. Open any one below to see what it touches, or <a href="{{ whole_graph_href }}">show the whole graph</a>.
+{%- endif %}
+</p>
+{# static/map.js only: with JS off these sit inert and every shape stays reachable
+   by its own link and the no-JS tie list below. #}
+<div class="map-filters">
+<fieldset><legend>Kind</legend>{% for value, label in kind_filters %}<label class="map-pill"><input type="checkbox" class="map-filter" data-dim="kind" value="{{ value }}"> {{ label }}</label>{% endfor %}</fieldset>
+<fieldset><legend>Process group</legend>{% for value, label in group_filters %}<label class="map-pill"><input type="checkbox" class="map-filter" data-dim="group" value="{{ value }}"> {{ label }}</label>{% endfor %}</fieldset>
+<fieldset><legend>Knowledge area</legend>{% for value, label in area_filters %}<label class="map-pill"><input type="checkbox" class="map-filter" data-dim="area" value="{{ value }}"> {{ label }}</label>{% endfor %}</fieldset>
+<fieldset><legend>Technique family</legend>{% for value, label in family_filters %}<label class="map-pill"><input type="checkbox" class="map-filter" data-dim="family" value="{{ value }}"> {{ label }}</label>{% endfor %}</fieldset>
+{% if show_flow_only %}<label class="map-pill"><input type="checkbox" id="map-flow-only"> Show flow only</label>{% endif %}
+<label class="map-pill">Search <input type="search" id="map-search"></label>
+<button type="button" id="map-reset" class="btn btn-secondary">Reset</button>
+</div>
+<dl class="legend map-legend">
+<dt>Shape</dt>
+<dd><svg class="map-legend-swatch" viewBox="0 0 16 16" aria-hidden="true"><rect x="1" y="1" width="14" height="14" rx="3" class="map-legend-process"/></svg> Process</dd>
+<dd><svg class="map-legend-swatch" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" class="map-legend-technique"/></svg> Technique</dd>
+<dd><svg class="map-legend-swatch" viewBox="0 0 16 16" aria-hidden="true"><polygon points="8,1 15,8 8,15 1,8" class="map-legend-artifact"/></svg> Artifact</dd>
+<dt>Knowledge area (fill)</dt>
+{% for value, label in area_filters %}
+<dd><svg class="map-legend-swatch" viewBox="0 0 16 16" aria-hidden="true"><rect x="1" y="1" width="14" height="14" rx="3" data-area="{{ value }}" class="map-legend-area"/></svg> {{ label }}</dd>
+{% endfor %}
+<dt>Tie (line)</dt>
+{% for css_class, phrase in edge_legend %}
+<dd><svg class="map-legend-swatch map-legend-tie-swatch" viewBox="0 0 24 16" aria-hidden="true"><line x1="1" y1="8" x2="23" y2="8" class="map-legend-edge {{ css_class }}"/></svg> {{ phrase }}</dd>
+{% endfor %}
+{% if project %}
+{# MP18: a washed process node prints a state mark (views.STATE_MARK); until now
+   the legend explained shape, fill and line but never what that mark means. Same
+   chip markup /process-map's own legend uses (views.LEGEND), so the two never
+   read apart. #}
+<dt>State</dt>
+{% for st, rank, mark in legend %}
+<dd><span class="badge st-{{ rank }}" title="{{ st }}">&nbsp;{{ mark }}&nbsp;</span> {{ st | humanize }}</dd>
+{% endfor %}
+{% endif %}
+</dl>
+{# Fit/100%/+/- (map.js only): the drawing is complete and correct with JS off at
+   its default, Fit — width:100% of the scroll box, height following the viewBox's
+   own aspect ratio (map.css). The ``--map-floor`` set below is the SAME size the
+   SVG itself carries as data-width/data-height; map.css is what turns it into the
+   element's own ``min-width``, since a page never declares a layout property itself
+   (tests/test_web_responsive.py). So Fit never shrinks a label past the point
+   map.css's --fs-sm stays legible, with no script needed to enforce it. #}
+<div class="map-zoom" role="group" aria-label="Zoom the map">
+<button type="button" class="btn btn-secondary" data-zoom="fit">Fit</button>
+<button type="button" class="btn btn-secondary" data-zoom="100">100%</button>
+<button type="button" class="btn btn-secondary" data-zoom="out" aria-label="Zoom out">&minus;</button>
+<button type="button" class="btn btn-secondary" data-zoom="in" aria-label="Zoom in">+</button>
+</div>
+{# The drawing and its per-node panel share ONE flex row (map.css `.map-layout`)
+   so the panel column can be pinned beside the drawing (`position: sticky`) on a
+   wide viewport and stacks under it below the site's one 60rem breakpoint
+   (driftless.css) — never a second breakpoint invented here. #}
+<div class="map-layout">
+{% call scroll.wide("The method map") %}
+<svg viewBox="{{ viewbox }}" data-width="{{ size[0] }}" data-height="{{ size[1] }}" style="--map-floor: {{ (size[0] * 0.786) | round | int }}px" class="map-svg{% if slice != "all" %} map-narrow{% endif %}" data-slice="{{ slice }}" data-overview="{{ overview_href }}" role="group" aria-label="The method graph: every process, technique and artifact, and every tie between them">
+{# One arrowhead marker per tie kind, defined once here and applied by each
+   `.edge-{kind}` rule's own `marker-end` (driftless.css) -- never a per-path
+   attribute the 200+ edges below would each have to repeat. `context-stroke`
+   lets the triangle pick up whatever colour/opacity the path it terminates
+   already carries (the faint default wash, or `currentColor` once lit),
+   rather than pinning a second literal that would drift from the line it
+   points at. #}
+{# The same five kinds driftless.css's own `.edge-{kind}` rules already name
+   (TIE_VERB, method_map.py -- a sibling unit's file this template does not
+   import from), walked here rather than off the drawn slice's edges alone,
+   so a slice that happens to carry no `used_by` tie still defines its marker. #}
+{% set tie_kinds = ["reads", "produces", "used_by", "feeds", "part_of"] %}
+<defs>
+{% for kind in tie_kinds %}
+<marker id="arrow-{{ kind }}" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/>
+</marker>
+{% endfor %}
+</defs>
+{# Band captions/backgrounds, derived from the SAME process node boxes the
+   list below already carries (n.box, n.group) — no second geometry, no new context
+   key. Taken from EVERY process, not just the drawn slice, so the five bands stay
+   the map's fixed frame: a neighbourhood showing three of them draws them where the
+   overview does, and an empty band simply has no caption. Boundaries are computed from PROCESS nodes only (the group a
+   satellite's own family/area does not name); a band's rect spans the full
+   gap to its neighbours either side, so its techniques/artifacts — always
+   shelf-packed between one band's processes and the next's, never outside
+   that gap — read as part of the same row without needing their own y. #}
+{% set vb = viewbox.split(" ") %}
+{% set viewbox_width, viewbox_height = vb[2] | int, vb[3] | int %}
+{% set band_tops, band_bottoms = [], [] %}
+{% for value, label in band_groups %}
+  {% set ns = namespace(top=none, bottom=none) %}
+  {% for n in all_nodes if n.kind == "process" and n.group == value %}
+    {% if ns.top is none or n.box[1] < ns.top %}{% set ns.top = n.box[1] %}{% endif %}
+    {% set bottom = n.box[1] + n.box[3] %}
+    {% if ns.bottom is none or bottom > ns.bottom %}{% set ns.bottom = bottom %}{% endif %}
+  {% endfor %}
+  {% set _ = band_tops.append(ns.top) %}
+  {% set _ = band_bottoms.append(ns.bottom) %}
+{% endfor %}
+{% for value, label in band_groups %}
+  {% if band_tops[loop.index0] is not none %}
+    {% set rect_top = 0 if loop.first else (band_bottoms[loop.index0 - 1] + band_tops[loop.index0]) / 2 %}
+    {% set rect_bottom = viewbox_height if loop.last else (band_bottoms[loop.index0] + band_tops[loop.index0 + 1]) / 2 %}
+    {% if loop.index0 is odd %}
+    <rect class="band" x="0" y="{{ rect_top }}" width="{{ viewbox_width }}" height="{{ rect_bottom - rect_top }}" aria-hidden="true"/>
+    {% endif %}
+    <text class="band-label" x="8" y="{{ band_tops[loop.index0] - 4 }}" aria-hidden="true">{{ label|upper }}</text>
+  {% endif %}
+{% endfor %}
+{# The TRAY: graph_layout puts every member no tie reaches on ONE row below all
+   five bands, separated from them by its own TRAY_GAP, so it is exactly the
+   largest box top in the map — the reading below, pinned by
+   tests/test_graph_layout.py so this stays derivable from n.box alone. It is
+   captioned rather than left silent: the layout used to park these members in
+   the Closing band, which asserted a lifecycle home the catalog never claims. #}
+{% if slice == "all" %}
+{% set ns_tray = namespace(top=none) %}
+{% for n in all_nodes %}{% if ns_tray.top is none or n.box[1] > ns_tray.top %}{% set ns_tray.top = n.box[1] %}{% endif %}{% endfor %}
+<rect class="tray" x="0" y="{{ ns_tray.top - 24 }}" width="{{ viewbox_width }}" height="{{ viewbox_height - ns_tray.top + 24 }}" aria-hidden="true"/>
+<text class="tray-label" x="8" y="{{ ns_tray.top - 8 }}">Accounted for elsewhere — no tie in this catalog reaches these, so no band above is their home.</text>
+{% endif %}
+{% for edge in edges %}
+<path class="edge edge-{{ edge.kind }}{% if edge.optional %} edge-optional{% endif %}" d="{{ edge_path(edge) }}" data-from="{{ edge.source }}" data-to="{{ edge.target }}" data-tie="{{ edge.kind }}"><title>{{ edge_titles[edge] }}</title></path>
+{% endfor %}
+{% for n in nodes %}
+<g class="node node-{{ n.kind }}{% if n.wash %} st-{{ n.wash }}{% endif %}{% if n.focus_class %} {{ n.focus_class }}{% endif %}" data-node="{{ n.id }}" data-kind="{{ n.kind }}" data-label="{{ n.label }}">
+<a href="{{ n.href }}"><title>{{ n.title }}</title>
+{% if n.kind == "process" %}
+<rect class="node-shape" x="{{ n.box[0] }}" y="{{ n.box[1] }}" width="{{ n.box[2] }}" height="{{ n.box[3] }}" rx="6" data-group="{{ n.group }}" data-area="{{ n.area }}" data-family="{{ n.family }}"/>
+{% elif n.kind == "technique" %}
+<circle class="node-shape" cx="{{ n.x }}" cy="{{ n.y }}" r="{{ (n.box[2] if n.box[2] < n.box[3] else n.box[3]) // 2 }}" data-group="{{ n.group }}" data-area="{{ n.area }}" data-family="{{ n.family }}"/>
+{% else %}
+<polygon class="node-shape" points="{{ n.x }},{{ n.box[1] }} {{ n.box[0] + n.box[2] }},{{ n.y }} {{ n.x }},{{ n.box[1] + n.box[3] }} {{ n.box[0] }},{{ n.y }}" data-group="{{ n.group }}" data-area="{{ n.area }}" data-family="{{ n.family }}"/>
+{% endif %}
+<text x="{{ n.x }}" y="{{ n.y }}" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">{{ n.mark }}</tspan> {{ n.label }}{% if n.state_mark %} <tspan aria-hidden="true">{{ n.state_mark }}</tspan>{% endif %}</text>
+</a>
+</g>
+{% endfor %}
+</svg>
+{% endcall %}
+{# One hidden panel per DRAWN node; static/map.js un-hides the clicked one — never
+   a fetch, and never a panel for a node the picture does not show, since a panel
+   is only ever reachable by clicking a shape that is actually drawn. h3, not h2:
+   one panel per node under the page's single h1 would otherwise drown the
+   outline in false top-level headings. The wrapper itself — never an individual
+   panel — carries `role="status"`/`aria-live`: it is on the page unconditionally
+   (only its CHILDREN's `hidden` toggles), since a live region is only reliably
+   announced if it already existed before its content changed. Marking the panel
+   that is about to appear live at the same moment it stops being hidden is the
+   case several screen readers miss. #}
+<div class="map-panels" role="status" aria-live="polite" aria-atomic="true">
+{% for n in nodes %}
+<aside class="map-panel" data-panel-for="{{ n.id }}" hidden>
+<h3>{{ n.label }}</h3>
+<p>{{ n.summary }}</p>
+{% if n.ties %}<ul>{% for tie in n.ties %}<li>{{ tie }}</li>{% endfor %}</ul>{% endif %}
+<p><a href="{{ n.href }}">Open {{ n.label }}</a> · <a href="{{ focus_href_prefix }}{{ n.id }}">Show {{ n.label }} on the map</a></p>
+</aside>
+{% endfor %}
+</div>
+</div>
+{# No-JS/print/screen-reader alternative: every node by kind, with every tie it is
+   the SOURCE of spelled out via the same tie_phrase() the SVG <title> uses — each
+   edge has one source, so every tie in the graph appears here exactly once. #}
+{% for kind, heading in kinds %}
+<details>
+<summary>{{ heading }}</summary>
+<ul>
+{% for n in all_nodes if n.kind == kind %}
+<li><a href="{{ n.href }}">{{ n.label }}</a> <a href="{{ focus_href_prefix }}{{ n.id }}">{{ n.label }} on the map</a>{% if n.ties %}<ul>{% for tie in n.ties %}<li>{{ tie }}</li>{% endfor %}</ul>{% endif %}</li>
+{% endfor %}
+</ul>
+</details>
+{% endfor %}
+{{ related_block.related(related) }}
+{% endblock %}

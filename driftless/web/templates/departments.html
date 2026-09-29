@@ -11,10 +11,11 @@
 {% call scroll.wide("Department list") %}
 <table>
 <caption class="sr-only">Departments as of {{ as_of }}, with their business, headcount and weekly capacity</caption>
-<tr><th scope="col">Department</th><th scope="col">Business</th><th scope="col">Headcount</th><th scope="col">Capacity (hrs/wk)</th></tr>
+<tr><th scope="col">Department</th><th scope="col">Business</th><th scope="col">Headcount</th><th scope="col">Capacity (hrs/wk)</th><th scope="col">Workspace</th></tr>
 {% for d in departments %}
-<tr class="department"><td><a href="/org/departments/{{ d.id }}">{{ d.name }}</a></td><td>{{ d.business }}</td><td>{{ d.headcount }}</td><td>{{ d.capacity_hours }}</td></tr>
+<tr><td><a href="/org/departments/{{ d.id }}">{{ d.name }}</a></td><td>{{ d.business }}</td><td>{{ d.headcount }}</td><td>{{ d.capacity_hours }}</td><td><a href="/org/departments/{{ d.id }}/assist?as_of={{ as_of }}">Workspace</a></td></tr>
 {% endfor %}
+<tfoot><tr class="totals"><th scope="row">Total</th><td>{{ totals.count }} departments</td><td>{{ totals.headcount }}</td><td>{{ totals.capacity_hours }}</td><td></td></tr></tfoot>
 </table>
 {% endcall %}
 {% else %}

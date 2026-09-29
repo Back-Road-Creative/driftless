@@ -32,14 +32,18 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from driftless.api import app as app_module
 from driftless.api.app import app as real_app
 from driftless.api.secure import TokenGate
 from driftless.auth import sessions, tokens
 from driftless.db import Base, new_engine, new_session_factory
+from driftless.db import session as db_session
 from driftless.db.changelog import ChangeLog, register_changelog
-from driftless.models import Department, Program, Project, User
-from driftless.pmbok import catalog
+from driftless.models import Baseline, BaselineLine, Department, Program, Project, Task, User
+from driftless.pmbok import catalog, methods
+from driftless.pmbok.artifacts import ARTIFACT_KINDS
+from driftless.pmbok.tt import TT_CATALOG
+from driftless.web.artifacts import artifact_slug
+from driftless.web.templating import technique_slug
 import test_web_pages
 from test_web_pages import AS_OF
 from test_web_routes_not_shadowed import _included, _leaves, _shape
@@ -59,6 +63,17 @@ PAGES = {
     "/sign-off": f"/threats{Q}",
     WIZARD: f"/projects/1/wizard{Q}",
     "/projects/{}/status": f"/projects/1/status{Q}",
+    "/projects/{}/assist/risk-responses": f"/projects/1/assist/risk-responses{Q}",
+    "/projects/{}/assist/requirements/requirement": f"/projects/1/assist/requirements{Q}",
+    "/projects/{}/assist/requirements/trace": f"/projects/1/assist/requirements{Q}",
+    "/projects/{}/assist/requirements/acceptance": f"/projects/1/assist/requirements{Q}",
+    "/projects/{}/assist/team/assignment": f"/projects/1/assist/team{Q}",
+    "/projects/{}/assist/team/assessment": f"/projects/1/assist/team{Q}",
+    "/projects/{}/assist/team/conflict": f"/projects/1/assist/team{Q}",
+    "/projects/{}/assist/team/action": f"/projects/1/assist/team{Q}",
+    "/projects/{}/assist/decisions": f"/projects/1/assist/decisions{Q}",
+    "/projects/{}/assist/schedule/propose": f"/projects/1/assist/schedule{Q}",
+    "/projects/{}/assist/cost/estimate": f"/projects/1/assist/cost{Q}",
 }
 # The pair is required only where CSRF is a threat, so a request authenticated by a bearer
 # token skips it — and only here: every other web POST already has a JSON API route
@@ -74,10 +89,49 @@ APPLY = {"kind": "stakeholder_register", "as_of": AS_OF.isoformat(), "name": "Ad
 EXEMPT = frozenset({"/login"})
 SIGN_OUT = "/logout"
 # One reachable id per parameterised page shape; a router added later joins this table.
-_PER_PROJECT = ("board", "gantt", "hub", "process-map", "status", "wizard")
+_PER_PROJECT = (
+    "assist/stakeholders",
+    "assist/earned-value",
+    "assist/scope",
+    "assist/closeout",
+    "assist/earned-value",
+    "assist/requirements",
+    "assist/risk-responses",
+    "assist/decision-tree",
+    "assist/risk-pi",
+    "assist/team",
+    "assist/procurement",
+    "assist/decisions",
+    "assist/cost",
+    "assist/quality",
+    "assist/schedule",
+    "baselines/diff",
+    "board",
+    "flow",
+    "gantt",
+    "gates",
+    "hub",
+    "hub/costs",
+    "process-map",
+    "raid",
+    "schedule-health",
+    "status",
+    "status/inputs",
+    "wizard",
+)
 SAMPLE = {f"/projects/{{}}/{p}": "1" for p in _PER_PROJECT}
-SAMPLE |= {"/pmbok/{}": catalog.PROCESSES[0].id, "/org/departments/{}": "1"}
+SAMPLE |= {"/pmbok/{}": catalog.PROCESSES[0].id, "/org/departments/{}": "1", "/business/{}": "1"}
+SAMPLE |= {"/org/departments/{}/assist": "1"}
 SAMPLE |= {"/portfolios/{}/rollup": "1", "/programs/{}/rollup": "1"}
+# Derived from the closed catalog, never a typed slug: the library route is keyed on
+# the same word the ITTO anchor uses, so what fills this shape must come from the
+# one function that builds it (driftless.web.templating.technique_slug).
+SAMPLE |= {"/techniques/{}": technique_slug(sorted(TT_CATALOG)[0])}
+SAMPLE |= {"/methods/{}": sorted(methods.METHODS)[0]}
+# Derived from the closed artifact vocabulary the same way, keyed on the ITTO catalog's
+# own address rather than a typed slug: driftless.web.artifacts.artifact_slug is the one
+# formula both the router and this sample share.
+SAMPLE |= {"/artifacts/{}": artifact_slug(sorted(ARTIFACT_KINDS)[0])}
 SECRET = "test-signing-secret"  # pragma: allowlist secret  (throwaway in-test signing key)
 SHARED = "shared-bootstrap-token"  # pragma: allowlist secret  (in-test gate token)
 _DROPPED = f'{sessions.COOKIE}=""'  # how a response says it is clearing the session
@@ -87,11 +141,17 @@ _NAMED = re.compile(r'<(input|select|textarea)[^>]*\bname="([^"]+)"(?:[^>]*\bval
 _OPTION = re.compile(r'<option value="([^"]*)"')
 TYPED = "sample prose"  # what these walks "type" into a textarea; see _forms below
 _TOKEN_VALUE = re.compile(r'name="csrf_token" value="[^"]*"')
+#: The reproducibility receipt's sha256 (driftless/web/receipt.py) is a function of the
+#: CSRF token on a form-bearing page — it is hashed into the body the receipt digests —
+#: so it moves for the same reason the token does and is blanked alongside it.
+_RECEIPT_DIGEST = re.compile(r"sha256 [0-9a-f]{64}")
 
 
 def _untokened(html: str) -> str:
-    """``html`` with every CSRF field's value blanked — the page minus its per-visitor half."""
-    return _TOKEN_VALUE.sub('name="csrf_token" value=""', html)
+    """``html`` with every CSRF field's value blanked — the page minus its per-visitor
+    half — and the receipt digest that hashes it in blanked the same way."""
+    html = _TOKEN_VALUE.sub('name="csrf_token" value=""', html)
+    return _RECEIPT_DIGEST.sub("sha256 ", html)
 
 
 def _forms(html: str) -> list[tuple[str, dict[str, str]]]:
@@ -193,6 +253,16 @@ def test_every_page_the_app_registers_renders_the_sign_out_forms_token(
     project = db.scalars(select(Project)).one()  # the rows the seed lacks, so no shape 404s
     project.program = Program(name="Reels", portfolio=project.portfolio)
     db.add(Department(name="Post", business=project.portfolio.business))
+    # A second approved baseline, so /projects/{}/baselines/diff's default pair
+    # (the two most recent approved) has one to draw rather than its 404.
+    task = db.scalars(select(Task)).first()
+    if task is not None:
+        db.add(v2 := Baseline(project=project, version=2, status="approved"))
+        db.add(
+            BaselineLine(
+                baseline=v2, task=task, planned_cost=1.0, planned_start=AS_OF, planned_finish=AS_OF
+            )
+        )
     db.commit()
     client.cookies.set(sessions.COOKIE, "anything")  # the nav renders sign-out on presence
     path = shape.replace("{}", SAMPLE.get(shape, ""))
@@ -224,6 +294,22 @@ def test_only_a_paired_sign_out_revokes_and_a_pairless_one_clears_this_browser_o
     assert accepted.status_code == 303 and accepted.headers["location"] == "/login"
     assert signed_in.session_epoch == before + 1, "the genuine sign-out revoked nothing"
     assert _DROPPED in accepted.headers["set-cookie"], "this browser kept its session cookie"
+
+
+def test_a_sign_out_for_an_already_deleted_user_still_redirects_cleanly(
+    client: TestClient, signed_in: User, db: Session
+) -> None:
+    """``_revoke``'s own guard: the cookie's signature and expiry still check
+    out (``sessions.verify`` reads only the payload, never the store), but by
+    the time sign-out runs the user id it names is gone — deleted between
+    session issue and logout. There is no epoch left to bump; the browser
+    still gets cleared and sent to ``/login``, never a 500 on a ``None``."""
+    body = _sign_out_form(client, "/")  # mint the pair while the user still exists
+    db.delete(signed_in)
+    db.commit()
+    accepted = client.post(SIGN_OUT, data=body, follow_redirects=False)
+    assert accepted.status_code == 303 and accepted.headers["location"] == "/login"
+    assert _DROPPED in accepted.headers["set-cookie"]
 
 
 def test_one_browser_reuses_its_token_while_login_still_mints_per_render(
@@ -299,7 +385,7 @@ def gated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Gate]:
     engine = new_engine(f"sqlite:///{tmp_path / 'gated.db'}")
     Base.metadata.create_all(engine)
     register_changelog(factory := new_session_factory(engine))
-    monkeypatch.setattr(app_module, "_factory", factory)
+    monkeypatch.setattr(db_session, "_factory", factory)
     with factory() as setup:
         test_web_pages._seed(setup)  # the same seed the browser half walks: one project, one threat
         agent = User(username="agent", password_hash="x", role="contributor")

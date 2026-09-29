@@ -126,11 +126,23 @@ def test_one_budget_line_per_project_and_category(session: Session, project: Pro
         session.commit()
 
 
-def test_one_status_snapshot_per_project_and_date(session: Session, project: Project) -> None:
-    """The weekly series is append-only: two readings for one day cannot both stand."""
-    session.add_all([_row(StatusSnapshot, project=project), _row(StatusSnapshot, project=project)])
-    with pytest.raises(IntegrityError):
-        session.commit()
+def test_two_status_snapshots_for_one_date_both_stand(session: Session, project: Project) -> None:
+    """A second reading for a date already snapshotted is ACCEPTED, and the one recorded
+    later is the one that counts.
+
+    This asserted the opposite until ``uq_status_snapshot_project_date`` was dropped. The
+    series is append-only, so a wrong reading could not be edited — and with the constraint
+    in place it could not be corrected either, which left a bad RAG permanently on the
+    record. Both rows now stand and recording order decides, exactly as a reversing row
+    corrects a ``CostEntry`` (see ``tests/test_cost_corrections.py``); the ChangeLog
+    records who filed which and when, so the audit trail needs no backward link.
+    """
+    first, second = _row(StatusSnapshot, project=project), _row(StatusSnapshot, project=project)
+    session.add_all([first, second])
+    session.commit()
+
+    assert first.taken_on == second.taken_on, "the point of this test is one shared date"
+    assert second.id > first.id, "recording order is what decides, so it must be readable"
 
 
 def test_snapshots_trend_across_dates(session: Session, project: Project) -> None:
@@ -177,7 +189,12 @@ INVALID_ROWS: dict[str, Callable[[Project], object]] = {
     "budget planned amount negative": lambda p: _row(BudgetLine, project=p, planned_amount=-1.0),
     "orphan cost entry": lambda p: _row(CostEntry, project_id=999),
     "cost category off-vocabulary": lambda p: _row(CostEntry, project=p, category="snacks"),
-    "cost amount negative": lambda p: _row(CostEntry, project=p, amount=-1.0),
+    # Negative is now a valid reversing row (see tests/test_cost_corrections.py) — only an
+    # implausible magnitude, in either direction, is still rejected.
+    "cost amount past the sanity bound": lambda p: _row(CostEntry, project=p, amount=50_000_000.0),
+    "cost amount past the negative sanity bound": lambda p: _row(
+        CostEntry, project=p, amount=-50_000_000.0
+    ),
     "issue names a missing risk": lambda p: _row(Issue, project=p, risk_id=999),
     "orphan status snapshot": lambda p: _row(StatusSnapshot, project_id=999),
     "snapshot rag off-vocabulary": lambda p: _row(StatusSnapshot, project=p, rag_status="puce"),

@@ -1,0 +1,28 @@
+{
+  "allow": [
+    {
+      "rule": "private-project",
+      "path": "tests/test_governance_contract.py",
+      "match": "(\"driftless-archive\", True)",
+      "reason": "a test case of the guard that keeps the private sibling's name out of this tree; the case has to spell the name it proves is refused"
+    },
+    {
+      "rule": "private-project",
+      "path": "tests/test_release_workflow.py",
+      "match": "SNAPSHOT_SOURCE = f\"{ORG}/driftless-archive\"",
+      "reason": "SNAPSHOT_SOURCE names the sibling only so a test can assert the mirror step never writes that name into the public tree"
+    },
+    {
+      "rule": "workspace-convention",
+      "path": ".github/workflows/ci.yml",
+      "match": "--exclude-files '^\\.data/.*'",
+      "reason": "the secrets scan's exclude pattern for the ignored .data/ directory; a pattern, naming no file or layout under it"
+    },
+    {
+      "rule": "workspace-convention",
+      "path": "bin/driftless-gates.sh",
+      "match": "--exclude-files '^\\.data/.*'",
+      "reason": "the local gate's copy of ci.yml's secrets-scan exclude pattern for the ignored .data/ directory"
+    }
+  ]
+}

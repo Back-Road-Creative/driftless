@@ -12,10 +12,12 @@ name: Scheduled failure alert
 # exactly ONE open issue per title and comments on it thereafter, so a week of
 # red nights is one thread instead of seven issues.
 #
-# Runs on GitHub-hosted ubuntu-latest, never a self-hosted runner: an alarm must
-# not depend on the machine whose failure it reports, and the token GitHub hands
-# a hosted job is already enough to open and comment on an issue in the calling
-# repository.
+# Runs on the self-hosted pool (2026-08-29). An alarm that runs on the machine
+# whose failure it reports is a known weakness — but this org buys no
+# GitHub-hosted minutes, so a hosted job is refused in seconds and the alarm
+# never fired at all (every uptime probe since 2026-08-28 died that way). Two
+# runners share the pool, so one dead runner still leaves the other to alert;
+# both dead is the case only an outside probe can cover.
 
 on:
   workflow_call:
@@ -34,7 +36,11 @@ on:
 jobs:
   alert:
     name: Open or append the alert issue
-    runs-on: ubuntu-latest
+    # The public repository reaches no self-hosted runner (no org runner group
+    # admits a public repository), so there it runs GitHub-hosted, which is free
+    # for a public repository; here, the self-hosted pool. See
+    # docs/testing-and-quality-gates.md.
+    runs-on: ${{ github.repository == 'Back-Road-Creative/driftless' && 'ubuntu-latest' || fromJSON('["self-hosted", "quick"]') }}
     timeout-minutes: 10
     steps:
       - name: Open or append the alert issue

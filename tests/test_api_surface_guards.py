@@ -103,7 +103,7 @@ def test_a_backdated_snapshot_stamps_the_percent_of_its_own_date(
     The raise goes through the app's own PATCH so the ChangeLog dates it — at
     today's UTC date, months after ``BACKDATED`` — and the insert reading of 20 is
     the dated truth for February. Stamping 80 onto the February row is permanent:
-    the series has no PATCH or DELETE, and ``pages.trend_series`` plots it.
+    the series has no PATCH or DELETE, and ``views.trend_series`` plots it.
     """
     raised = client.patch("/tasks/1", json={"percent_complete": 80})
     assert raised.status_code == 200, raised.text
@@ -123,36 +123,57 @@ def test_a_backdated_snapshot_stamps_the_percent_of_its_own_date(
     assert stored.percent_complete == 20
 
 
-def test_a_duplicate_snapshot_date_still_answers_json_409_on_the_api(
+def test_a_constraint_violation_still_answers_json_409_on_the_api(
     client: TestClient, db: Session
 ) -> None:
-    """The API surface keeps its body byte-for-byte: JSON 409, never an HTML page."""
-    body = {"project_id": 1, "taken_on": BACKDATED.isoformat(), "rag_status": "green"}
-    assert client.post("/status-snapshots", json=body).status_code == 201, "first files fine"
+    """The API surface keeps its body byte-for-byte: JSON 409, never an HTML page.
 
-    answer = client.post("/status-snapshots", json=body)
+    Driven through ``uq_budget_line_project_category`` rather than the snapshot series it
+    used to use: a second snapshot for one date is now deliberately ACCEPTED (a wrong
+    reading has to be correctable), so that route no longer conflicts. The guard here was
+    never really about snapshots — it is that a JSON route answers JSON when the database
+    refuses — so it moved to a constraint that still refuses rather than being deleted with
+    the trigger that happened to reach it.
+    """
+    body = {"project_id": 1, "category": "labour", "planned_amount": 1000.0}
+    assert client.post("/budget-lines", json=body).status_code == 201, "first files fine"
+
+    answer = client.post("/budget-lines", json=body)
 
     assert answer.status_code == 409, answer.text
     assert answer.json() == {"detail": "constraint violation"}
     assert "text/html" not in answer.headers["content-type"]
 
 
-def test_refiling_the_weekly_status_renders_the_html_conflict_page(
+def test_a_page_surface_conflict_renders_the_html_conflict_page(
     client: TestClient, db: Session
 ) -> None:
-    """The everyday trap: the form has no pre-check, so the second submit for the
-    same date hits ``uq_status_snapshot_project_date`` — and the browser must get
-    the designed shell with its navigation, not raw undressed JSON."""
+    """The everyday trap: a form with no pre-check hits a unique constraint on the second
+    submit — and the browser must get the designed shell with its navigation, not raw
+    undressed JSON.
+
+    Driven through the wizard's narrative production (``uq_narrative_project_kind``) rather
+    than the weekly status form it used to use. Refiling the weekly status for one date is
+    now deliberately ACCEPTED — a wrong reading has to be correctable — so that route no
+    longer conflicts at all. The claim under test was never about snapshots; it is that a
+    PAGE-surface route answers HTML when the database refuses, and the wizard is the
+    remaining form that can still reach a constraint.
+    """
     at = BACKDATED.isoformat()
 
     def form() -> dict[str, str]:
-        client.get(f"/projects/1/status?as_of={at}")  # the render that mints the CSRF pair
-        return {"as_of": at, "rag_status": "green", csrf.FIELD: client.cookies[csrf.COOKIE]}
+        client.get(f"/projects/1/wizard?as_of={at}")  # the render that mints the CSRF pair
+        return {
+            "kind": "assumption_log",
+            "as_of": at,
+            "body": "An assumption worth recording.",
+            csrf.FIELD: client.cookies[csrf.COOKIE],
+        }
 
-    first = client.post("/projects/1/status", data=form(), follow_redirects=False)
+    first = client.post("/projects/1/wizard/apply", data=form(), follow_redirects=False)
     assert first.status_code == 303, first.text
 
-    again = client.post("/projects/1/status", data=form(), follow_redirects=False)
+    again = client.post("/projects/1/wizard/apply", data=form(), follow_redirects=False)
 
     assert again.status_code == 409, again.text
     assert again.headers["content-type"].startswith("text/html"), (

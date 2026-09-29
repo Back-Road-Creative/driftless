@@ -30,6 +30,9 @@ from driftless.auth.cli import add_token_subparser, add_user_subparser
 from driftless.cli_support import AmbiguousProject
 from driftless.db.config import database_url
 from driftless.demo.cli import add_demo_subparser
+from driftless.interchange.cli import add_import_subparser
+from driftless.mcp.cli import add_mcp_subparser
+from driftless.notify.cli import add_notify_subparser
 from driftless.pmbok.cli import add_pmbok_subparser
 from driftless.report.cli import add_report_subparser
 from driftless.wizard.cli import add_wizard_subparser
@@ -43,8 +46,11 @@ _REGISTRARS: tuple[Registrar, ...] = (
     add_assess_subparser,
     add_wizard_subparser,
     add_demo_subparser,
+    add_import_subparser,
     add_user_subparser,
     add_token_subparser,
+    add_mcp_subparser,
+    add_notify_subparser,
 )
 
 

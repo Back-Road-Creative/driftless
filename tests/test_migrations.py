@@ -26,9 +26,11 @@ container. Unset, the Postgres half skips, so a plain ``pytest`` needs no server
 
 import os
 from collections.abc import Callable, Iterator
+from datetime import date
 from pathlib import Path
 
 import pytest
+import sqlalchemy as sa
 from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
@@ -156,6 +158,45 @@ def test_the_chain_reverses_completely(migrated: Engine) -> None:
     # `str(URL)` masks the password, so a Postgres round would downgrade a URL
     # whose password is literally `***`; render it out in full instead.
     url = migrated.url.render_as_string(hide_password=False)
-    assert len(inspect(migrated).get_table_names()) == 27  # 26 model tables + alembic_version
+    assert len(inspect(migrated).get_table_names()) == 70  # 69 model tables + alembic_version
     command.downgrade(_config(url), "base")
     assert inspect(new_engine(url)).get_table_names() == ["alembic_version"]
+
+
+def test_the_flow_date_backfill_replays_the_change_log(new_store: NewStore) -> None:
+    """Existing rows keep their history: the revision adding ``backlog_item``'s three flow
+    dates fills them in from the ``ChangeLog``, and leaves a row it cannot date honestly
+    null — what sends that row to the read path's replay instead."""
+    config = _config(url := new_store("backfill"))
+    command.upgrade(config, "d4f8b3e19a72")  # pragma: allowlist secret  (revision, not a secret)
+    engine = new_engine(url)
+    moved = '{"changed": {"status": {"new": "%s"}}}'  # one logged status transition; two
+    with engine.begin() as connection:  # items follow: one with a whole history, one without
+        for statement in (
+            "INSERT INTO business (id, name, row_revision) VALUES (1, 'BRC', 1)",
+            "INSERT INTO portfolio (id, name, business_id, row_revision) VALUES (1, 'P', 1, 1)",
+            "INSERT INTO project (id, name, portfolio_id, delivery_mode, row_revision)"
+            " VALUES (1, 'GMS', 1, 'agile', 1)",
+            "INSERT INTO backlog_item (id, project_id, title, description, priority, status,"
+            " row_revision) VALUES (1, 1, 'Shipped', '', 'should_have', 'done', 1),"
+            " (2, 1, 'Untracked', '', 'should_have', 'proposed', 1)",
+            "INSERT INTO change_log (table_name, row_id, operation, changed_at, detail) VALUES"
+            """ ('backlog_item', '1', 'insert', '2026-06-01 12:00:00',"""
+            """ '{"new": {"status": "proposed"}}'),"""
+            f" ('backlog_item', '1', 'update', '2026-06-10 12:00:00', '{moved % 'in_progress'}'),"
+            f" ('backlog_item', '1', 'update', '2026-06-28 12:00:00', '{moved % 'done'}')",
+        ):
+            connection.exec_driver_sql(statement)
+    command.upgrade(config, "head")
+
+    # Typed columns, not ``exec_driver_sql``: SQLite hands a Date back as a string.
+    read = sa.text("SELECT id, created_on, started_on, done_on FROM backlog_item ORDER BY id")
+    with engine.connect() as connection:
+        dated = connection.execute(
+            read.columns(created_on=sa.Date, started_on=sa.Date, done_on=sa.Date)
+        ).all()
+    engine.dispose()
+    assert [tuple(row) for row in dated] == [
+        (1, date(2026, 6, 1), date(2026, 6, 10), date(2026, 6, 28)),
+        (2, None, None, None),  # no logged history — left for the read path's fallback
+    ]

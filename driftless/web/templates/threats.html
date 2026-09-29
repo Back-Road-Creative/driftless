@@ -1,13 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Threats — driftless{% endblock %}
-{# The page's ranked cards (pages.threats already sliced them) are grouped by
+{# The page's ranked cards (``web/threat_board.py`` already sliced them) are grouped by
    project, preserving the ranked order of first appearance — the highest-ranked
    threat's project heads the board. Each group is a heading linking the project's
    process map (mirroring the old per-card link), then that project's cards in rank
    order; a threat with no project falls under a Portfolio-level heading. Each card
    still states the finding, lists the recommended PMBOK actions its assessment
    attached, and ends with the sign-off form posting the threat id + project_id.
-   Ranking, suppression and pagination are pages.py's; this template only formats. #}
+   Ranking and suppression are the assess engine's (``top_threats``) and pagination is
+   ``web/threat_board.py``'s; this template only formats. #}
 {% block content %}
 {% import "_empty.html" as empty %}
 {% import "_signoff.html" as signoff %}
@@ -25,7 +26,7 @@ This board ranks what the assessment engine finds across every project. File thi
   {% set ns.seen = ns.seen + [t.project_id] %}
   <h2 class="project-group">
     {% if t.project_id is not none %}
-    <a href="/projects/{{ t.project_id }}/process-map">{{ t.project_name }}</a>
+    <a href="/projects/{{ t.project_id }}/process-map?as_of={{ as_of }}">{{ t.project_name }}</a>
     {% else %}
     Portfolio-level
     {% endif %}
@@ -34,8 +35,9 @@ This board ranks what the assessment engine finds across every project. File thi
   <div class="card sev-{{ c.severity }}">
     <strong>{{ c.kind }}</strong> — {{ c.description }}
     <span class="badge sev-badge">{{ c.severity }}</span>
-    <span class="badge">score {{ "%.4f"|format(c.score) }}</span>
-    {# Week-over-week trend vs the same threat a week ago (matched by id in pages.py).
+    <span class="badge">score {{ "%.2f"|format(c.score) }}</span>
+    {# Week-over-week trend vs the same threat a week ago (matched by id in
+       ``web/views.py``'s ``threat_cards``).
        ▲ worse (rag-red), ▼ better (rag-green), – unchanged, or a "new" badge — shared
        tokens only, guarded when no delta was attached. #}
     {% if c.delta is not none %}
@@ -44,7 +46,7 @@ This board ranks what the assessment engine finds across every project. File thi
       {% elif c.delta.dir == "up" %}
     <span class="badge delta delta-up red" title="score {{ "%+g"|format(c.delta.amount) }} vs last week"><span aria-hidden="true">▲</span> {{ "%+g"|format(c.delta.amount) }}<span class="sr-only"> worse vs last week</span></span>
       {% elif c.delta.dir == "down" %}
-    <span class="badge delta delta-down green" title="score {{ "%+g"|format(c.delta.amount) }} vs last week"><span aria-hidden="true">▼</span> {{ "%+g"|format(c.delta.amount) }}<span class="sr-only"> better vs last week</span></span>
+    <span class="badge delta green" title="score {{ "%+g"|format(c.delta.amount) }} vs last week"><span aria-hidden="true">▼</span> {{ "%+g"|format(c.delta.amount) }}<span class="sr-only"> better vs last week</span></span>
       {% else %}
     {# The glyph is aria-hidden and the words sit beside it, the same shape process_map.html
        uses for a state mark: title= is hover-only — no keyboard, no touch, no print. #}
@@ -52,9 +54,12 @@ This board ranks what the assessment engine finds across every project. File thi
       {% endif %}
     {% endif %}
     {% if c.actions %}
-    <ul class="actions">
+    <ul>
       {% for a in c.actions %}
-      <li><strong>{{ a.label }}</strong> — {{ a.rationale }}</li>
+      <li><strong>{{ a.label }}</strong> — {{ a.rationale }}
+        {%- if a.launch_href %} — <a href="{{ a.launch_href }}">apply {{ a.technique }}</a>
+        {%- else %} — <a href="{{ a.reference_href }}">{{ a.technique }}</a> (reference only — no assistant yet)
+        {%- endif %}</li>
       {% endfor %}
     </ul>
     {% endif %}
@@ -64,7 +69,6 @@ This board ranks what the assessment engine finds across every project. File thi
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="subject_kind" value="threat">
       <input type="hidden" name="subject_ref" value="{{ c.id }}">
-      <input type="hidden" name="signal" value="{{ c.score }}">
       <input type="hidden" name="as_of" value="{{ as_of }}">
       {% if c.project_id is not none %}
       <input type="hidden" name="project_id" value="{{ c.project_id }}">
@@ -72,7 +76,7 @@ This board ranks what the assessment engine finds across every project. File thi
       {{ signoff.decision("Sign-off decision for " ~ c.kind ~ " on " ~ (c.project_name or "the portfolio")) }}
       {# no "signed by" input: the ledger stamps the signed-in user (api.app.signer) and
          discards the claim, so the box only ever invited a name it would throw away #}
-      <button type="submit">Sign off</button>
+      <button type="submit" class="btn btn-secondary">Sign off</button>
     </form>
   </div>
   {% endfor %}

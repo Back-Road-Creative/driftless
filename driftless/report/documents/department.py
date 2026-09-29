@@ -48,6 +48,7 @@ def department_rows(session: Session, as_of: date) -> list[dict[str, Any]]:
             snap = gather.project_evm(project, costs.get(project.id, []), as_of)
             project_rows.append(
                 {
+                    "id": project.id,
                     "name": project.name,
                     "budget": f"{snap.bac:,.0f}",
                     "actual": f"{snap.ac:,.0f}",
@@ -70,6 +71,8 @@ def department_rows(session: Session, as_of: date) -> list[dict[str, Any]]:
                 "business": dept.business.name,
                 "headcount": len(people),
                 "capacity_hours": f"{capacity_hours:,.0f}",
+                # Unformatted, so the web list can total it without re-parsing.
+                "capacity_hours_value": capacity_hours,
                 "blended_rate": f"{blended:,.2f}",
                 "projects": project_rows,
             }

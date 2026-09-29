@@ -35,6 +35,7 @@ from driftless.db import Base, new_engine, new_session_factory
 from driftless.pmbok import state
 from driftless.report import cli
 from driftless.report import engine as report_engine
+from driftless.report import receipt as report_receipt
 from driftless.report.documents import process_map
 from driftless.web.templating import TEMPLATES
 from test_perf_n1 import assert_recorded
@@ -55,7 +56,36 @@ FEW_PROJECTS, MANY_PROJECTS = 2, 4
 # being scoped per project on this path; the guard reported that too.
 # Deleting JUST the eager options, keeping both scopes, costs 108 and 156, and
 # re-opening the nested scope 116 and 182 — all re-priced here, not restated.
-MEASURED = {"render_all_few": 98, "render_all_many": 132, "process_map_under_scope": 17}
+# Both counts moved UP by 2 (98 -> 100, 132 -> 134) when the risk evaluator's
+# "no response planned" rule and the risk-register document both started
+# reading ``RiskResponse`` (``pmbok.mapping.rows_for``): ONE query for the
+# outer ``state.prefetched`` scope the whole loop opens, and a SECOND for
+# ``report.gather.business_nodes``'s own nested ``adapters.prefetched`` (which
+# nests a fresh ``mapping.prefetched`` of its own around its per-leaf
+# ``assess_project`` calls) — flat regardless of project count, never a
+# per-project cost, which is what the ceiling above still catches.
+# Both counts moved UP by 3 again (100 -> 103, 134 -> 137), and
+# ``process_map_under_scope`` by 3 (17 -> 20), when the scope resolvers started
+# reading ``Requirement``/``Deliverable``/``RequirementTrace``/``AcceptanceRecord``
+# for completeness: each is one honest batched query through
+# ``mapping.rows_for``/``mapping._grouped``, flat regardless of project count —
+# never a per-project cost, which is what every ceiling here still catches.
+# All three moved UP by 1 again (108 -> 109, 142 -> 143, 25 -> 26) when
+# ``lessons_learned_register`` started resolving off ``LessonLearned`` — one
+# batched query of its own per whole-store walk, flat regardless of project count.
+# Both render_all counts moved UP by 2 again (109 -> 111, 143 -> 145): schedule.evaluate()
+# now reads TaskDependency too, batched via adapters.project_grouped, paid once by the
+# outer state.prefetched loop and once more by business_nodes's own nested
+# adapters.prefetched -- flat regardless of project count, same shape as the
+# RiskResponse bump above.
+# All three moved UP by 1 again (111 -> 112, 145 -> 146, 26 -> 27) when
+# ``project_calendars`` gained a resolver: one honest ``mapping.rows_for`` query
+# over ``ProjectCalendar``, batched through the same ``_grouped`` cache every
+# other resolver here already rides, flat regardless of project count.
+# ``schedule_data`` and ``project_schedule_network_diagram`` gained resolvers
+# too, but both read off ``_dependency_edges``, the same batched TaskDependency
+# read the schedule.evaluate() bump above already paid for — no further cost.
+MEASURED = {"render_all_few": 112, "render_all_many": 146, "process_map_under_scope": 27}
 MAX_RENDER_ALL_FEW_STMTS = MEASURED["render_all_few"] + 2
 MAX_RENDER_ALL_MANY_STMTS = MEASURED["render_all_many"] + 2
 
@@ -191,12 +221,14 @@ def test_render_all_writes_the_same_bytes_as_unscoped_single_renders(tmp_path: P
             slug = module.SLUG
             if getattr(module, "SCOPE", "project") == "business":
                 path = root / f"{slug}.md"
-                assert path.read_text(encoding="utf-8") == module.render(db, AS_OF), slug
+                expected = report_receipt.attach_markdown_receipt(module.render(db, AS_OF), AS_OF)
+                assert path.read_text(encoding="utf-8") == expected, slug
             else:
                 for project in projects:
                     path = root / cli._slugify(project.name) / f"{slug}.md"
                     single = module.render(db, project, AS_OF)
-                    assert path.read_text(encoding="utf-8") == single, (slug, project.name)
+                    expected = report_receipt.attach_markdown_receipt(single, AS_OF)
+                    assert path.read_text(encoding="utf-8") == expected, (slug, project.name)
 
 
 def test_process_map_render_rides_an_open_prefetch_scope() -> None:

@@ -20,6 +20,7 @@ PROCESSES: tuple[Process, ...] = (
         ),
         tools_techniques=(
             "expert_judgment",
+            "communication_requirements_analysis",
             "communication_technology",
             "communication_models",
             "communication_methods",
@@ -50,8 +51,8 @@ PROCESSES: tuple[Process, ...] = (
             "communication_technology",
             "communication_methods",
             "communication_skills",
-            "communication_models",
             "project_management_information_system",
+            "project_reporting",
             "interpersonal_and_team_skills",
             "meetings",
         ),

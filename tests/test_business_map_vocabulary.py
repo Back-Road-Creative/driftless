@@ -34,19 +34,25 @@ from driftless.models import Business, NarrativeArtifact, Portfolio, Project, Ri
 from driftless.pmbok import catalog, mapping
 from driftless.pmbok import state as st
 from driftless.pmbok.model import Process
-from driftless.web.pages import STATE_RANK
+from driftless.web.business_map import _LEGEND
+from driftless.web.templating import TEMPLATES
+from driftless.web.views import STATE_RANK
+from test_web_business_map import humanized
 
 AS_OF = date(2026, 3, 31)
 Q = f"?as_of={AS_OF.isoformat()}"
 IDENTIFY_RISKS = catalog.get("11.2")  # assessable: risk_register, risk_report, assumption_log
-# All 49 are tracked now, so no untracked process is left to borrow: the ``untracked`` fixture
-# CREATES the condition (10.2 stood here; Monitor Communications, 10.3, stood here before it).
+# Every catalog process is tracked now, so no untracked one is left to borrow: the
+# ``untracked`` fixture CREATES the condition (10.2 stood here; Monitor Communications,
+# 10.3, stood here before it).
 MANAGE_COMMS = catalog.get("10.2")
 # A legend chip and the word beside it, paired by the markup that binds them.
 _CHIP = re.compile(r'<dt aria-hidden="true"><span class="badge st-(\w+)"[^>]*>.*?</dt><dd>([^<]+)')
 _ROW_BADGE = re.compile(r'<span class="badge st-(\w+)">([^<]+)</span>')
 _EMPTY = re.compile(r'<section class="empty-state"[^>]*>(.*?)</section>', re.S)
-_SHARE_WORDS = ("none", "under half", "half+", "all done")
+# The grid's share-bucket words, read off the legend the page renders rather than
+# re-typed here: a fifth bucket, or a reworded one, reaches this test on its own.
+_SHARE_WORDS = tuple(label for label, _rank in _LEGEND)
 
 
 @pytest.fixture
@@ -108,8 +114,8 @@ def _listing(client: TestClient, process_id: str) -> str:
     the section nests one, so it is read to the end of the content block."""
     page = client.get(f"/process-map{Q}&process={process_id}")
     assert page.status_code == 200, page.text
-    assert '<section class="process-listing">' in page.text, process_id
-    return page.text.split('<section class="process-listing">')[1].split("</main>")[0]
+    assert '<section class="process-listing" id="listing">' in page.text, process_id
+    return page.text.split('<section class="process-listing" id="listing">')[1].split("</main>")[0]
 
 
 def test_a_listed_projects_state_word_is_explained_by_a_legend_beside_it(
@@ -142,7 +148,7 @@ def test_the_listing_legend_covers_exactly_the_states_a_row_there_can_carry(
     cannot be legended as though it could."""
     _produced(db, _project(db, "Alpha"))
     expected = [
-        (STATE_RANK[state.value], state.value.replace("_", " ").title())
+        (STATE_RANK[state.value], humanized(state.value))
         for state in st.ProcessState
         if not st.excluded_from_completeness(IDENTIFY_RISKS, state)
     ]
@@ -175,7 +181,8 @@ def test_an_empty_listing_names_its_own_cause_of_the_three_it_can_have(
 ) -> None:
     """ "No applicable projects." was true of all three and explained none of them."""
     bare = _listing(client, "11.2")
-    assert "<code>POST /projects</code>" in bare, "an empty store names no way to make a project"
+    assert 'href="/docs"' in bare, "an empty store names no way to make a project"
+    assert "POST /projects" not in bare, "the store's own verb, not a reader-facing sentence"
 
     alpha, beta = _project(db, "Alpha"), _project(db, "Beta")
     unheld = _listing(client, untracked.id)
@@ -196,3 +203,40 @@ def test_an_empty_listing_is_byte_identical_at_a_pinned_as_of(
 ) -> None:
     _waive(db, _project(db, "Alpha"))
     assert _listing(client, "11.2") == _listing(client, "11.2")
+
+
+def test_the_listing_vocabulary_moves_when_the_word_rule_itself_is_substituted(
+    client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The mechanical half of the legend test above. Two spellings that agree today
+    keep agreeing whether or not either one is the rule the page renders through, so
+    the rule is REPLACED — by a marker shape that restates none of its arithmetic —
+    and every legend chip and every row badge in the section is required to be
+    spelled the new way, with the old spelling gone from the section entirely. A
+    legend expectation rebuilt from the rule's own arithmetic fails here.
+    """
+    _produced(db, _project(db, "Alpha"))
+    before = _listing(client, "11.2")
+    was = sorted(
+        {word for _rank, word in _CHIP.findall(before)}
+        | {w for _r, w in _ROW_BADGE.findall(before)}
+    )
+    assert was, "neither a chip nor a badge rendered — the substitution would prove nothing"
+
+    monkeypatch.setitem(TEMPLATES.env.filters, "humanize", lambda text: f"({text})")
+    after = _listing(client, "11.2")
+    expected = [
+        (STATE_RANK[state.value], humanized(state.value))
+        for state in st.ProcessState
+        if not st.excluded_from_completeness(IDENTIFY_RISKS, state)
+    ]
+    assert _CHIP.findall(after) == expected, "the legend did not follow the substituted rule"
+    words = {word for _rank, word in expected}
+    badges = _ROW_BADGE.findall(after)
+    assert badges, "no row badge rendered after the substitution"
+    for _rank, word in badges:
+        assert word in words, (
+            f"a row badge printed {word!r}, which the substituted rule cannot spell"
+        )
+    for word in was:
+        assert word not in after, f"{word!r} kept its old spelling after the word rule was replaced"

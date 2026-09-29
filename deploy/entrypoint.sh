@@ -25,7 +25,19 @@ rm -f "$OVERLAY" # values now live only in this process's environment
 # The token may still arrive under its pre-rename name from an existing SOPS
 # file; accept either for one deprecation cycle, but require one of them.
 DRIFTLESS_API_TOKEN="${DRIFTLESS_API_TOKEN:-${PMHUB_API_TOKEN:-}}"
-: "${DRIFTLESS_API_TOKEN:?absent — sops-edit deploy/secrets.enc.env and add DRIFTLESS_API_TOKEN}"
+# Unless the deployment has retired the shared credential outright, in which case it
+# is not merely optional but REFUSED by the app (both set is a contradiction about
+# what authorizes — see driftless/api/secure.py:create_secured_app). The requirement
+# is conditional; the two modes are still mutually exclusive.
+if [ "${DRIFTLESS_REQUIRE_USER_AUTH:-}" = "1" ]; then
+    if [ -n "$DRIFTLESS_API_TOKEN" ]; then
+        echo "DRIFTLESS_REQUIRE_USER_AUTH=1 and DRIFTLESS_API_TOKEN are both set;" >&2
+        echo "remove DRIFTLESS_API_TOKEN from deploy/secrets.enc.env (sops-edit)." >&2
+        exit 1
+    fi
+else
+    : "${DRIFTLESS_API_TOKEN:?absent — sops-edit deploy/secrets.enc.env and add DRIFTLESS_API_TOKEN}"
+fi
 # Hard-required like the two above, deliberately. The session layer fails CLOSED
 # without it (driftless/auth/sessions.py), so an instance missing it serves an API
 # nobody can sign into through a browser — sign-in, roles, the CSRF-bound forms and
@@ -62,8 +74,26 @@ refuse_placeholder() {
 }
 
 refuse_placeholder POSTGRES_PASSWORD "$POSTGRES_PASSWORD"
-refuse_placeholder DRIFTLESS_API_TOKEN "$DRIFTLESS_API_TOKEN"
+# Skipped when the shared credential has been retired: there is no value to inspect,
+# and the guard would refuse the empty string that this mode requires.
+[ "${DRIFTLESS_REQUIRE_USER_AUTH:-}" = "1" ] ||
+    refuse_placeholder DRIFTLESS_API_TOKEN "$DRIFTLESS_API_TOKEN"
 refuse_placeholder DRIFTLESS_SESSION_SECRET "$DRIFTLESS_SESSION_SECRET"
+
+# SMTP is optional: no relay configured means the email digest stays off
+# (driftless/notify/digest.py refuses at send time, not here). Every SMTP_* name
+# still needs to reach the server when an operator does set it, and a password
+# that IS set gets the same placeholder/length guard as every other secret above
+# — only skipped, like DRIFTLESS_API_TOKEN's conditional skip, when there is no
+# value to inspect.
+DRIFTLESS_SMTP_HOST="${DRIFTLESS_SMTP_HOST:-}"
+DRIFTLESS_SMTP_PORT="${DRIFTLESS_SMTP_PORT:-}"
+DRIFTLESS_SMTP_FROM="${DRIFTLESS_SMTP_FROM:-}"
+DRIFTLESS_SMTP_STARTTLS="${DRIFTLESS_SMTP_STARTTLS:-}"
+DRIFTLESS_SMTP_USER="${DRIFTLESS_SMTP_USER:-}"
+DRIFTLESS_SMTP_PASSWORD="${DRIFTLESS_SMTP_PASSWORD:-}"
+[ -z "$DRIFTLESS_SMTP_PASSWORD" ] ||
+    refuse_placeholder DRIFTLESS_SMTP_PASSWORD "$DRIFTLESS_SMTP_PASSWORD"
 
 # Assemble the database URL from parts so no credential literal lives in a file.
 DRIFTLESS_DATABASE_URL="postgresql+psycopg://${DRIFTLESS_DB_USER}"
@@ -75,6 +105,13 @@ DRIFTLESS_DATABASE_URL="${DRIFTLESS_DATABASE_URL}:${POSTGRES_PASSWORD}@${DRIFTLE
 # never reaches the server, which is how sign-in once shipped dead.
 # tests/test_deploy_env.py derives the list from the package's own env reads.
 export DRIFTLESS_DATABASE_URL DRIFTLESS_API_TOKEN DRIFTLESS_SESSION_SECRET
+export DRIFTLESS_REQUIRE_USER_AUTH DRIFTLESS_ALLOW_AGENT_SIGNOFF
+export DRIFTLESS_SMTP_HOST DRIFTLESS_SMTP_PORT DRIFTLESS_SMTP_FROM
+export DRIFTLESS_SMTP_STARTTLS DRIFTLESS_SMTP_USER DRIFTLESS_SMTP_PASSWORD
+# Optional: OIDC sign-in (driftless.auth.oidc). Leave DRIFTLESS_OIDC_ISSUER unset to
+# keep the routes 404ing.
+export DRIFTLESS_OIDC_ISSUER DRIFTLESS_OIDC_CLIENT_ID DRIFTLESS_OIDC_CLIENT_SECRET
+export DRIFTLESS_OIDC_CLIENT_SECRET_FILE DRIFTLESS_OIDC_REDIRECT_URI
 
 # Build or upgrade the schema before serving.
 alembic upgrade head

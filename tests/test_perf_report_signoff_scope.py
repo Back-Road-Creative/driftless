@@ -35,6 +35,7 @@ from driftless.assess import engine as assess_engine
 from driftless.db import Base, new_engine, new_session_factory
 from driftless.report import cli
 from driftless.report import engine as report_engine
+from driftless.report import receipt as report_receipt
 
 AS_OF = date(2026, 6, 30)
 JAN = date(2026, 1, 1)
@@ -214,9 +215,11 @@ def test_the_scope_answers_a_real_sign_off_exactly_as_a_scope_free_render_does(
         for module in report_engine.iter_documents():
             if getattr(module, "SCOPE", "project") == "business":
                 path = root / f"{module.SLUG}.md"
-                assert path.read_text(encoding="utf-8") == module.render(db, AS_OF), module.SLUG
+                expected = report_receipt.attach_markdown_receipt(module.render(db, AS_OF), AS_OF)
+                assert path.read_text(encoding="utf-8") == expected, module.SLUG
             else:
                 for each in projects:
                     path = root / cli._slugify(each.name) / f"{module.SLUG}.md"
                     single = module.render(db, each, AS_OF)
-                    assert path.read_text(encoding="utf-8") == single, (module.SLUG, each.name)
+                    expected = report_receipt.attach_markdown_receipt(single, AS_OF)
+                    assert path.read_text(encoding="utf-8") == expected, (module.SLUG, each.name)

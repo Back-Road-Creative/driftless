@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Method{% endblock %}
+{# web/method_hub.py owns the cards and counts; ``top()``, not ``theory()``, because
+   this page IS the "Method" crumb and cannot hang under itself. #}
+{% block content %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{{ breadcrumbs.top("Method") }}
+<h1>Method</h1>
+<p class="lede">This section is the method itself — the steps, the ways of working, and the records they leave behind.</p>
+<div class="method-hub">
+  {% for section in sections %}
+  <section class="method-hub-card">
+    <h2><a href="{{ section.href }}">{{ section.title }}</a></h2>
+    <p>{{ section.what }}</p>
+    <p class="method-hub-count">{{ section.count }}</p>
+  </section>
+  {% endfor %}
+</div>
+{% endblock %}

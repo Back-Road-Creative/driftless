@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Totality proof{% endblock %}
+{% block content %}
+{% import "_scroll.html" as scroll %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{{ breadcrumbs.theory("PMBOK", "/pmbok", "Totality proof") }}
+<h1>Totality proof</h1>
+<p class="lede"><em>This page checks that every process, technique, artifact and method practice this
+   product describes can actually be reached, explained and launched.</em></p>
+<p>Nothing on this page is typed in — it is counted straight from the live catalog.</p>
+
+{% if proof.is_total %}
+<p><strong>Everything is accounted for.</strong></p>
+{% else %}
+<p><strong>Not everything is accounted for.</strong></p>
+{% endif %}
+
+{% call scroll.wide("Totality proof counts") %}
+<table>
+<caption class="sr-only">Totality proof counts, by gap shape</caption>
+<tr><th scope="col">Gap shape</th><th scope="col">Count</th><th scope="col">What this checked</th></tr>
+{% for shape, members in gaps %}
+<tr><th scope="row">{{ shape.label }}</th><td>{{ members|length }}</td><td>{{ shape.explanation }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+
+{% for shape, members in gaps %}
+{% if members %}
+<h2>{{ shape.label }}</h2>
+<p>{{ shape.explanation }}</p>
+<ul>
+  {% for member in members %}
+  {% set href = member_href(shape.field, member) %}
+  <li>{% if href %}<a href="{{ href }}">{{ member }}</a>{% else %}{{ member }}{% endif %}</li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% endfor %}
+{% endblock %}

@@ -170,13 +170,13 @@ def attention_feed(session: Session, as_of: date) -> tuple[AttentionItem, ...]:
 def trend_delta(score: float, prior_score: float | None) -> dict[str, Any]:
     """Week-over-week trend for one item, matched to its prior-week self by id.
 
-    Mirrors ``driftless.web.pages._trend_delta`` exactly -- same rounding, same
+    Mirrors ``driftless.web.views._trend_delta`` exactly -- same rounding, same
     up/down/flat/new rule -- so a viewer reads score direction identically on the
     threat board and the attention rail. ``new`` when the item had no counterpart
     a week ago; otherwise the rounded score change drives ``dir`` -- ``up``
     worsened (higher score is worse), ``down`` improved, ``flat`` unchanged --
     with the signed ``amount`` carried for display. Lives here rather than in
-    ``web.pages`` so the rail can use it without assess importing web.
+    ``web`` so the rail can use it without assess importing web.
     """
     if prior_score is None:
         return {"dir": "new", "amount": None}

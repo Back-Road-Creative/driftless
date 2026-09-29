@@ -5,7 +5,7 @@
    ``label`` names the control in the page's own words: several of these render on one
    page, and "Sign-off decision" alone would not say which subject it decides. #}
 {% macro decision(label) %}
-<select name="decision" aria-label="{{ label }}">
+<select name="decision" aria-label="{{ label }}" required>
   {% for value in signoff_decisions %}<option value="{{ value }}">{{ value | humanize }}</option>{% endfor %}
 </select>
 {% endmacro %}

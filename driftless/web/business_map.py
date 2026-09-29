@@ -7,7 +7,7 @@ Two completions this page adds on top of the grid: a per-knowledge-area
 completion ring row (the SAME ring markup ``process_map.html`` draws per
 project, pooled store-wide via ``rollup.business_area_shares``) and a
 ``?process={id}`` listing of one process's applicable projects, reached by
-clicking a cell — reusing ``pages.STATE_RANK``/``pct`` so the state word and
+clicking a cell — reusing ``views.STATE_RANK``/``views.pct`` so the state word and
 its wash can never drift from the ones the per-project map already renders."""
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
-from driftless.api.app import get_session
+from driftless.api.deps import get_session
 from driftless.pmbok import catalog, state
 from driftless.pmbok.model import KnowledgeArea, ProcessGroup
 from driftless.pmbok.rollup import (
@@ -30,7 +30,8 @@ from driftless.pmbok.rollup import (
     business_area_shares,
     business_process_cells,
 )
-from driftless.web.pages import STATE_RANK, pct
+from driftless.web.views import STATE_RANK, pct
+from driftless.web.as_of import as_of_dependency
 from driftless.web.errors import PageRoute
 from driftless.web.templating import TEMPLATES
 
@@ -142,13 +143,15 @@ def _process_listing(cells: tuple[CellAgg, ...], process_id: str | None) -> _Pro
 def create_business_map_router(default_as_of: date | Callable[[], date]) -> APIRouter:
     """``GET /process-map``, the business-wide rollup grid."""
     router = APIRouter(route_class=PageRoute)
-    resolve = default_as_of if callable(default_as_of) else lambda: default_as_of
+    resolve_as_of = as_of_dependency(default_as_of)
 
     @router.get("/process-map", response_class=HTMLResponse)
     def business_map(
-        request: Request, db: Db, as_of: date | None = None, process: str | None = None
+        request: Request,
+        db: Db,
+        process: str | None = None,
+        at: date = Depends(resolve_as_of),
     ) -> HTMLResponse:
-        at = as_of or resolve()
         cells = business_process_cells(db, at)
         shares = business_area_shares(cells)
         context = {

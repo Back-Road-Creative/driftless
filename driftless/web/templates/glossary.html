@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Glossary{% endblock %}
+{# One entry per GLOSSARY key, alphabetical by its display word. web/glossary.py
+   owns the sort; this file only formats it. Each ``id="{{ key }}"`` is the
+   fragment the ``gloss`` filter's links and every other ``/glossary#key`` deep
+   link resolve to -- ``tests/test_web_glossary.py`` walks both. #}
+{% block scripts %}<script src="/static/glossary.js" defer></script>{% endblock %}
+{% block content %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{% import "_related.html" as related_block %}
+{{ breadcrumbs.theory(None, None, "Glossary") }}
+<h1 id="top">Glossary</h1>
+<p><em>Every term of art driftless's own pages use without stopping to explain it,
+   in plain words first. A page that mentions one of these links its first
+   occurrence here.</em></p>
+{# Pure HTML A-Z jump: real anchors to real per-letter section ids, computed off
+   ``entries`` (already sorted by term) rather than a second source of truth.
+   ``unique`` keeps only the first-seen letter of each run, so a letter with no
+   entries is never offered -- a jump to an empty section is a dead end. #}
+{% set letters = entries|map('last')|map(attribute='term')|map('first')|map('upper')|unique|list %}
+<nav aria-label="Glossary index">
+  {% for letter in letters %}<a href="#letter-{{ letter }}">{{ letter }}</a>{% endfor %}
+</nav>
+{# Progressive enhancement only (glossary.js): with the script off this input does
+   nothing and every entry below stays visible -- no fetch, no second copy of the
+   terms, it only hides and shows the markup the server already rendered. #}
+<p>
+  <label for="glossary-filter">Filter terms</label>
+  <input type="search" id="glossary-filter" data-glossary-filter autocomplete="off">
+</p>
+<p data-glossary-count hidden aria-live="polite"></p>
+<div data-glossary-groups>
+{% set ns = namespace(letter=None) %}
+{% for key, entry in entries %}
+  {% set current = entry.term|first|upper %}
+  {% if current != ns.letter %}
+    {% if ns.letter is not none %}</dl><p><a href="#top">Back to top</a></p></section>{% endif %}
+    {% set ns.letter = current %}
+    <section id="letter-{{ current }}" aria-labelledby="letter-{{ current }}-title">
+    <h2 id="letter-{{ current }}-title">{{ current }}</h2>
+    <dl class="glossary">
+  {% endif %}
+  <div class="glossary-entry" data-glossary-term="{{ entry.term|lower }}">
+  <dt id="{{ key }}">{{ entry.term }}</dt>
+  <dd><p>{{ entry.plain }}</p>
+  <p>{{ entry.longer }}</p>
+  {% if entry.see_also %}<p>See also:
+    {% for other in entry.see_also %}<a href="/glossary#{{ other }}">{{ glossary[other].term }}</a>{% if not loop.last %}, {% endif %}{% endfor %}.</p>{% endif %}
+  {% if defined_on_labels[key] %}<p>Where you meet it:
+    {% for path, label in defined_on_labels[key] %}<a href="{{ path }}">{{ label }}</a>{% if not loop.last %}, {% endif %}{% endfor %}.</p>{% endif %}
+  {{ related_block.related(related[key], "related-" ~ key) }}
+  </dd>
+  </div>
+{% endfor %}
+{% if ns.letter is not none %}</dl><p><a href="#top">Back to top</a></p></section>{% endif %}
+</div>
+{% endblock %}

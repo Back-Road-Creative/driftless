@@ -38,6 +38,7 @@ from fastapi.responses import PlainTextResponse, Response
 from fastapi.routing import APIRoute
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from driftless.api.logging import REQUEST_ID_HEADER
 from driftless.web.templating import TEMPLATES
 
 PAGE_SCOPE_KEY = "driftless_page"
@@ -56,6 +57,15 @@ _READ_ONLY = (
     "That is a read-only account",
     "You are signed in as a viewer, so you can read every page here but cannot change "
     "anything. Ask an admin for contributor access.",
+)
+# The gate's OTHER 403, once one address needs more than the write floor: this reader
+# may write, and this one page still refuses them. It cannot share the wording above —
+# "ask for contributor access" sends a contributor to ask for the role they already
+# hold, which is a dead end rather than merely clumsy.
+_ADMIN_ONLY = (
+    "That needs an administrator",
+    "You can record and change work here, but a sign-off is an administrator's "
+    "decision. Ask an admin to sign this off.",
 )
 # 405: the address is real and the method is not — its own wording, because the default
 # says the error was logged and a refused method logs nothing.
@@ -130,6 +140,16 @@ def read_only_page(request: Request) -> Response:
     return _page(request, 403, _READ_ONLY)
 
 
+def admin_only_page(request: Request) -> Response:
+    """The 403 a *contributor's* sign-off earns — :func:`read_only_page`'s other half.
+
+    Same gate and the same status; a different reader. Keeping both here is what keeps
+    the pair honest: the gate picks between them by which tier refused, and neither can
+    be quietly pointed at a reader it would misdescribe.
+    """
+    return _page(request, 403, _ADMIN_ONLY)
+
+
 async def page_http_exception(request: Request, exc: Exception) -> Response:
     """An HTTPException on a page renders the shell; on the API, FastAPI's own JSON."""
     assert isinstance(exc, StarletteHTTPException)
@@ -156,10 +176,25 @@ async def page_validation_error(request: Request, exc: Exception) -> Response:
 
 
 async def page_server_error(request: Request, exc: Exception) -> Response:
-    """An unhandled error on a page renders the shell; on the API, Starlette's own body."""
+    """An unhandled error on a page renders the shell; on the API, Starlette's own body.
+
+    Either way the response carries the same ``X-Request-ID`` the request log wrote for
+    this request — resolved by ``driftless.api.logging.log_request`` and stashed on
+    ``request.state`` before ``call_next``, because this handler is the one thing that
+    ever does answer a raising route, sitting above that middleware in the stack. A
+    request that never reached the middleware has nothing stashed, so the header is
+    simply omitted — never raised over, which would turn a 500 into a crash. Reading
+    it is safe in its own right: Starlette's ``request.state`` seeds an empty mapping
+    on the scope rather than refusing, so only the id itself can be missing.
+    """
     if _is_page_surface(request):
-        return _page(request, 500)
-    return PlainTextResponse("Internal Server Error", status_code=500)
+        response: Response = _page(request, 500)
+    else:
+        response = PlainTextResponse("Internal Server Error", status_code=500)
+    request_id = getattr(request.state, "request_id", None)
+    if request_id is not None:
+        response.headers[REQUEST_ID_HEADER] = request_id
+    return response
 
 
 def install_page_errors(app: FastAPI) -> None:

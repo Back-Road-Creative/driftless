@@ -1,0 +1,34 @@
+{# Fourteen checks over the approved baseline's own network, thresholds follow the
+   commonly used DCMA 14-point assessment (named once, here, as the source of the
+   numbers — never "compliant"/"certified" below). Pure function of the stored rows
+   and the as-of: a pinned as-of regenerates byte-identically. #}
+{% extends "base.html" %}
+{% block title %}Schedule health checks — {{ project.name }}{% endblock %}
+{% block content %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{% import "_empty.html" as empty %}
+{% import "_scroll.html" as scroll %}
+{{ breadcrumbs.trail(project, "Schedule health checks", as_of | default(None)) }}
+<h1>Schedule health checks — {{ project.name }}</h1>
+<p><em>As of {{ as_of }}</em> · <a href="/projects/{{ project.id }}/gantt?as_of={{ as_of }}">Schedule</a> ·
+   <a href="/projects/{{ project.id }}/schedule-health?as_of={{ as_of }}&amp;format=csv">Download CSV</a></p>
+<p>Thresholds follow the commonly used DCMA 14-point assessment.</p>
+{% if rows %}
+{% call scroll.wide("Schedule health checks") %}
+<table>
+<caption class="sr-only">Each check's ratio against its threshold, its status, and any offending task</caption>
+<tr><th scope="col">Check</th><th scope="col">Numerator</th><th scope="col">Denominator</th><th scope="col">Ratio</th><th scope="col">Threshold</th><th scope="col">Status</th><th scope="col">Offending tasks</th></tr>
+{% for row in rows %}
+<tr><td>{{ row.name }}</td><td>{{ row.numerator }}</td><td>{{ row.denominator }}</td>
+<td>{{ "%.0f%%"|format(row.ratio * 100) }}</td><td>{{ "%.0f%%"|format(row.threshold * 100) }}</td>
+<td>{{ row.status }}{% if row.note %} ({{ row.note }}){% endif %}</td>
+<td>{{ row.offending | join(", ") if row.offending else "—" }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No approved baseline yet — there is nothing to assess", id="schedule-health-empty") %}
+Draft a baseline, add its lines, then approve it; the <a href="/projects/{{ project.id }}/wizard?as_of={{ as_of }}">wizard</a> can produce the approved plan for you, and these checks run as soon as the approved version has lines.
+{% endcall %}
+{% endif %}
+{% endblock %}

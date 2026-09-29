@@ -22,10 +22,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 from test_docs_agent_guide import FENCED, PASSWORD, SHARED, Block, Guide, blocks
 
-from driftless.api import app as app_module
 from driftless.api.app import app
 from driftless.api.secure import TokenGate
 from driftless.db import Base, new_engine, new_session_factory
+from driftless.db import session as db_session
 from driftless.db.changelog import register_changelog
 
 GUIDE = Path(__file__).resolve().parents[1] / "docs" / "admin-guide.md"
@@ -80,7 +80,7 @@ def admin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Admin]:
     engine = new_engine(url := f"sqlite:///{tmp_path / 'admin.db'}")
     Base.metadata.create_all(engine)
     register_changelog(factory := new_session_factory(engine))
-    monkeypatch.setattr(app_module, "_factory", factory)
+    monkeypatch.setattr(db_session, "_factory", factory)
     client = TestClient(TokenGate(app, SHARED))
 
     def urlopen(request: urllib.request.Request, *args: object, **kwargs: object) -> io.BytesIO:
@@ -94,7 +94,11 @@ def admin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Admin]:
 
     monkeypatch.setattr("urllib.request.urlopen", urlopen)
     tokens = dict.fromkeys(("DRIFTLESS_TOKEN", "DRIFTLESS_API_TOKEN"), SHARED)  # the shared bearer
-    passwords = {"ADMIN_PW": PASSWORD, "OPS_PW": PASSWORD}
+    # NEW_PW must differ from ADMIN_PW, or the guide's rotation block rotates jp's password
+    # to the value it already held — a `passwd` that silently did nothing would still exit 0
+    # and the executed doc would still pass. Nothing after that block signs in as jp with a
+    # password (the next use is `token add`), so a distinct value costs the guide nothing.
+    passwords = {"ADMIN_PW": PASSWORD, "OPS_PW": PASSWORD, "NEW_PW": f"rotated-{PASSWORD}"}
     yield Admin(client, factory, monkeypatch, {"DRIFTLESS_DATABASE_URL": url} | tokens | passwords)
 
 

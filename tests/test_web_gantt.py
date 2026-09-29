@@ -12,12 +12,12 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterator
-from datetime import date
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine
+from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
 from driftless import models as m
@@ -29,11 +29,13 @@ from test_perf_n1 import count_route
 JAN, AS_OF, MAR = date(2026, 1, 1), date(2026, 2, 15), date(2026, 3, 31)
 DESIGN, BUILD = (JAN, date(2026, 1, 31)), (date(2026, 2, 1), MAR)
 PAGE, DRAFT_PAGE = [f"/projects/{n}/gantt?as_of={AS_OF.isoformat()}" for n in (1, 2)]
-# Measured 4, and identical with ten more tasks in the same baseline: the project, its
+# Measured 6, and identical with ten more tasks in the same baseline: the project, its
 # lines (newest version picked by scalar subquery, not a second query), those lines'
-# tasks batched into the same round trip, and the milestones. Two of headroom — a ceiling
-# several times the cost cannot fail — and a lazy load per line trips the equality first.
-MAX_GANTT_STMTS = 6
+# tasks batched into the same round trip, the milestones, every dependency edge (names
+# joined in, one statement, never one per edge) and the project's own calendar. Two of
+# headroom — a ceiling several times the cost cannot fail — and a lazy load per line or
+# per edge trips the equality first.
+MAX_GANTT_STMTS = 8
 _TAG = re.compile(r"<(rect|polygon|line)\b([^>]*?)/?>")
 _ATTR = re.compile(r'([\w:-]+)="([^"]*)"')
 _ROW = re.compile(r"<tr><td>([^<]*)</td><td>([^<]*)</td><td>([^<]*)</td><td>([^<]*)</td></tr>")
@@ -139,6 +141,81 @@ def test_no_approved_baseline_says_so_instead_of_an_empty_grid(client: TestClien
     section = re.search(r'<section class="empty-state".*?</section>', body, re.S)
     assert section, "no approved baseline renders no designed empty state"
     assert "<code" in section.group(0) or "<a " in section.group(0), "it names no next step"
+
+
+def test_a_baseline_approved_after_the_as_of_does_not_repaint_it(
+    client: TestClient, db: Session
+) -> None:
+    """#184 closed this for EVM by gating ``plan_baseline`` on ``approved_at <= as_of``;
+    the Gantt page picked its baseline in SQL and never inherited the gate. A v2 approved
+    in March must not become the plan a render at February's as-of draws."""
+    project = db.get(m.Project, 1)
+    task = m.Task(name="Rushed", workstream=db.get(m.Workstream, 1), estimate_unit="hours")
+    line = m.BaselineLine(
+        baseline=m.Baseline(
+            project=project,
+            version=2,
+            status="approved",
+            approved_at=datetime.combine(MAR, time(9)),
+        ),
+        task=task,
+        planned_cost=500.0,
+    )
+    line.planned_start, line.planned_finish = MAR, MAR
+    db.add(line)
+    db.commit()
+    body = client.get(PAGE).text  # PAGE renders as_of=AS_OF, before v2's own approval
+    names = {r["data-task"] for r in _shapes(body, "rect") if r["data-bar"] == "planned"}
+    assert names == {"Design", "Build"}, "v2, approved after the as-of, repainted the page early"
+
+
+@pytest.mark.parametrize(
+    ("approved", "drawn"),
+    [
+        (datetime.combine(AS_OF, time(23, 59, 59)), True),
+        (datetime.combine(AS_OF + timedelta(days=1), time()), False),
+    ],
+)
+def test_the_gate_falls_between_the_as_of_and_the_day_after(
+    client: TestClient, db: Session, approved: datetime, drawn: bool
+) -> None:
+    """The boundary the rule turns on, which the March case above is too far away to pin.
+    ``adapters.plan_baseline`` compares ``approved_at.date() <= as_of``, so an approval at
+    any hour of the as-of's OWN day counts and midnight starting the next day does not.
+    ``approved_as_of`` states that as a half-open instant compare rather than a
+    day-truncating SQL function -- portable across the SQLite the suite runs on and the
+    Postgres a deployment runs, which no CI job exercises with an application query. Off
+    by a day in either direction, one of these two cases fails."""
+    project = db.get(m.Project, 1)
+    task = m.Task(name="Rushed", workstream=db.get(m.Workstream, 1), estimate_unit="hours")
+    line = m.BaselineLine(
+        baseline=m.Baseline(project=project, version=2, status="approved", approved_at=approved),
+        task=task,
+        planned_cost=500.0,
+    )
+    line.planned_start, line.planned_finish = MAR, MAR
+    db.add(line)
+    db.commit()
+    body = client.get(PAGE).text
+    names = {r["data-task"] for r in _shapes(body, "rect") if r["data-bar"] == "planned"}
+    assert names == ({"Rushed"} if drawn else {"Design", "Build"})
+
+
+def test_dependencies_and_a_calendar_note_appear_beside_the_bars(
+    client: TestClient, db: Session
+) -> None:
+    """The dependency table names the waiting task, what it waits on, and the typed
+    lag/lead; the calendar note names the project's own working pattern."""
+    design_task = db.scalar(select(m.Task).where(m.Task.name == "Design"))
+    build_task = db.scalar(select(m.Task).where(m.Task.name == "Build"))
+    assert design_task is not None and build_task is not None
+    db.add(m.TaskDependency(predecessor=design_task, successor=build_task, kind="FS", lag_days=2))
+    db.add(m.ProjectCalendar(project=db.get(m.Project, 1), name="Standard", working_days=31))
+    db.commit()
+
+    body = client.get(PAGE).text
+    assert "Design (FS +2d)" in body, "the dependency table does not name predecessor and lag"
+    assert "Calendar: Standard (Mon, Tue, Wed, Thu, Fri)" in body
 
 
 def test_the_page_does_not_query_per_task(client: TestClient, db: Session) -> None:

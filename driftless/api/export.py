@@ -33,6 +33,8 @@ from typing import Any, Literal
 from fastapi import Response
 from pydantic import BaseModel
 
+from driftless.calc import receipt
+
 Format = Literal["json", "csv"]
 FORMULA_LEADS = ("=", "+", "-", "@", "\t", "\r")
 TEXT_MARK = "'"  # a spreadsheet's own "read this cell as text"
@@ -47,7 +49,7 @@ def _is_number(text: str) -> bool:
     return True
 
 
-def _cell(value: Any) -> str:
+def csv_cell(value: Any) -> str:
     """One cell: ``None`` is empty — a reader must not have to decode ``None``.
 
     A formula lead on anything but a number is marked literal, never dropped: the
@@ -61,16 +63,30 @@ def _cell(value: Any) -> str:
 
 
 def csv_response(out: type[BaseModel], rows: list[Any], name: str) -> Response:
-    """Render ``rows`` as CSV under ``out``'s fields, header row first."""
+    """Render ``rows`` as CSV under ``out``'s fields, header row first.
+
+    The reproducibility receipt (schema revision, build SHA, sha256 of the CSV
+    body — ``driftless.calc.receipt``, the same primitives the web page footer
+    and the CLI report trailer use) rides in the ``X-Driftless-Receipt`` header
+    rather than in the body: this CSV round-trips through
+    ``bin/driftless-import.py`` via ``csv.DictReader``, so a trailer row would
+    land in the app as a bogus record instead of staying inert like a markdown
+    comment does.
+    """
     columns = list(out.model_fields)
     buffer = io.StringIO(newline="")
     writer = csv.writer(buffer)
     writer.writerow(columns)
     for row in rows:
         dumped = out.model_validate(row).model_dump(mode="json")
-        writer.writerow([_cell(dumped[column]) for column in columns])
+        writer.writerow([csv_cell(dumped[column]) for column in columns])
+    body = buffer.getvalue()
+    receipt_line = receipt.format_line(receipt.digest(body.encode("utf-8")))
     return Response(
-        buffer.getvalue(),
+        body,
         media_type="text/csv",
-        headers={"content-disposition": f'attachment; filename="{name}.csv"'},
+        headers={
+            "content-disposition": f'attachment; filename="{name}.csv"',
+            "x-driftless-receipt": receipt_line,
+        },
     )

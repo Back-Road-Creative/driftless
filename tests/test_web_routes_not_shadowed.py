@@ -1,7 +1,7 @@
 """No web page may share a GET path with the JSON CRUD API.
 
 ``driftless.api.app`` registers every generic CRUD route at import, then
-``_mount_web`` includes the page routers — and FastAPI matches in registration
+``mount_web`` includes the page routers — and FastAPI matches in registration
 order. A page whose path equals a CRUD path is therefore *shadowed*: the
 request is answered with JSON and the template never renders, while every
 router-level test of that page (assembled on a bare ``FastAPI()``) keeps

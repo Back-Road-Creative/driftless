@@ -20,7 +20,7 @@ legend cannot promise a distinction the chart does not draw.
 
 *A text twin* — every plotted point is a row, in plot order, the same ``scroll.wide``
 idiom ``gantt.html`` and ``home.html`` already use. WHAT THIS DOES NOT PROVE: that the
-twin carries a DATE per row. ``pages.evm_curve`` returns only ``pv``/``ac`` per sample
+twin carries a DATE per row. ``views.evm_curve`` returns only ``pv``/``ac`` per sample
 and the SVG draws no date axis either, so the twin repeats exactly what the chart
 draws — the sequence and the crossing. A dated twin needs ``evm_curve`` to keep the
 sample date it already computes, as ``gather.business_curve`` does.
@@ -43,7 +43,7 @@ from test_web_a11y import _ratio, _token_sets
 
 # The seeded https store and the sweep under test, reused as is (assigned, not
 # imported: a test's own parameter must not read as a redefined import, and
-# ``driftless.web.pages`` must not be the first web module imported — it and
+# a web route module must not be the first web import — they and
 # ``api.app`` import each other, so reaching it through the module that already
 # imported the app is what keeps this file runnable on its own).
 client, db = test_web_pages.client, test_web_pages.db

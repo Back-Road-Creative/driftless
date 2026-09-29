@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Stakeholder assist — {{ project.name }}{% endblock %}
+{% block content %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{% import "_empty.html" as empty %}
+{% import "_scroll.html" as scroll %}
+{% import "_assist.html" as assist %}
+{{ breadcrumbs.trail(project, "Stakeholder assist", as_of) }}
+<h1>Stakeholder assist — {{ project.name }}</h1>
+<p><em>As of {{ as_of }}</em> · <a href="/projects/{{ project.id }}/hub?as_of={{ as_of }}">Project hub</a></p>
+
+{% if not grid.manage_closely and not grid.keep_satisfied and not grid.keep_informed and not grid.monitor %}
+{% call empty.state("No stakeholders registered for this project yet", id="stakeholders-empty") %}
+Register one with <code>POST /stakeholders</code> with <code>{"project_id": {{ project.id }}}</code>.
+{% endcall %}
+{% else %}
+
+{{ assist.summary_strip([
+  {"label": "Stakeholders", "value": (grid.manage_closely|length) + (grid.keep_satisfied|length) + (grid.keep_informed|length) + (grid.monitor|length)},
+  {"label": "High power, high interest", "value": grid.manage_closely|length},
+  {"label": "Communications rows", "value": matrix|length},
+]) }}
+
+{% call assist.section("Power/interest grid") %}
+<p>Influence is a stakeholder's power, interest is how much they care — each name is
+sorted into exactly one of the four quadrants below, not just by colour: the row and
+column headings carry the meaning too.</p>
+{% call scroll.wide("Power/interest grid") %}
+<table>
+<caption class="sr-only">Power/interest grid for {{ project.name }}</caption>
+<tr><th scope="col"></th><th scope="col">High interest</th><th scope="col">Low interest</th></tr>
+<tr>
+<th scope="row">High power</th>
+<td><span class="badge sev-red">Manage closely</span><ul>{% for name in grid.manage_closely %}<li>{{ name }}</li>{% endfor %}</ul>{% if not grid.manage_closely %}<p>None</p>{% endif %}</td>
+<td><span class="badge sev-amber">Keep satisfied</span><ul>{% for name in grid.keep_satisfied %}<li>{{ name }}</li>{% endfor %}</ul>{% if not grid.keep_satisfied %}<p>None</p>{% endif %}</td>
+</tr>
+<tr>
+<th scope="row">Low power</th>
+<td><span class="badge sev-amber">Keep informed</span><ul>{% for name in grid.keep_informed %}<li>{{ name }}</li>{% endfor %}</ul>{% if not grid.keep_informed %}<p>None</p>{% endif %}</td>
+<td><span class="badge sev-green">Monitor</span><ul>{% for name in grid.monitor %}<li>{{ name }}</li>{% endfor %}</ul>{% if not grid.monitor %}<p>None</p>{% endif %}</td>
+</tr>
+</table>
+{% endcall %}
+{% if grid.keep_satisfied %}
+<p>{{ grid.keep_satisfied | length }} powerful stakeholder{{ "s" if grid.keep_satisfied | length != 1 }} currently
+show{{ "" if grid.keep_satisfied | length != 1 }} low interest — the quadrant most likely to disengage
+without anyone noticing, so it is the one worth re-checking first.</p>
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Engagement matrix — current versus desired") %}
+<p>Current is inferred from interest, since the store keeps no separate engagement
+reading; use the form on a row to try a different desired level and see the gap it opens.</p>
+{% call scroll.wide("Stakeholder engagement matrix") %}
+<table>
+<caption class="sr-only">Current versus desired engagement for {{ project.name }}</caption>
+<tr><th scope="col">Stakeholder</th><th scope="col">Current</th><th scope="col">Desired</th><th scope="col">Gap</th><th scope="col">Action</th></tr>
+{% for row in engagement_rows %}
+<tr>
+<td>{{ row.stakeholder.name }}</td>
+<td>{{ row.current }}</td>
+<td>
+<form method="get" action="/projects/{{ project.id }}/assist/stakeholders">
+<input type="hidden" name="as_of" value="{{ as_of }}">
+<label class="sr-only" for="desired-{{ row.stakeholder.id }}">Desired engagement for {{ row.stakeholder.name }}</label>
+<select id="desired-{{ row.stakeholder.id }}" name="desired">
+{% for level in engagement_levels %}
+<option value="{{ row.stakeholder.id }}:{{ level }}" {% if level == row.desired %}selected{% endif %}>{{ level }}</option>
+{% endfor %}
+</select>
+<button type="submit" class="btn btn-secondary">Update</button>
+</form>
+</td>
+<td><span class="badge {{ 'sev-green' if row.gap.direction == 'on_target' else ('sev-red' if row.gap.direction == 'behind' else 'sev-amber') }}">{{ row.gap.direction | humanize }}{% if row.gap.steps %} ({{ row.gap.steps }}){% endif %}</span></td>
+<td>{{ row.gap.action }}</td>
+</tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% endcall %}
+
+{% call assist.section("Communications matrix") %}
+<p>Who to tell, what, how often, and over which channel — cadence comes straight
+from each stakeholder's own record; the channel is chosen from how much a missed or
+mishandled message would cost, using influence and interest as the stand-ins for
+urgency and sensitivity.</p>
+{% call scroll.wide("Communications matrix") %}
+<table>
+<caption class="sr-only">Communications matrix for {{ project.name }}</caption>
+<tr><th scope="col">Who</th><th scope="col">What</th><th scope="col">How often</th><th scope="col">Channel</th><th scope="col">Why</th></tr>
+{% for row in matrix %}
+<tr>
+<td>{{ row.who }}</td>
+<td>{{ row.what }}</td>
+<td>{{ row.how_often | humanize }}</td>
+<td><span class="badge sev-green">{{ row.channel }}</span></td>
+<td>{{ row.reason }}</td>
+</tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% endcall %}
+{% endif %}
+
+{% call assist.section("Provenance", chip_href="/techniques/" ~ (provenance.grid.key | technique_slug)) %}
+<p>This page runs three PMBOK-6 techniques: <a href="/techniques/{{ provenance.grid.key | technique_slug }}">{{ provenance.grid.display_name }}</a>
+({{ provenance.grid.source_version }}), <a href="/techniques/{{ provenance.matrix.key | technique_slug }}">{{ provenance.matrix.display_name }}</a>
+({{ provenance.matrix.source_version }}) and <a href="/techniques/{{ provenance.methods.key | technique_slug }}">{{ provenance.methods.display_name }}</a>
+({{ provenance.methods.source_version }}) — process 13.3 Manage Stakeholder Engagement and
+10.1 Plan Communications Management.</p>
+{% endcall %}
+
+{# The pinned date rides back to the hub, as from every sibling assistant: a bare
+   link dropped it, so the hub silently re-resolved to today. #}
+<p><a href="/projects/{{ project.id }}/hub?as_of={{ as_of }}">&larr; Back to {{ project.name }} hub</a></p>
+{% endblock %}

@@ -22,7 +22,16 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from driftless.models import Department, Program, Project, SignOff
+from driftless.models import (
+    Baseline,
+    BaselineLine,
+    Department,
+    Gate,
+    Program,
+    Project,
+    SignOff,
+    Task,
+)
 from driftless.models.governance import SIGNOFF_DECISIONS, SIGNOFF_SUBJECTS
 from driftless.pmbok import catalog, state
 from test_web_csrf import SAMPLE, _forms, _web_paths
@@ -48,6 +57,20 @@ def _sign_off_forms(browser: TestClient, store: Session) -> list[str]:
     project = store.scalars(select(Project)).one()
     project.program = Program(name="Reels", portfolio=project.portfolio)
     store.add(Department(name="Post", business=project.portfolio.business))
+    # A second approved baseline, so /projects/{}/baselines/diff's default pair (the
+    # two most recent approved) has one to draw, and its "sign off v2" form ships —
+    # the same addition test_web_csrf makes for the sign-out-form walk.
+    task = store.scalars(select(Task)).first()
+    if task is not None:
+        store.add(v2 := Baseline(project=project, version=2, status="approved"))
+        store.add(
+            BaselineLine(
+                baseline=v2, task=task, planned_cost=1.0, planned_start=AS_OF, planned_finish=AS_OF
+            )
+        )
+    # A gate, so /projects/{}/gates renders a sign-off form and its "gate" subject
+    # kind ships too — the same addition made above for "baseline".
+    store.add(Gate(project=project, name="Kickoff", position=1, required_processes=""))
     store.commit()
     forms: list[str] = []
     for shape in sorted(_web_paths("GET")):

@@ -3,7 +3,7 @@
 This pins an interaction that neither of the two files involved states on its
 own, so it is easy to undo by accident from either side:
 
-* ``driftless.api.app._delete`` reads the blocking child sets off the *mapper* —
+* ``driftless.api.crud._delete`` reads the blocking child sets off the *mapper* —
   every relationship whose direction is ONETOMANY, with no exclusion for
   ``viewonly`` ones.
 * ``Project.baselines``, ``Project.milestones`` and ``Project.sprints`` in

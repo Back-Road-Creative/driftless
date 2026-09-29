@@ -21,6 +21,7 @@ PROCESSES: tuple[Process, ...] = (
             "expert_judgment",
             "data_gathering",
             "data_analysis",
+            "cost_of_quality",
             "decision_making",
             "data_representation",
             "test_and_inspection_planning",
