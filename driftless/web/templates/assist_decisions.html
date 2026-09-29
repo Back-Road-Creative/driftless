@@ -1,0 +1,167 @@
+{# Decisions and meetings: voting, weighted scoring and facilitation are no-write
+   what-ifs computed purely from GET params, the same "type it, see it, nothing
+   saved" contract assist_evm's what-if box makes. Meeting evidence is the one write
+   this page allows — filed as a TechniqueRun through record_run, never a second
+   store for the same fact. #}
+{% extends "base.html" %}
+{% block title %}Decisions and meetings — {{ project.name }}{% endblock %}
+{% block content %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{% import "_empty.html" as empty %}
+{% import "_scroll.html" as scroll %}
+{% import "_assist.html" as assist %}
+{{ breadcrumbs.trail(project, "Decisions and meetings", as_of) }}
+<h1>Decisions and meetings — {{ project.name }}</h1>
+<p><em>As of {{ as_of }}</em> ·
+   <a href="/projects/{{ project.id }}/hub?as_of={{ as_of }}">Project hub</a></p>
+
+{{ assist.summary_strip([
+  {"label": "Meetings recorded", "value": meeting_runs|length},
+  {"label": "Voting rules", "value": voting_rules|length},
+  {"label": "Facilitation techniques", "value": facilitation_techniques|length},
+]) }}
+
+{% call assist.section("Vote") %}
+<p>Try a tally against any of the three rules. Nothing here is saved.</p>
+<form method="get" action="/projects/{{ project.id }}/assist/decisions">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label for="vote-options">Options (comma-separated)</label>
+  <input type="text" id="vote-options" name="vote_options" value="{{ vote_options }}">
+  <label for="vote-ballots">Ballots cast (comma-separated, one per voter)</label>
+  <input type="text" id="vote-ballots" name="vote_ballots" value="{{ vote_ballots }}">
+  <label for="vote-rule">Rule</label>
+  <select id="vote-rule" name="vote_rule">
+    {% for r in voting_rules %}<option value="{{ r }}" {% if r == vote_rule %}selected{% endif %}>{{ r }}</option>{% endfor %}
+  </select>
+  <button type="submit" class="btn btn-primary">Tally</button>
+</form>
+{% if vote_result %}
+{% call scroll.wide("Vote tally") %}
+<table>
+<caption class="sr-only">Vote tally</caption>
+<tr><th scope="col">Option</th><th scope="col">Ballots</th></tr>
+{% for option, count in vote_result.tally.items() %}
+<tr><th scope="row">{{ option }}</th><td>{{ count }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+<p id="vote-explanation">{{ vote_result.explanation }}</p>
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Weighted-criteria scoring") %}
+<p>Rank options by criteria weights (<code>criterion:weight,...</code>) and scores
+   (<code>option:criterion=value,...;option:criterion=value,...</code>). This is the same
+   weighted-scoring math a bid evaluation would use. Nothing here is saved.</p>
+<form method="get" action="/projects/{{ project.id }}/assist/decisions">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label for="mc-options">Options (comma-separated)</label>
+  <input type="text" id="mc-options" name="mc_options" value="{{ mc_options }}">
+  <label for="mc-weights">Criteria and weights</label>
+  <input type="text" id="mc-weights" name="mc_weights" value="{{ mc_weights }}">
+  <label for="mc-scores">Scores</label>
+  <input type="text" id="mc-scores" name="mc_scores" value="{{ mc_scores }}">
+  <button type="submit" class="btn btn-primary">Score</button>
+</form>
+{% if score_result %}
+{% call scroll.wide("Weighted score ranking") %}
+<table>
+<caption class="sr-only">Weighted score ranking</caption>
+<tr><th scope="col">Option</th><th scope="col">Weighted score</th></tr>
+{% for option, total in score_result.ranking %}
+<tr><th scope="row">{{ option }}</th><td>{{ total }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+<p id="score-sensitivity">{{ score_result.sensitivity_note }}</p>
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Autocratic decision") %}
+<p>Record who decided and why, as a preview of what a meeting evidence entry could hold.
+   Nothing here is saved.</p>
+<form method="get" action="/projects/{{ project.id }}/assist/decisions">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label for="autocratic-decider">Decider</label>
+  <input type="text" id="autocratic-decider" name="autocratic_decider" value="{{ autocratic_decider }}">
+  <label for="autocratic-rationale">Rationale</label>
+  <input type="text" id="autocratic-rationale" name="autocratic_rationale" value="{{ autocratic_rationale }}">
+  <button type="submit" class="btn btn-primary">Preview</button>
+</form>
+{% if autocratic %}
+<p id="autocratic-preview"><strong>{{ autocratic.decider }}</strong> decided: {{ autocratic.rationale }}</p>
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Facilitation plan") %}
+<p>Pick a technique and get a fixed, plain-steps agenda — brainstorming, nominal group,
+   focus group, interviews or workshop. Nothing here is saved.</p>
+<form method="get" action="/projects/{{ project.id }}/assist/decisions">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label for="facil-purpose">Purpose</label>
+  <input type="text" id="facil-purpose" name="facil_purpose" value="{{ facil_purpose }}">
+  <label for="facil-participants">Participants (comma-separated)</label>
+  <input type="text" id="facil-participants" name="facil_participants" value="{{ facil_participants }}">
+  <label for="facil-technique">Technique</label>
+  <select id="facil-technique" name="facil_technique">
+    {% for t in facilitation_techniques %}<option value="{{ t }}" {% if t == facil_technique %}selected{% endif %}>{{ t }}</option>{% endfor %}
+  </select>
+  <button type="submit" class="btn btn-primary">Plan it</button>
+</form>
+{% if facilitation %}
+<ol id="facilitation-agenda">
+{% for step in facilitation.agenda %}
+<li>{{ step }}</li>
+{% endfor %}
+</ol>
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Meeting evidence") %}
+<p>Every meeting recorded for this project, at or before {{ as_of }} — the project's own
+   provenance ledger, filtered to the <strong>{{ "meetings" | technique_name }}</strong>
+   technique.</p>
+{% if meeting_runs %}
+{% call scroll.wide("Recorded meetings") %}
+<table>
+<caption class="sr-only">Recorded meetings</caption>
+<tr><th scope="col">As of</th><th scope="col">Recorded by</th><th scope="col">Inputs</th></tr>
+{% for run in meeting_runs %}
+<tr><td>{{ run.as_of }}</td><td>{{ run.actor }}</td><td>{{ run.inputs_snapshot }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No meetings recorded yet", id="meetings-empty") %}
+Use the form below to file the first one; it becomes the first row here.
+{% endcall %}
+{% endif %}
+
+<p>File a meeting as evidence. This is the one write this page makes — everything above is a
+   preview only.</p>
+<form method="post" action="/projects/{{ project.id }}/assist/decisions">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label for="meeting-actor">Recorded by</label>
+  <input type="text" id="meeting-actor" name="actor" value="Facilitator">
+  <label for="meeting-purpose">Purpose</label>
+  <textarea id="meeting-purpose" name="purpose" rows="1" cols="50"></textarea>
+  <label for="meeting-attendees">Attendees (one per line)</label>
+  <textarea id="meeting-attendees" name="attendees" rows="3" cols="50"></textarea>
+  <label for="meeting-decisions">Decisions (one per line)</label>
+  <textarea id="meeting-decisions" name="decisions" rows="3" cols="50"></textarea>
+  <label for="meeting-actions">Actions (one per line: description | owner | due date)</label>
+  <textarea id="meeting-actions" name="actions" rows="3" cols="50"></textarea>
+  <button type="submit" class="btn btn-primary">Record meeting</button>
+</form>
+{% endcall %}
+
+{% call assist.section("Where this comes from", collapsed=True) %}
+<p>Voting, weighted scoring, the autocratic preview and facilitation planning: PMBOK-6 process
+   <strong>{{ provenance.voting_process }}</strong> (Collect Requirements). Meeting evidence:
+   process <strong>{{ provenance.meetings_process }}</strong> (Direct and Manage Project Work).
+   As of <strong>{{ provenance.as_of }}</strong>.</p>
+{% endcall %}
+
+<p><a href="/projects/{{ project.id }}/hub?as_of={{ as_of }}">&larr; Back to {{ project.name }} hub</a></p>
+{% endblock %}

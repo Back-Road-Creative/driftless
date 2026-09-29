@@ -37,6 +37,7 @@ from driftless.assess import adapters
 from driftless.assess.exposure import contingency_assessment, open_register
 from driftless.assess.model import Action, Assessment, RagStatus, Threat
 from driftless.models import Project
+from driftless.pmbok import risk_facts
 from driftless.pmbok.state import threat_subject_ref
 
 KIND = "risk"
@@ -72,11 +73,25 @@ def evaluate(session: Session, project: Project, as_of: date) -> Assessment:
     else:
         score = max(0.0, assessment.exposure - _AMBER_COVERAGE * assessment.contingency) / budget
     score = round(score, 4)
+    # An open risk with no filed response is a plain gap a reader should see and a
+    # board should rank ahead of an equal-severity project whose worst risks all
+    # carry one — ``open_no_response`` on the threat itself is the whole rule: a
+    # ranking tie-break ``engine._rank_key`` reads AFTER score, so it can only
+    # decide a tie, never move the score or exposure this and every other surface
+    # print. ``risk_facts.gather`` batches its Risk read across ``open_register``'s
+    # own ``adapters.project_rows`` scope and its ``RiskResponse`` read through
+    # ``mapping.rows_for`` — the scope ``report.gather.business_nodes``'s own
+    # nested ``adapters.prefetched`` cannot silently empty out from under it (see
+    # ``mapping.rows_for``'s docstring) — the same "batched when a scope is open,
+    # one read per project otherwise" rule every other evaluator's project-scoped
+    # reads follow.
+    unanswered = bool(risk_facts.gather(session, project, as_of).unanswered_risk_ids)
 
     ref = f"project:{project.id}"
     tid = threat_subject_ref(KIND, project.id)
     severity: RagStatus = "red" if red else "amber"
     top_risk = assessment.top_risk if assessment.top_risk is not None else "n/a"
+    no_response_note = " No response planned for at least one open risk." if unanswered else ""
     threat = Threat(
         tid,
         KIND,
@@ -85,8 +100,10 @@ def evaluate(session: Session, project: Project, as_of: date) -> Assessment:
         (
             f"Open-risk exposure {assessment.exposure:,.0f} against contingency "
             f"{assessment.contingency:,.0f} (top risk: {top_risk})."
+            f"{no_response_note}"
         ),
         ref,
+        unanswered,
     )
     actions = (
         Action(

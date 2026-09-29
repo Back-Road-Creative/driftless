@@ -13,25 +13,32 @@ import re
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 
 import pytest
 from fastapi.testclient import TestClient
 from test_docs_agent_guide import FENCED, PASSWORD, SHARED, Block, Guide, blocks
 
-from driftless.api import app as app_module
 from driftless.api.app import app
 from driftless.api.secure import TokenGate
 from driftless.auth import sessions
 from driftless.auth.passwords import hash_password
 from driftless.db import Base, new_engine, new_session_factory
+from driftless.db import session as db_session
 from driftless.db.changelog import register_changelog
 from driftless.demo.cli import seed
 from driftless.demo.data import ANCHOR, demo_payload
 from driftless.models import User
+from driftless.pmbok.graph import EdgeKind
+from driftless.web.method_map import TIE_VERB
 
 GUIDE = Path(__file__).resolve().parents[1] / "docs" / "user-guide.md"
 PAIR = re.compile(r'name="csrf_token" value="([^"]+)"')
+STYLES = Path(__file__).resolve().parents[1] / "driftless" / "web" / "static" / "driftless.css"
+#: The guide's own account of what each dash pattern means, sliced by its first and
+#: last sentence so a rewrite that drops the passage fails here rather than passing
+#: vacuously on a guide that no longer explains the map at all.
+DASHES = re.compile(r"The \*\*dashes\*\* carry.*?(?=\n\nA tie drawn)", re.S)
 
 
 @dataclass
@@ -64,7 +71,7 @@ def reader(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Reader]:
     engine = new_engine(f"sqlite:///{tmp_path / 'user.db'}")
     Base.metadata.create_all(engine)
     register_changelog(factory := new_session_factory(engine))
-    monkeypatch.setattr(app_module, "_factory", factory)
+    monkeypatch.setattr(db_session, "_factory", factory)
     monkeypatch.setenv(sessions.SECRET_ENV, SHARED)
     monkeypatch.setenv("DRIFTLESS_COOKIE_SECURE", "0")  # the TestClient speaks plain HTTP
     with factory() as db:
@@ -98,3 +105,35 @@ def test_the_user_guide_runs_exactly_as_it_is_written(reader: Reader) -> None:
     assert len(marked) >= 15, f"only {len(marked)} runnable blocks — the guide lost its markers"
     for block in marked:
         reader.run(block)
+
+
+def test_the_user_guide_explains_the_breadcrumb_trail() -> None:
+    """The Method pages hang off the primary nav AND off a project's own history;
+    a reader following either path needs the trail explained, not just the pages
+    it links to left as bare addresses."""
+    assert "breadcrumb" in GUIDE.read_text().lower()
+
+
+def test_the_guide_says_what_every_tie_the_map_can_draw_looks_like() -> None:
+    """``edge_legend`` builds a legend row per ``EdgeKind`` for free, so a new kind
+    reaches the screen explained. The printed guide is hand-written and does not,
+    which is how ``part_of`` came to be drawn but never described. Assert it."""
+    passage = DASHES.search(GUIDE.read_text())
+    assert passage, "the guide no longer explains what the map's dash patterns mean"
+
+    undescribed = [verb for verb in TIE_VERB.values() if verb not in passage[0]]
+    assert not undescribed, f"the guide never says which line {undescribed} is drawn with"
+
+
+def test_every_tie_the_guide_describes_is_a_dash_pattern_the_stylesheet_draws() -> None:
+    """The guide's promise is that the dash pattern is the ONLY thing carrying a tie's
+    kind. That holds only while each kind owns a distinct ``stroke-dasharray``."""
+    rules = {
+        kind: re.search(rf"\.edge-{kind} {{[^}}]*stroke-dasharray: ([^;]+);", STYLES.read_text())
+        for kind in get_args(EdgeKind)
+    }
+    missing = sorted(kind for kind, rule in rules.items() if rule is None)
+    assert not missing, f"{missing} is drawn with no dash pattern of its own"
+
+    patterns = [rule[1].strip() for rule in rules.values() if rule]
+    assert len(set(patterns)) == len(patterns), f"two ties share a dash pattern: {patterns}"

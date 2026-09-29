@@ -13,7 +13,7 @@ empty state a project with no approved plan falls to.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 from sqlalchemy.orm import Session
@@ -128,3 +128,75 @@ def test_the_plan_s_first_day_is_answerable(db: Session, project: m.Project) -> 
     snap = adapters.project_snapshot(db, project, JAN)
     assert (snap.bac, snap.ev, snap.ac) == (1000.0, 500.0, 400.0)
     assert snap.pv == pytest.approx(1000.0 / 60.0)
+
+
+def _approve_v2(db: Session, project: m.Project, approved_at: datetime, cost: float) -> None:
+    """A second approved version over the SAME task, recorded as approved at a
+    specific instant -- the shape a real re-baseline takes, as opposed to
+    ``_rebaseline`` above, which leaves ``approved_at`` unset."""
+    task = project.workstreams[0].tasks[0]
+    baseline = m.Baseline(project=project, version=2, status="approved", approved_at=approved_at)
+    line = m.BaselineLine(baseline=baseline, task=task, planned_cost=cost)
+    line.planned_start, line.planned_finish = JAN, AS_OF
+    db.add(line)
+    db.commit()
+
+
+def test_plan_baseline_as_of_gates_approval_and_none_stays_live(
+    db: Session, project: m.Project
+) -> None:
+    """The defect this closes: ``plan_baseline`` had no ``as_of``, so a baseline
+    approved in April silently became the plan for a report rendered as of March --
+    the same as-of printing different numbers depending only on WHEN it was
+    rendered. v2 is approved 2026-04-15: a March as-of must still see v1, an as-of
+    on or after the approval sees v2, and the default ``as_of=None`` stays the
+    deliberately permissive live/write-guard reading -- newest approved, full
+    stop -- the re-baseline refusal (``web.wizard_pages.wizard_apply``) relies on to see
+    every approval right now."""
+    _approve_v2(db, project, datetime(2026, 4, 15, 9, 0), cost=4000.0)
+    early = adapters.plan_baseline(project, date(2026, 3, 31))
+    late = adapters.plan_baseline(project, date(2026, 4, 15))
+    live = adapters.plan_baseline(project)
+    assert early is not None and early.version == 1
+    assert late is not None and live is not None
+    assert (late.version, live.version) == (2, 2)
+
+
+def test_plan_baseline_as_of_still_sees_an_approval_with_no_recorded_instant(
+    db: Session, project: m.Project
+) -> None:
+    """The seeded v1 has no ``approved_at`` -- predating the column, or entered
+    without one -- and must stay the plan at every as_of, including one long
+    before the project itself, because a missing approval instant is not
+    evidence the approval happened after any particular date."""
+    assert project.baselines[0].approved_at is None
+    baseline = adapters.plan_baseline(project, date(2000, 1, 1))
+    assert baseline is not None and baseline.version == 1
+
+
+def test_progress_history_memo_is_keyed_by_the_plan_it_replays_against(
+    db: Session, project: m.Project
+) -> None:
+    """The memo bug: the session cache used to key on ``project.id`` alone, so once
+    ``plan_baseline`` became date-aware, two as_of values served from one session
+    silently shared one cached history -- a WRONG answer, not merely a slow one. v2
+    adds a SECOND task, approved after the early as_of and before the late one, so
+    the late read must see its progress and the early read must not. The key is the
+    selected BASELINE, not the date, which this proves by consequence: these dates
+    differ only in landing either side of v2's approval, while two dates picking one
+    version share an entry -- what keeps the dashboard's own two reads on one replay."""
+    stream = project.workstreams[0]
+    task2 = m.Task(name="GMS-2", workstream=stream, estimate_unit="hours", percent_complete=80)
+    baseline2 = m.Baseline(
+        project=project, version=2, status="approved", approved_at=datetime(2026, 2, 1, 0, 0)
+    )
+    line2 = m.BaselineLine(baseline=baseline2, task=task2, planned_cost=500.0)
+    line2.planned_start, line2.planned_finish = JAN, AS_OF
+    db.add(line2)
+    db.commit()
+
+    early = adapters.progress_history(db, project, date(2026, 1, 15))
+    late = adapters.progress_history(db, project, date(2026, 3, 1))
+    assert early != late
+    assert str(task2.id) not in {r.task_id for r in early}
+    assert str(task2.id) in {r.task_id for r in late}

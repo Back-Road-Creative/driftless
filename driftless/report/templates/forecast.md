@@ -41,6 +41,18 @@ _As of {{ as_of }} — {{ mode }} delivery_
 {% for sp in sprints|sort(attribute="ended_on") %}
 | {{ sp.name }} | {{ sp.ended_on }} | {{ n(sp.completed_points) }} |
 {% endfor %}
+{% if simulation %}
+
+### Simulated completion
+
+Monte Carlo over sprint velocity — schedule forecasting, not risk analysis ({{ simulation.trials }} trials, seed {{ simulation.seed }}).
+
+| Percentile | Completes |
+| --- | --- |
+| p50 | {{ simulation.p50 if simulation.p50 else "never at this velocity" }} |
+| p80 | {{ simulation.p80 if simulation.p80 else "never at this velocity" }} |
+| p90 | {{ simulation.p90 if simulation.p90 else "never at this velocity" }} |
+{% endif %}
 {% endif %}
 
 ## Contingency

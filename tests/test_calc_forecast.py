@@ -52,6 +52,13 @@ def test_unforecastable_inputs_are_refused() -> None:
         fc.forecast_completion(_history(20), remaining_points=-1, as_of=AS_OF)
 
 
+def test_a_sprint_refuses_negative_points_or_a_non_positive_length() -> None:
+    with pytest.raises(ValueError, match="completed_points >= 0"):
+        fc.Sprint(name="Bad", ended_on=AS_OF, completed_points=-1)
+    with pytest.raises(ValueError, match="length_days > 0"):
+        fc.Sprint(name="Bad", ended_on=AS_OF, completed_points=10, length_days=0)
+
+
 def test_same_day_ties_at_the_window_boundary_do_not_flip_the_band() -> None:
     """Two sprints sharing ``ended_on`` at the window boundary must not let
     input order decide which one enters the window — otherwise the whole band

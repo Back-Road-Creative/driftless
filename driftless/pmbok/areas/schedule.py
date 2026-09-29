@@ -107,6 +107,7 @@ PROCESSES: tuple[Process, ...] = (
             "agile_release_planning",
         ),
         outputs=("schedule_baseline", "project_schedule", "schedule_data", "project_calendars"),
+        optional_outputs=("schedule_data", "project_calendars"),
     ),
     Process(
         id="6.6",

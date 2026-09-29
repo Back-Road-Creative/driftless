@@ -52,7 +52,7 @@ def render(session: Session, project: Project, as_of: date) -> str:
     # One prefetch scope for the whole render: project_process_states is computed
     # ONCE and threaded into _process_rows below instead of it re-walking the
     # store; state.completeness's own walk still rides the same cache (mirrors
-    # driftless.web.pages's process_map route).
+    # driftless.web.process_map's route).
     with _scope(session, project):
         states = state.project_process_states(project, session, as_of)
         rows = _process_rows(states)

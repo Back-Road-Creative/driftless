@@ -16,6 +16,7 @@ from driftless.api.app import app as real_app
 from driftless.api.app import get_session
 from driftless.assess import adapters
 from driftless.assess.evaluators import schedule
+from driftless.web.templating import money
 from driftless.db import Base, new_engine, new_session_factory
 from driftless.db.changelog import register_changelog
 from driftless.models import (
@@ -28,6 +29,10 @@ from driftless.models import (
     Milestone,
     Portfolio,
     Project,
+    ScorecardContribution,
+    ScorecardMetricDefinition,
+    ScorecardMetricObservation,
+    StrategicObjective,
     Risk,
     Task,
     Workstream,
@@ -90,6 +95,69 @@ def _seed(session: Session) -> None:
     session.commit()
 
 
+def test_project_hub_shows_its_scorecard_lenses(client: TestClient, db: Session) -> None:
+    business = db.get(Business, 1)
+    project = db.get(Project, 1)
+    assert business is not None and project is not None
+    objective = StrategicObjective(
+        business=business, perspective="financial", name="Sustain margin"
+    )
+    metric = ScorecardMetricDefinition(
+        objective=objective,
+        name="Operating margin",
+        direction="higher_is_better",
+        unit="percent",
+        target_value=20,
+        amber_threshold=15,
+        red_threshold=10,
+        cadence_days=30,
+    )
+    risk_metric = ScorecardMetricDefinition(
+        objective=objective,
+        name="Defect escape rate",
+        direction="lower_is_better",
+        unit="count",
+        target_value=1,
+        amber_threshold=2,
+        red_threshold=4,
+        cadence_days=30,
+    )
+    db.add(
+        ScorecardContribution(
+            project=project,
+            objective=objective,
+            contribution_type="direct",
+            rationale="This rollout closes the margin leak.",
+        )
+    )
+    db.add(
+        ScorecardMetricObservation(
+            metric_definition=metric,
+            observed_on=AS_OF,
+            value=21,
+            evidence_note="Month-end close",
+        )
+    )
+    db.add(
+        ScorecardMetricObservation(
+            metric_definition=risk_metric,
+            observed_on=AS_OF,
+            value=5,
+            evidence_note="Quality review",
+        )
+    )
+    db.commit()
+
+    page = client.get(f"/projects/1/hub{Q}")
+
+    assert page.status_code == 200
+    assert "Scorecard strategy" in page.text
+    assert "Sustain margin" in page.text
+    assert "Operating margin" in page.text
+    assert "Defect escape rate" in page.text
+    assert "red" in page.text
+
+
 @pytest.fixture
 def db(tmp_path: Path) -> Iterator[Session]:
     engine = new_engine(f"sqlite:///{tmp_path / 'driftless.db'}")
@@ -130,8 +198,26 @@ def test_the_hub_renders_every_evm_slot_agreeing_with_the_canonical_adapter(
         "bac": round(snap.bac, 2),
     }
     assert len(set(figures.values())) == 5, f"seed drift, slots no longer pinned: {figures}"
-    for slot, value in figures.items():
+    # Money slots render through the same ``money`` filter every page uses;
+    # CPI/SPI are ratios, never money-formatted.
+    rendered = {
+        slot: (value if slot in ("cpi", "spi") else money(value)) for slot, value in figures.items()
+    }
+    for slot, value in rendered.items():
         assert f'id="evm-{slot}">{value}<' in body, f"evm-{slot} does not render {value}"
+
+
+def test_the_hub_shows_cost_and_schedule_variance_in_plain_words(
+    client: TestClient, db: Session
+) -> None:
+    body = client.get(f"/projects/1/hub{Q}").text
+    project = db.get(Project, 1)
+    assert project is not None
+    snap = adapters.snapshot_from(project, adapters.project_costs(db, project), AS_OF)
+    assert f'id="evm-cv">{money(round(snap.cv, 2))}<' in body
+    assert f'id="evm-sv">{money(round(snap.sv, 2))}<' in body
+    assert ("over budget" if snap.cv < 0 else "under budget") in body
+    assert ("behind plan" if snap.sv < 0 else "ahead of plan") in body
 
 
 def test_the_hub_shows_only_this_projects_threats(client: TestClient) -> None:
@@ -236,6 +322,15 @@ def test_the_hub_links_the_three_deep_pages(client: TestClient) -> None:
     body = client.get(f"/projects/1/hub{Q}").text
     for page in ("process-map", "wizard", "status"):
         assert f'href="/projects/1/{page}' in body
+
+
+def test_the_hub_shows_a_flow_tile_with_no_agile_evidence(client: TestClient) -> None:
+    """No backlog items were seeded for this predictive project — the tile still
+    renders, honestly zero, rather than crashing or vanishing."""
+    body = client.get(f"/projects/1/hub{Q}").text
+    assert 'id="flow-tile-wip">0<' in body
+    assert 'id="flow-tile-throughput">0<' in body
+    assert 'href="/projects/1/flow' in body
 
 
 def test_home_project_rows_point_at_the_hub(client: TestClient) -> None:

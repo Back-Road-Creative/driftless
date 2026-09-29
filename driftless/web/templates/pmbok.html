@@ -2,10 +2,49 @@
 {% block title %}PMBOK reference{% endblock %}
 {% block content %}
 {% import "_scroll.html" as scroll %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{% import "_help.html" as help %}
+{% import "_related.html" as related_macros %}
+{{ breadcrumbs.theory(None, None, "PMBOK") }}
 <h1>PMBOK ITTO reference</h1>
 <p><em>Theory reference — the 49 predictive processes on the knowledge-area ×
    process-group grid, independent of any project's state. Follow a cell for its
    inputs, tools &amp; techniques and outputs.</em></p>
+{# The four terms the title and the line above spend without defining. The two that
+   are glossary entries are DEFINED from the registry and linked to their own entry,
+   so a reworded glossary cannot leave a second, staler copy of itself here. #}
+{% call help.how_to_read() %}
+<p>Four words carry this page, and none of them explains itself:</p>
+<dl>
+  <dt>ITTO</dt>
+  <dd>What each process page lists: its inputs, tools &amp; techniques and outputs —
+      what you need, how you do it, and what you get.</dd>
+  <dt>Predictive</dt>
+  <dd>Planned up front against one approved baseline, rather than re-decided each
+      sprint. These 49 are the predictive set; a project running agile or hybrid reads
+      most of its controls against the team's own cadence instead.</dd>
+  <dt><a href="/glossary#knowledge-area">{{ glossary["knowledge-area"].term }}</a></dt>
+  <dd>{{ glossary["knowledge-area"].plain }} It is one row of the grid below.</dd>
+  <dt><a href="/glossary#process-group">{{ glossary["process-group"].term }}</a></dt>
+  <dd>{{ glossary["process-group"].plain }} It is one column of the grid below.</dd>
+</dl>
+{% endcall %}
+<p><a href="/pmbok/proof">Totality proof</a> — is anything left unaccounted for?</p>
+<p>Every cell says, in plain words, how much help this product gives that step today:</p>
+<dl class="legend">
+  {% for word, meaning in support_legend %}<dt>{{ word }}</dt><dd>— {{ meaning }}</dd>{% endfor %}
+</dl>
+{# Real links, never a query string a reader is told to assemble: the same grid read
+   against one project's own progress is that project's process map, and a cell there
+   carries the project and the pinned date on into the process's own page. #}
+{% if projects %}
+<p>This grid is theory, the same for every project. To see it against one project's own
+   progress, open that project's process map:
+   {% for p in projects %}<a href="/projects/{{ p.id }}/process-map?as_of={{ as_of }}">{{ p.name }}</a>{% if not loop.last %} · {% endif %}{% endfor %}.</p>
+{% else %}
+<p>This grid is theory, the same for every project — and there is no project yet to read
+   it against.</p>
+{% endif %}
 {% call scroll.wide("The 49-process grid") %}
 <table>
   <caption class="sr-only">The 49 predictive processes, knowledge area by row and process group by column</caption>
@@ -19,7 +58,7 @@
     {% for g in groups %}
     <td>
       {% for cell in grid[area][g] %}
-      <a href="/pmbok/{{ cell.id }}">{{ cell.id }} {{ cell.name }}</a><br>
+      <a href="/pmbok/{{ cell.id }}">{{ cell.id }} {{ cell.name }}</a> — <small>{{ support[cell.id] }}</small><br>
       {% endfor %}
     </td>
     {% endfor %}
@@ -27,4 +66,5 @@
   {% endfor %}
 </table>
 {% endcall %}
+{{ related_macros.related(related, "pmbok-hubs") }}
 {% endblock %}

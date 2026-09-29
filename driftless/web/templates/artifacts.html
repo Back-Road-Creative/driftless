@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Artifact catalog{% endblock %}
+{# The whole closed ARTIFACT_KINDS vocabulary, grouped by family. web/artifacts.py
+   owns the grouping and the ordering; this file only formats them. #}
+{% block content %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{{ breadcrumbs.theory(None, None, "Artifacts") }}
+<h1>Artifact catalog</h1>
+<p class="lede"><em>This catalog lists every kind of document, record or plan a process can produce
+   or use, and whether this product's records can track it.</em></p>
+<p>Reference only: nothing here reads a project or a date.</p>
+{% for family, artifacts in families %}
+<h2 id="family-{{ family }}">{{ family | humanize }}</h2>
+<p class="family-note">{{ family_explanations[family] }}</p>
+<dl class="artifact-index">
+  {% for slug, artifact in artifacts %}
+  <dt><a href="/artifacts/{{ slug }}">{{ artifact.display_name }}</a>
+      <span class="badge st-{{ 'ok' if artifact.tracked_by else 'muted' }}">{{ 'Tracked' if artifact.tracked_by else 'Not tracked' }}</span></dt>
+  <dd>{{ artifact.plain_summary }}{% if not artifact.tracked_by %} &mdash; {{ dispositions[artifact.key] }}{% endif %}</dd>
+  {% endfor %}
+</dl>
+{% endfor %}
+{% endblock %}

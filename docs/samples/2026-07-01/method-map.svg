@@ -1,0 +1,748 @@
+<svg viewBox="0 0 1826 2058" data-width="1826" data-height="2058" style="--map-floor: 1435px" class="map-svg map-narrow" data-slice="overview" data-overview="/map?as_of=2026-07-01" role="group" aria-label="The method graph: every process, technique and artifact, and every tie between them">
+<defs>
+<marker id="arrow-reads" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/>
+</marker>
+<marker id="arrow-produces" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/>
+</marker>
+<marker id="arrow-used_by" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/>
+</marker>
+<marker id="arrow-feeds" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/>
+</marker>
+<marker id="arrow-part_of" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/>
+</marker>
+</defs>
+<text class="band-label" x="8" y="20" aria-hidden="true">INITIATING</text>
+<rect class="band" x="0" y="196.0" width="1826" height="594.0" aria-hidden="true"/>
+<text class="band-label" x="8" y="338" aria-hidden="true">PLANNING</text>
+<text class="band-label" x="8" y="1082" aria-hidden="true">EXECUTING</text>
+<rect class="band" x="0" y="1309.0" width="1826" height="378.0" aria-hidden="true"/>
+<text class="band-label" x="8" y="1460" aria-hidden="true">MONITORING AND CONTROLLING</text>
+<text class="band-label" x="8" y="1838" aria-hidden="true">CLOSING</text>
+<path class="edge edge-feeds" d="M 258 452 Q 780.0 769.0 1302 1086" data-from="process:10.1" data-to="process:10.2" data-tie="feeds"><title>feeds into Manage Communications</title></path>
+<path class="edge edge-feeds edge-optional" d="M 258 452 Q 242.0 979.0 226 1506" data-from="process:10.1" data-to="process:10.3" data-tie="feeds"><title>feeds into Monitor Communications</title></path>
+<path class="edge edge-feeds edge-optional" d="M 385 439 L 385 418 L 413 418 L 413 439" data-from="process:10.1" data-to="process:11.1" data-tie="feeds"><title>feeds into Plan Risk Management</title></path>
+<path class="edge edge-feeds edge-optional" d="M 258 452 Q 252.0 460.0 246 468" data-from="process:10.1" data-to="process:12.1" data-tie="feeds"><title>feeds into Plan Procurement Management</title></path>
+<path class="edge edge-feeds edge-optional" d="M 258 452 Q 420.0 979.0 582 1506" data-from="process:10.1" data-to="process:12.3" data-tie="feeds"><title>feeds into Control Procurements</title></path>
+<path class="edge edge-feeds edge-optional" d="M 258 452 Q 381.0 460.0 504 468" data-from="process:10.1" data-to="process:13.2" data-tie="feeds"><title>feeds into Plan Stakeholder Engagement</title></path>
+<path class="edge edge-feeds" d="M 258 452 Q 357.0 790.0 456 1128" data-from="process:10.1" data-to="process:13.3" data-tie="feeds"><title>feeds into Manage Stakeholder Engagement</title></path>
+<path class="edge edge-feeds edge-optional" d="M 258 452 Q 541.0 979.0 824 1506" data-from="process:10.1" data-to="process:13.4" data-tie="feeds"><title>feeds into Monitor Stakeholder Engagement</title></path>
+<path class="edge edge-feeds edge-optional" d="M 258 452 Q 258.0 769.0 258 1086" data-from="process:10.1" data-to="process:4.3" data-tie="feeds"><title>feeds into Direct and Manage Project Work</title></path>
+<path class="edge edge-feeds edge-optional" d="M 258 452 Q 381.0 769.0 504 1086" data-from="process:10.1" data-to="process:4.4" data-tie="feeds"><title>feeds into Manage Project Knowledge</title></path>
+<path class="edge edge-feeds edge-optional" d="M 258 452 Q 262.0 958.0 266 1464" data-from="process:10.1" data-to="process:4.5" data-tie="feeds"><title>feeds into Monitor and Control Project Work</title></path>
+<path class="edge edge-feeds edge-optional" d="M 258 452 Q 407.0 958.0 556 1464" data-from="process:10.1" data-to="process:4.6" data-tie="feeds"><title>feeds into Perform Integrated Change Control</title></path>
+<path class="edge edge-feeds edge-optional" d="M 258 452 Q 242.0 1147.0 226 1842" data-from="process:10.1" data-to="process:4.7" data-tie="feeds"><title>feeds into Close Project or Phase</title></path>
+<path class="edge edge-feeds edge-optional" d="M 258 426 Q 385.0 397.0 512 368" data-from="process:10.1" data-to="process:5.1" data-tie="feeds"><title>feeds into Plan Scope Management</title></path>
+<path class="edge edge-feeds edge-optional" d="M 258 452 Q 522.0 958.0 786 1464" data-from="process:10.1" data-to="process:5.5" data-tie="feeds"><title>feeds into Validate Scope</title></path>
+<path class="edge edge-feeds edge-optional" d="M 258 452 Q 591.0 958.0 924 1464" data-from="process:10.1" data-to="process:5.6" data-tie="feeds"><title>feeds into Control Scope</title></path>
+<path class="edge edge-feeds edge-optional" d="M 258 426 Q 709.0 397.0 1160 368" data-from="process:10.1" data-to="process:6.1" data-tie="feeds"><title>feeds into Plan Schedule Management</title></path>
+<path class="edge edge-feeds edge-optional" d="M 258 452 Q 670.0 958.0 1082 1464" data-from="process:10.1" data-to="process:6.6" data-tie="feeds"><title>feeds into Control Schedule</title></path>
+<path class="edge edge-feeds edge-optional" d="M 258 426 Q 446.0 418.0 634 410" data-from="process:10.1" data-to="process:7.1" data-tie="feeds"><title>feeds into Plan Cost Management</title></path>
+<path class="edge edge-feeds edge-optional" d="M 258 452 Q 749.0 958.0 1240 1464" data-from="process:10.1" data-to="process:7.4" data-tie="feeds"><title>feeds into Control Costs</title></path>
+<path class="edge edge-feeds edge-optional" d="M 258 426 Q 818.0 418.0 1378 410" data-from="process:10.1" data-to="process:9.1" data-tie="feeds"><title>feeds into Plan Resource Management</title></path>
+<path class="edge edge-feeds" d="M 1302 1112 Q 764.0 1309.0 226 1506" data-from="process:10.2" data-to="process:10.3" data-tie="feeds"><title>feeds into Monitor Communications</title></path>
+<path class="edge edge-feeds" d="M 1211 1099 L 1211 1120 L 385 1120 L 385 1099" data-from="process:10.2" data-to="process:4.3" data-tie="feeds"><title>feeds into Direct and Manage Project Work</title></path>
+<path class="edge edge-feeds" d="M 226 1506 Q 246.0 1498.0 266 1490" data-from="process:10.3" data-to="process:4.5" data-tie="feeds"><title>feeds into Monitor and Control Project Work</title></path>
+<path class="edge edge-feeds edge-optional" d="M 226 1506 Q 391.0 1498.0 556 1490" data-from="process:10.3" data-to="process:4.6" data-tie="feeds"><title>feeds into Perform Integrated Change Control</title></path>
+<path class="edge edge-feeds" d="M 587 439 L 587 418 L 603 418 L 603 439" data-from="process:11.1" data-to="process:11.2" data-tie="feeds"><title>feeds into Identify Risks</title></path>
+<path class="edge edge-feeds" d="M 587 439 L 587 418 L 745 418 L 745 439" data-from="process:11.1" data-to="process:11.3" data-tie="feeds"><title>feeds into Perform Qualitative Risk Analysis</title></path>
+<path class="edge edge-feeds" d="M 587 439 L 587 418 L 1039 418 L 1039 439" data-from="process:11.1" data-to="process:11.4" data-tie="feeds"><title>feeds into Perform Quantitative Risk Analysis</title></path>
+<path class="edge edge-feeds" d="M 587 439 L 587 418 L 1341 418 L 1341 439" data-from="process:11.1" data-to="process:11.5" data-tie="feeds"><title>feeds into Plan Risk Responses</title></path>
+<path class="edge edge-feeds" d="M 500 452 Q 1012.0 769.0 1524 1086" data-from="process:11.1" data-to="process:11.6" data-tie="feeds"><title>feeds into Implement Risk Responses</title></path>
+<path class="edge edge-feeds" d="M 500 452 Q 454.0 979.0 408 1506" data-from="process:11.1" data-to="process:11.7" data-tie="feeds"><title>feeds into Monitor Risks</title></path>
+<path class="edge edge-feeds" d="M 500 452 Q 478.0 790.0 456 1128" data-from="process:11.1" data-to="process:13.3" data-tie="feeds"><title>feeds into Manage Stakeholder Engagement</title></path>
+<path class="edge edge-feeds" d="M 500 426 Q 824.0 418.0 1148 410" data-from="process:11.1" data-to="process:8.1" data-tie="feeds"><title>feeds into Plan Quality Management</title></path>
+<path class="edge edge-feeds" d="M 729 439 L 729 418 L 745 418 L 745 439" data-from="process:11.2" data-to="process:11.3" data-tie="feeds"><title>feeds into Perform Qualitative Risk Analysis</title></path>
+<path class="edge edge-feeds" d="M 729 439 L 729 418 L 1039 418 L 1039 439" data-from="process:11.2" data-to="process:11.4" data-tie="feeds"><title>feeds into Perform Quantitative Risk Analysis</title></path>
+<path class="edge edge-feeds" d="M 729 439 L 729 418 L 1341 418 L 1341 439" data-from="process:11.2" data-to="process:11.5" data-tie="feeds"><title>feeds into Plan Risk Responses</title></path>
+<path class="edge edge-feeds" d="M 666 452 Q 1095.0 769.0 1524 1086" data-from="process:11.2" data-to="process:11.6" data-tie="feeds"><title>feeds into Implement Risk Responses</title></path>
+<path class="edge edge-feeds" d="M 666 452 Q 537.0 979.0 408 1506" data-from="process:11.2" data-to="process:11.7" data-tie="feeds"><title>feeds into Monitor Risks</title></path>
+<path class="edge edge-feeds" d="M 666 452 Q 456.0 460.0 246 468" data-from="process:11.2" data-to="process:12.1" data-tie="feeds"><title>feeds into Plan Procurement Management</title></path>
+<path class="edge edge-feeds" d="M 666 452 Q 624.0 979.0 582 1506" data-from="process:11.2" data-to="process:12.3" data-tie="feeds"><title>feeds into Control Procurements</title></path>
+<path class="edge edge-feeds" d="M 666 452 Q 466.0 958.0 266 1464" data-from="process:11.2" data-to="process:4.5" data-tie="feeds"><title>feeds into Monitor and Control Project Work</title></path>
+<path class="edge edge-feeds" d="M 666 426 Q 686.0 397.0 706 368" data-from="process:11.2" data-to="process:5.2" data-tie="feeds"><title>feeds into Collect Requirements</title></path>
+<path class="edge edge-feeds" d="M 666 426 Q 765.0 397.0 864 368" data-from="process:11.2" data-to="process:5.3" data-tie="feeds"><title>feeds into Define Scope</title></path>
+<path class="edge edge-feeds" d="M 666 426 Q 456.0 418.0 246 410" data-from="process:11.2" data-to="process:6.4" data-tie="feeds"><title>feeds into Estimate Activity Durations</title></path>
+<path class="edge edge-feeds" d="M 666 426 Q 557.0 418.0 448 410" data-from="process:11.2" data-to="process:6.5" data-tie="feeds"><title>feeds into Develop Schedule</title></path>
+<path class="edge edge-feeds" d="M 666 426 Q 733.0 418.0 800 410" data-from="process:11.2" data-to="process:7.2" data-tie="feeds"><title>feeds into Estimate Costs</title></path>
+<path class="edge edge-feeds" d="M 666 426 Q 808.0 418.0 950 410" data-from="process:11.2" data-to="process:7.3" data-tie="feeds"><title>feeds into Determine Budget</title></path>
+<path class="edge edge-feeds edge-optional" d="M 666 452 Q 682.0 769.0 698 1086" data-from="process:11.2" data-to="process:8.2" data-tie="feeds"><title>feeds into Manage Quality</title></path>
+<path class="edge edge-feeds" d="M 666 426 Q 1022.0 418.0 1378 410" data-from="process:11.2" data-to="process:9.1" data-tie="feeds"><title>feeds into Plan Resource Management</title></path>
+<path class="edge edge-feeds" d="M 666 426 Q 1139.0 418.0 1612 410" data-from="process:11.2" data-to="process:9.2" data-tie="feeds"><title>feeds into Estimate Activity Resources</title></path>
+<path class="edge edge-feeds" d="M 745 439 L 745 460 L 729 460 L 729 439" data-from="process:11.3" data-to="process:11.2" data-tie="feeds"><title>feeds into Identify Risks</title></path>
+<path class="edge edge-feeds" d="M 1023 439 L 1023 418 L 1039 418 L 1039 439" data-from="process:11.3" data-to="process:11.4" data-tie="feeds"><title>feeds into Perform Quantitative Risk Analysis</title></path>
+<path class="edge edge-feeds" d="M 1023 439 L 1023 418 L 1341 418 L 1341 439" data-from="process:11.3" data-to="process:11.5" data-tie="feeds"><title>feeds into Plan Risk Responses</title></path>
+<path class="edge edge-feeds" d="M 884 452 Q 1204.0 769.0 1524 1086" data-from="process:11.3" data-to="process:11.6" data-tie="feeds"><title>feeds into Implement Risk Responses</title></path>
+<path class="edge edge-feeds" d="M 884 452 Q 646.0 979.0 408 1506" data-from="process:11.3" data-to="process:11.7" data-tie="feeds"><title>feeds into Monitor Risks</title></path>
+<path class="edge edge-feeds" d="M 884 452 Q 565.0 460.0 246 468" data-from="process:11.3" data-to="process:12.1" data-tie="feeds"><title>feeds into Plan Procurement Management</title></path>
+<path class="edge edge-feeds" d="M 884 452 Q 733.0 979.0 582 1506" data-from="process:11.3" data-to="process:12.3" data-tie="feeds"><title>feeds into Control Procurements</title></path>
+<path class="edge edge-feeds" d="M 884 452 Q 575.0 958.0 266 1464" data-from="process:11.3" data-to="process:4.5" data-tie="feeds"><title>feeds into Monitor and Control Project Work</title></path>
+<path class="edge edge-feeds" d="M 884 426 Q 795.0 397.0 706 368" data-from="process:11.3" data-to="process:5.2" data-tie="feeds"><title>feeds into Collect Requirements</title></path>
+<path class="edge edge-feeds" d="M 884 426 Q 874.0 397.0 864 368" data-from="process:11.3" data-to="process:5.3" data-tie="feeds"><title>feeds into Define Scope</title></path>
+<path class="edge edge-feeds" d="M 884 426 Q 565.0 418.0 246 410" data-from="process:11.3" data-to="process:6.4" data-tie="feeds"><title>feeds into Estimate Activity Durations</title></path>
+<path class="edge edge-feeds" d="M 884 426 Q 666.0 418.0 448 410" data-from="process:11.3" data-to="process:6.5" data-tie="feeds"><title>feeds into Develop Schedule</title></path>
+<path class="edge edge-feeds" d="M 884 426 Q 842.0 418.0 800 410" data-from="process:11.3" data-to="process:7.2" data-tie="feeds"><title>feeds into Estimate Costs</title></path>
+<path class="edge edge-feeds" d="M 884 426 Q 917.0 418.0 950 410" data-from="process:11.3" data-to="process:7.3" data-tie="feeds"><title>feeds into Determine Budget</title></path>
+<path class="edge edge-feeds edge-optional" d="M 884 452 Q 791.0 769.0 698 1086" data-from="process:11.3" data-to="process:8.2" data-tie="feeds"><title>feeds into Manage Quality</title></path>
+<path class="edge edge-feeds" d="M 884 426 Q 1131.0 418.0 1378 410" data-from="process:11.3" data-to="process:9.1" data-tie="feeds"><title>feeds into Plan Resource Management</title></path>
+<path class="edge edge-feeds" d="M 884 426 Q 1248.0 418.0 1612 410" data-from="process:11.3" data-to="process:9.2" data-tie="feeds"><title>feeds into Estimate Activity Resources</title></path>
+<path class="edge edge-feeds" d="M 1325 439 L 1325 418 L 1341 418 L 1341 439" data-from="process:11.4" data-to="process:11.5" data-tie="feeds"><title>feeds into Plan Risk Responses</title></path>
+<path class="edge edge-feeds" d="M 1182 452 Q 1353.0 769.0 1524 1086" data-from="process:11.4" data-to="process:11.6" data-tie="feeds"><title>feeds into Implement Risk Responses</title></path>
+<path class="edge edge-feeds" d="M 1182 452 Q 795.0 979.0 408 1506" data-from="process:11.4" data-to="process:11.7" data-tie="feeds"><title>feeds into Monitor Risks</title></path>
+<path class="edge edge-feeds" d="M 1182 452 Q 940.0 769.0 698 1086" data-from="process:11.4" data-to="process:8.2" data-tie="feeds"><title>feeds into Manage Quality</title></path>
+<path class="edge edge-feeds" d="M 1341 439 L 1341 460 L 1023 460 L 1023 439" data-from="process:11.5" data-to="process:11.3" data-tie="feeds"><title>feeds into Perform Qualitative Risk Analysis</title></path>
+<path class="edge edge-feeds" d="M 1341 439 L 1341 460 L 1325 460 L 1325 439" data-from="process:11.5" data-to="process:11.4" data-tie="feeds"><title>feeds into Perform Quantitative Risk Analysis</title></path>
+<path class="edge edge-feeds" d="M 1424 452 Q 1474.0 769.0 1524 1086" data-from="process:11.5" data-to="process:11.6" data-tie="feeds"><title>feeds into Implement Risk Responses</title></path>
+<path class="edge edge-feeds" d="M 1424 452 Q 916.0 979.0 408 1506" data-from="process:11.5" data-to="process:11.7" data-tie="feeds"><title>feeds into Monitor Risks</title></path>
+<path class="edge edge-feeds" d="M 1424 452 Q 835.0 460.0 246 468" data-from="process:11.5" data-to="process:12.1" data-tie="feeds"><title>feeds into Plan Procurement Management</title></path>
+<path class="edge edge-feeds" d="M 1424 452 Q 1003.0 979.0 582 1506" data-from="process:11.5" data-to="process:12.3" data-tie="feeds"><title>feeds into Control Procurements</title></path>
+<path class="edge edge-feeds edge-optional" d="M 1424 452 Q 990.0 958.0 556 1464" data-from="process:11.5" data-to="process:4.6" data-tie="feeds"><title>feeds into Perform Integrated Change Control</title></path>
+<path class="edge edge-feeds" d="M 1424 426 Q 1144.0 397.0 864 368" data-from="process:11.5" data-to="process:5.3" data-tie="feeds"><title>feeds into Define Scope</title></path>
+<path class="edge edge-feeds" d="M 1424 426 Q 835.0 418.0 246 410" data-from="process:11.5" data-to="process:6.4" data-tie="feeds"><title>feeds into Estimate Activity Durations</title></path>
+<path class="edge edge-feeds" d="M 1424 426 Q 936.0 418.0 448 410" data-from="process:11.5" data-to="process:6.5" data-tie="feeds"><title>feeds into Develop Schedule</title></path>
+<path class="edge edge-feeds" d="M 1424 426 Q 1112.0 418.0 800 410" data-from="process:11.5" data-to="process:7.2" data-tie="feeds"><title>feeds into Estimate Costs</title></path>
+<path class="edge edge-feeds" d="M 1424 426 Q 1187.0 418.0 950 410" data-from="process:11.5" data-to="process:7.3" data-tie="feeds"><title>feeds into Determine Budget</title></path>
+<path class="edge edge-feeds edge-optional" d="M 1424 452 Q 1061.0 769.0 698 1086" data-from="process:11.5" data-to="process:8.2" data-tie="feeds"><title>feeds into Manage Quality</title></path>
+<path class="edge edge-feeds" d="M 1424 426 Q 1401.0 418.0 1378 410" data-from="process:11.5" data-to="process:9.1" data-tie="feeds"><title>feeds into Plan Resource Management</title></path>
+<path class="edge edge-feeds" d="M 1424 426 Q 1518.0 418.0 1612 410" data-from="process:11.5" data-to="process:9.2" data-tie="feeds"><title>feeds into Estimate Activity Resources</title></path>
+<path class="edge edge-feeds" d="M 1524 1086 Q 1204.0 769.0 884 452" data-from="process:11.6" data-to="process:11.3" data-tie="feeds"><title>feeds into Perform Qualitative Risk Analysis</title></path>
+<path class="edge edge-feeds" d="M 1524 1086 Q 1353.0 769.0 1182 452" data-from="process:11.6" data-to="process:11.4" data-tie="feeds"><title>feeds into Perform Quantitative Risk Analysis</title></path>
+<path class="edge edge-feeds" d="M 1524 1086 Q 1474.0 769.0 1424 452" data-from="process:11.6" data-to="process:11.5" data-tie="feeds"><title>feeds into Plan Risk Responses</title></path>
+<path class="edge edge-feeds" d="M 1524 1112 Q 966.0 1309.0 408 1506" data-from="process:11.6" data-to="process:11.7" data-tie="feeds"><title>feeds into Monitor Risks</title></path>
+<path class="edge edge-feeds" d="M 1524 1086 Q 885.0 790.0 246 494" data-from="process:11.6" data-to="process:12.1" data-tie="feeds"><title>feeds into Plan Procurement Management</title></path>
+<path class="edge edge-feeds" d="M 1524 1112 Q 1053.0 1309.0 582 1506" data-from="process:11.6" data-to="process:12.3" data-tie="feeds"><title>feeds into Control Procurements</title></path>
+<path class="edge edge-feeds edge-optional" d="M 1524 1112 Q 1040.0 1288.0 556 1464" data-from="process:11.6" data-to="process:4.6" data-tie="feeds"><title>feeds into Perform Integrated Change Control</title></path>
+<path class="edge edge-feeds" d="M 1524 1086 Q 1194.0 727.0 864 368" data-from="process:11.6" data-to="process:5.3" data-tie="feeds"><title>feeds into Define Scope</title></path>
+<path class="edge edge-feeds" d="M 1524 1086 Q 885.0 748.0 246 410" data-from="process:11.6" data-to="process:6.4" data-tie="feeds"><title>feeds into Estimate Activity Durations</title></path>
+<path class="edge edge-feeds" d="M 1524 1086 Q 986.0 748.0 448 410" data-from="process:11.6" data-to="process:6.5" data-tie="feeds"><title>feeds into Develop Schedule</title></path>
+<path class="edge edge-feeds" d="M 1524 1086 Q 1162.0 748.0 800 410" data-from="process:11.6" data-to="process:7.2" data-tie="feeds"><title>feeds into Estimate Costs</title></path>
+<path class="edge edge-feeds" d="M 1524 1086 Q 1237.0 748.0 950 410" data-from="process:11.6" data-to="process:7.3" data-tie="feeds"><title>feeds into Determine Budget</title></path>
+<path class="edge edge-feeds edge-optional" d="M 1421 1099 L 1421 1120 L 761 1120 L 761 1099" data-from="process:11.6" data-to="process:8.2" data-tie="feeds"><title>feeds into Manage Quality</title></path>
+<path class="edge edge-feeds" d="M 1524 1086 Q 1451.0 748.0 1378 410" data-from="process:11.6" data-to="process:9.1" data-tie="feeds"><title>feeds into Plan Resource Management</title></path>
+<path class="edge edge-feeds" d="M 1524 1086 Q 1568.0 748.0 1612 410" data-from="process:11.6" data-to="process:9.2" data-tie="feeds"><title>feeds into Estimate Activity Resources</title></path>
+<path class="edge edge-feeds" d="M 408 1506 Q 646.0 979.0 884 452" data-from="process:11.7" data-to="process:11.3" data-tie="feeds"><title>feeds into Perform Qualitative Risk Analysis</title></path>
+<path class="edge edge-feeds" d="M 408 1506 Q 795.0 979.0 1182 452" data-from="process:11.7" data-to="process:11.4" data-tie="feeds"><title>feeds into Perform Quantitative Risk Analysis</title></path>
+<path class="edge edge-feeds" d="M 408 1506 Q 916.0 979.0 1424 452" data-from="process:11.7" data-to="process:11.5" data-tie="feeds"><title>feeds into Plan Risk Responses</title></path>
+<path class="edge edge-feeds" d="M 408 1506 Q 966.0 1309.0 1524 1112" data-from="process:11.7" data-to="process:11.6" data-tie="feeds"><title>feeds into Implement Risk Responses</title></path>
+<path class="edge edge-feeds" d="M 408 1506 Q 327.0 1000.0 246 494" data-from="process:11.7" data-to="process:12.1" data-tie="feeds"><title>feeds into Plan Procurement Management</title></path>
+<path class="edge edge-feeds" d="M 467 1519 L 467 1498 L 495 1498 L 495 1519" data-from="process:11.7" data-to="process:12.3" data-tie="feeds"><title>feeds into Control Procurements</title></path>
+<path class="edge edge-feeds" d="M 408 1506 Q 337.0 1498.0 266 1490" data-from="process:11.7" data-to="process:4.5" data-tie="feeds"><title>feeds into Monitor and Control Project Work</title></path>
+<path class="edge edge-feeds edge-optional" d="M 408 1506 Q 482.0 1498.0 556 1490" data-from="process:11.7" data-to="process:4.6" data-tie="feeds"><title>feeds into Perform Integrated Change Control</title></path>
+<path class="edge edge-feeds" d="M 408 1506 Q 636.0 937.0 864 368" data-from="process:11.7" data-to="process:5.3" data-tie="feeds"><title>feeds into Define Scope</title></path>
+<path class="edge edge-feeds" d="M 408 1506 Q 327.0 958.0 246 410" data-from="process:11.7" data-to="process:6.4" data-tie="feeds"><title>feeds into Estimate Activity Durations</title></path>
+<path class="edge edge-feeds" d="M 408 1506 Q 428.0 958.0 448 410" data-from="process:11.7" data-to="process:6.5" data-tie="feeds"><title>feeds into Develop Schedule</title></path>
+<path class="edge edge-feeds" d="M 408 1506 Q 604.0 958.0 800 410" data-from="process:11.7" data-to="process:7.2" data-tie="feeds"><title>feeds into Estimate Costs</title></path>
+<path class="edge edge-feeds" d="M 408 1506 Q 679.0 958.0 950 410" data-from="process:11.7" data-to="process:7.3" data-tie="feeds"><title>feeds into Determine Budget</title></path>
+<path class="edge edge-feeds edge-optional" d="M 408 1506 Q 553.0 1309.0 698 1112" data-from="process:11.7" data-to="process:8.2" data-tie="feeds"><title>feeds into Manage Quality</title></path>
+<path class="edge edge-feeds" d="M 408 1506 Q 893.0 958.0 1378 410" data-from="process:11.7" data-to="process:9.1" data-tie="feeds"><title>feeds into Plan Resource Management</title></path>
+<path class="edge edge-feeds" d="M 408 1506 Q 1010.0 958.0 1612 410" data-from="process:11.7" data-to="process:9.2" data-tie="feeds"><title>feeds into Estimate Activity Resources</title></path>
+<path class="edge edge-feeds" d="M 246 494 Q 232.0 811.0 218 1128" data-from="process:12.1" data-to="process:12.2" data-tie="feeds"><title>feeds into Conduct Procurements</title></path>
+<path class="edge edge-feeds" d="M 218 1154 Q 400.0 1330.0 582 1506" data-from="process:12.2" data-to="process:12.3" data-tie="feeds"><title>feeds into Control Procurements</title></path>
+<path class="edge edge-feeds" d="M 218 1128 Q 333.0 589.0 448 50" data-from="process:12.2" data-to="process:13.1" data-tie="feeds"><title>feeds into Identify Stakeholders</title></path>
+<path class="edge edge-feeds" d="M 218 1128 Q 361.0 811.0 504 494" data-from="process:12.2" data-to="process:13.2" data-tie="feeds"><title>feeds into Plan Stakeholder Engagement</title></path>
+<path class="edge edge-feeds" d="M 218 1154 Q 521.0 1330.0 824 1506" data-from="process:12.2" data-to="process:13.4" data-tie="feeds"><title>feeds into Monitor Stakeholder Engagement</title></path>
+<path class="edge edge-feeds edge-optional" d="M 218 1154 Q 387.0 1309.0 556 1464" data-from="process:12.2" data-to="process:4.6" data-tie="feeds"><title>feeds into Perform Integrated Change Control</title></path>
+<path class="edge edge-feeds" d="M 218 1154 Q 222.0 1498.0 226 1842" data-from="process:12.2" data-to="process:4.7" data-tie="feeds"><title>feeds into Close Project or Phase</title></path>
+<path class="edge edge-feeds" d="M 218 1128 Q 584.0 769.0 950 410" data-from="process:12.2" data-to="process:7.3" data-tie="feeds"><title>feeds into Determine Budget</title></path>
+<path class="edge edge-feeds" d="M 218 1154 Q 891.0 1309.0 1564 1464" data-from="process:12.2" data-to="process:9.6" data-tie="feeds"><title>feeds into Control Resources</title></path>
+<path class="edge edge-feeds" d="M 582 1506 Q 424.0 1498.0 266 1490" data-from="process:12.3" data-to="process:4.5" data-tie="feeds"><title>feeds into Monitor and Control Project Work</title></path>
+<path class="edge edge-feeds edge-optional" d="M 582 1506 Q 569.0 1498.0 556 1490" data-from="process:12.3" data-to="process:4.6" data-tie="feeds"><title>feeds into Perform Integrated Change Control</title></path>
+<path class="edge edge-feeds" d="M 448 50 Q 353.0 238.0 258 426" data-from="process:13.1" data-to="process:10.1" data-tie="feeds"><title>feeds into Plan Communications Management</title></path>
+<path class="edge edge-feeds" d="M 448 50 Q 474.0 238.0 500 426" data-from="process:13.1" data-to="process:11.1" data-tie="feeds"><title>feeds into Plan Risk Management</title></path>
+<path class="edge edge-feeds" d="M 448 50 Q 557.0 238.0 666 426" data-from="process:13.1" data-to="process:11.2" data-tie="feeds"><title>feeds into Identify Risks</title></path>
+<path class="edge edge-feeds" d="M 448 50 Q 666.0 238.0 884 426" data-from="process:13.1" data-to="process:11.3" data-tie="feeds"><title>feeds into Perform Qualitative Risk Analysis</title></path>
+<path class="edge edge-feeds" d="M 448 50 Q 476.0 259.0 504 468" data-from="process:13.1" data-to="process:13.2" data-tie="feeds"><title>feeds into Plan Stakeholder Engagement</title></path>
+<path class="edge edge-feeds" d="M 448 50 Q 476.0 568.0 504 1086" data-from="process:13.1" data-to="process:4.4" data-tie="feeds"><title>feeds into Manage Project Knowledge</title></path>
+<path class="edge edge-feeds edge-optional" d="M 448 50 Q 502.0 757.0 556 1464" data-from="process:13.1" data-to="process:4.6" data-tie="feeds"><title>feeds into Perform Integrated Change Control</title></path>
+<path class="edge edge-feeds" d="M 448 50 Q 577.0 196.0 706 342" data-from="process:13.1" data-to="process:5.2" data-tie="feeds"><title>feeds into Collect Requirements</title></path>
+<path class="edge edge-feeds" d="M 448 50 Q 798.0 217.0 1148 384" data-from="process:13.1" data-to="process:8.1" data-tie="feeds"><title>feeds into Plan Quality Management</title></path>
+<path class="edge edge-feeds" d="M 448 50 Q 913.0 217.0 1378 384" data-from="process:13.1" data-to="process:9.1" data-tie="feeds"><title>feeds into Plan Resource Management</title></path>
+<path class="edge edge-feeds" d="M 504 494 Q 903.0 790.0 1302 1086" data-from="process:13.2" data-to="process:10.2" data-tie="feeds"><title>feeds into Manage Communications</title></path>
+<path class="edge edge-feeds" d="M 504 494 Q 480.0 811.0 456 1128" data-from="process:13.2" data-to="process:13.3" data-tie="feeds"><title>feeds into Manage Stakeholder Engagement</title></path>
+<path class="edge edge-feeds" d="M 504 494 Q 664.0 1000.0 824 1506" data-from="process:13.2" data-to="process:13.4" data-tie="feeds"><title>feeds into Monitor Stakeholder Engagement</title></path>
+<path class="edge edge-feeds" d="M 504 468 Q 605.0 418.0 706 368" data-from="process:13.2" data-to="process:5.2" data-tie="feeds"><title>feeds into Collect Requirements</title></path>
+<path class="edge edge-feeds" d="M 504 468 Q 826.0 439.0 1148 410" data-from="process:13.2" data-to="process:8.1" data-tie="feeds"><title>feeds into Plan Quality Management</title></path>
+<path class="edge edge-feeds" d="M 456 1128 Q 879.0 1120.0 1302 1112" data-from="process:13.3" data-to="process:10.2" data-tie="feeds"><title>feeds into Manage Communications</title></path>
+<path class="edge edge-feeds" d="M 456 1154 Q 341.0 1330.0 226 1506" data-from="process:13.3" data-to="process:10.3" data-tie="feeds"><title>feeds into Monitor Communications</title></path>
+<path class="edge edge-feeds" d="M 456 1154 Q 432.0 1330.0 408 1506" data-from="process:13.3" data-to="process:11.7" data-tie="feeds"><title>feeds into Monitor Risks</title></path>
+<path class="edge edge-feeds" d="M 456 1154 Q 640.0 1330.0 824 1506" data-from="process:13.3" data-to="process:13.4" data-tie="feeds"><title>feeds into Monitor Stakeholder Engagement</title></path>
+<path class="edge edge-feeds" d="M 456 1154 Q 361.0 1309.0 266 1464" data-from="process:13.3" data-to="process:4.5" data-tie="feeds"><title>feeds into Monitor and Control Project Work</title></path>
+<path class="edge edge-feeds edge-optional" d="M 456 1154 Q 506.0 1309.0 556 1464" data-from="process:13.3" data-to="process:4.6" data-tie="feeds"><title>feeds into Perform Integrated Change Control</title></path>
+<path class="edge edge-feeds" d="M 456 1128 Q 794.0 1120.0 1132 1112" data-from="process:13.3" data-to="process:9.5" data-tie="feeds"><title>feeds into Manage Team</title></path>
+<path class="edge edge-feeds" d="M 456 1154 Q 1010.0 1309.0 1564 1464" data-from="process:13.3" data-to="process:9.6" data-tie="feeds"><title>feeds into Control Resources</title></path>
+<path class="edge edge-feeds" d="M 824 1506 Q 545.0 1498.0 266 1490" data-from="process:13.4" data-to="process:4.5" data-tie="feeds"><title>feeds into Monitor and Control Project Work</title></path>
+<path class="edge edge-feeds edge-optional" d="M 824 1506 Q 690.0 1498.0 556 1490" data-from="process:13.4" data-to="process:4.6" data-tie="feeds"><title>feeds into Perform Integrated Change Control</title></path>
+<path class="edge edge-feeds" d="M 230 50 Q 244.0 238.0 258 426" data-from="process:4.1" data-to="process:10.1" data-tie="feeds"><title>feeds into Plan Communications Management</title></path>
+<path class="edge edge-feeds" d="M 230 50 Q 365.0 238.0 500 426" data-from="process:4.1" data-to="process:11.1" data-tie="feeds"><title>feeds into Plan Risk Management</title></path>
+<path class="edge edge-feeds" d="M 230 50 Q 448.0 238.0 666 426" data-from="process:4.1" data-to="process:11.2" data-tie="feeds"><title>feeds into Identify Risks</title></path>
+<path class="edge edge-feeds" d="M 230 50 Q 557.0 238.0 884 426" data-from="process:4.1" data-to="process:11.3" data-tie="feeds"><title>feeds into Perform Qualitative Risk Analysis</title></path>
+<path class="edge edge-feeds" d="M 230 50 Q 238.0 259.0 246 468" data-from="process:4.1" data-to="process:12.1" data-tie="feeds"><title>feeds into Plan Procurement Management</title></path>
+<path class="edge edge-feeds" d="M 329 37 L 329 16 L 357 16 L 357 37" data-from="process:4.1" data-to="process:13.1" data-tie="feeds"><title>feeds into Identify Stakeholders</title></path>
+<path class="edge edge-feeds" d="M 230 50 Q 367.0 259.0 504 468" data-from="process:4.1" data-to="process:13.2" data-tie="feeds"><title>feeds into Plan Stakeholder Engagement</title></path>
+<path class="edge edge-feeds" d="M 230 50 Q 246.0 196.0 262 342" data-from="process:4.1" data-to="process:4.2" data-tie="feeds"><title>feeds into Develop Project Management Plan</title></path>
+<path class="edge edge-feeds" d="M 230 50 Q 248.0 757.0 266 1464" data-from="process:4.1" data-to="process:4.5" data-tie="feeds"><title>feeds into Monitor and Control Project Work</title></path>
+<path class="edge edge-feeds" d="M 230 50 Q 228.0 946.0 226 1842" data-from="process:4.1" data-to="process:4.7" data-tie="feeds"><title>feeds into Close Project or Phase</title></path>
+<path class="edge edge-feeds" d="M 230 50 Q 371.0 196.0 512 342" data-from="process:4.1" data-to="process:5.1" data-tie="feeds"><title>feeds into Plan Scope Management</title></path>
+<path class="edge edge-feeds" d="M 230 50 Q 468.0 196.0 706 342" data-from="process:4.1" data-to="process:5.2" data-tie="feeds"><title>feeds into Collect Requirements</title></path>
+<path class="edge edge-feeds" d="M 230 50 Q 547.0 196.0 864 342" data-from="process:4.1" data-to="process:5.3" data-tie="feeds"><title>feeds into Define Scope</title></path>
+<path class="edge edge-feeds" d="M 230 50 Q 695.0 196.0 1160 342" data-from="process:4.1" data-to="process:6.1" data-tie="feeds"><title>feeds into Plan Schedule Management</title></path>
+<path class="edge edge-feeds" d="M 230 50 Q 432.0 217.0 634 384" data-from="process:4.1" data-to="process:7.1" data-tie="feeds"><title>feeds into Plan Cost Management</title></path>
+<path class="edge edge-feeds" d="M 230 50 Q 689.0 217.0 1148 384" data-from="process:4.1" data-to="process:8.1" data-tie="feeds"><title>feeds into Plan Quality Management</title></path>
+<path class="edge edge-feeds" d="M 230 50 Q 804.0 217.0 1378 384" data-from="process:4.1" data-to="process:9.1" data-tie="feeds"><title>feeds into Plan Resource Management</title></path>
+<path class="edge edge-feeds" d="M 230 50 Q 921.0 217.0 1612 384" data-from="process:4.1" data-to="process:9.2" data-tie="feeds"><title>feeds into Estimate Activity Resources</title></path>
+<path class="edge edge-feeds" d="M 262 368 Q 260.0 397.0 258 426" data-from="process:4.2" data-to="process:10.1" data-tie="feeds"><title>feeds into Plan Communications Management</title></path>
+<path class="edge edge-feeds" d="M 262 368 Q 244.0 937.0 226 1506" data-from="process:4.2" data-to="process:10.3" data-tie="feeds"><title>feeds into Monitor Communications</title></path>
+<path class="edge edge-feeds" d="M 262 368 Q 381.0 397.0 500 426" data-from="process:4.2" data-to="process:11.1" data-tie="feeds"><title>feeds into Plan Risk Management</title></path>
+<path class="edge edge-feeds" d="M 262 368 Q 254.0 418.0 246 468" data-from="process:4.2" data-to="process:12.1" data-tie="feeds"><title>feeds into Plan Procurement Management</title></path>
+<path class="edge edge-feeds" d="M 262 368 Q 422.0 937.0 582 1506" data-from="process:4.2" data-to="process:12.3" data-tie="feeds"><title>feeds into Control Procurements</title></path>
+<path class="edge edge-feeds" d="M 262 368 Q 383.0 418.0 504 468" data-from="process:4.2" data-to="process:13.2" data-tie="feeds"><title>feeds into Plan Stakeholder Engagement</title></path>
+<path class="edge edge-feeds" d="M 262 368 Q 543.0 937.0 824 1506" data-from="process:4.2" data-to="process:13.4" data-tie="feeds"><title>feeds into Monitor Stakeholder Engagement</title></path>
+<path class="edge edge-feeds" d="M 262 368 Q 260.0 727.0 258 1086" data-from="process:4.2" data-to="process:4.3" data-tie="feeds"><title>feeds into Direct and Manage Project Work</title></path>
+<path class="edge edge-feeds" d="M 262 368 Q 383.0 727.0 504 1086" data-from="process:4.2" data-to="process:4.4" data-tie="feeds"><title>feeds into Manage Project Knowledge</title></path>
+<path class="edge edge-feeds" d="M 262 368 Q 264.0 916.0 266 1464" data-from="process:4.2" data-to="process:4.5" data-tie="feeds"><title>feeds into Monitor and Control Project Work</title></path>
+<path class="edge edge-feeds" d="M 262 368 Q 409.0 916.0 556 1464" data-from="process:4.2" data-to="process:4.6" data-tie="feeds"><title>feeds into Perform Integrated Change Control</title></path>
+<path class="edge edge-feeds" d="M 262 368 Q 244.0 1105.0 226 1842" data-from="process:4.2" data-to="process:4.7" data-tie="feeds"><title>feeds into Close Project or Phase</title></path>
+<path class="edge edge-feeds" d="M 393 355 L 393 334 L 421 334 L 421 355" data-from="process:4.2" data-to="process:5.1" data-tie="feeds"><title>feeds into Plan Scope Management</title></path>
+<path class="edge edge-feeds" d="M 262 368 Q 524.0 916.0 786 1464" data-from="process:4.2" data-to="process:5.5" data-tie="feeds"><title>feeds into Validate Scope</title></path>
+<path class="edge edge-feeds" d="M 262 368 Q 593.0 916.0 924 1464" data-from="process:4.2" data-to="process:5.6" data-tie="feeds"><title>feeds into Control Scope</title></path>
+<path class="edge edge-feeds" d="M 393 355 L 393 334 L 1057 334 L 1057 355" data-from="process:4.2" data-to="process:6.1" data-tie="feeds"><title>feeds into Plan Schedule Management</title></path>
+<path class="edge edge-feeds" d="M 262 368 Q 672.0 916.0 1082 1464" data-from="process:4.2" data-to="process:6.6" data-tie="feeds"><title>feeds into Control Schedule</title></path>
+<path class="edge edge-feeds" d="M 262 368 Q 448.0 376.0 634 384" data-from="process:4.2" data-to="process:7.1" data-tie="feeds"><title>feeds into Plan Cost Management</title></path>
+<path class="edge edge-feeds" d="M 262 368 Q 751.0 916.0 1240 1464" data-from="process:4.2" data-to="process:7.4" data-tie="feeds"><title>feeds into Control Costs</title></path>
+<path class="edge edge-feeds" d="M 262 368 Q 820.0 376.0 1378 384" data-from="process:4.2" data-to="process:9.1" data-tie="feeds"><title>feeds into Plan Resource Management</title></path>
+<path class="edge edge-feeds" d="M 385 1099 L 385 1078 L 1211 1078 L 1211 1099" data-from="process:4.3" data-to="process:10.2" data-tie="feeds"><title>feeds into Manage Communications</title></path>
+<path class="edge edge-feeds" d="M 258 1112 Q 242.0 1309.0 226 1506" data-from="process:4.3" data-to="process:10.3" data-tie="feeds"><title>feeds into Monitor Communications</title></path>
+<path class="edge edge-feeds" d="M 258 1112 Q 333.0 1309.0 408 1506" data-from="process:4.3" data-to="process:11.7" data-tie="feeds"><title>feeds into Monitor Risks</title></path>
+<path class="edge edge-feeds" d="M 258 1112 Q 420.0 1309.0 582 1506" data-from="process:4.3" data-to="process:12.3" data-tie="feeds"><title>feeds into Control Procurements</title></path>
+<path class="edge edge-feeds" d="M 258 1112 Q 357.0 1120.0 456 1128" data-from="process:4.3" data-to="process:13.3" data-tie="feeds"><title>feeds into Manage Stakeholder Engagement</title></path>
+<path class="edge edge-feeds" d="M 258 1112 Q 541.0 1309.0 824 1506" data-from="process:4.3" data-to="process:13.4" data-tie="feeds"><title>feeds into Monitor Stakeholder Engagement</title></path>
+<path class="edge edge-feeds" d="M 385 1099 L 385 1078 L 401 1078 L 401 1099" data-from="process:4.3" data-to="process:4.4" data-tie="feeds"><title>feeds into Manage Project Knowledge</title></path>
+<path class="edge edge-feeds" d="M 258 1112 Q 262.0 1288.0 266 1464" data-from="process:4.3" data-to="process:4.5" data-tie="feeds"><title>feeds into Monitor and Control Project Work</title></path>
+<path class="edge edge-feeds edge-optional" d="M 258 1112 Q 407.0 1288.0 556 1464" data-from="process:4.3" data-to="process:4.6" data-tie="feeds"><title>feeds into Perform Integrated Change Control</title></path>
+<path class="edge edge-feeds" d="M 258 1112 Q 522.0 1288.0 786 1464" data-from="process:4.3" data-to="process:5.5" data-tie="feeds"><title>feeds into Validate Scope</title></path>
+<path class="edge edge-feeds" d="M 258 1112 Q 591.0 1288.0 924 1464" data-from="process:4.3" data-to="process:5.6" data-tie="feeds"><title>feeds into Control Scope</title></path>
+<path class="edge edge-feeds" d="M 258 1112 Q 670.0 1288.0 1082 1464" data-from="process:4.3" data-to="process:6.6" data-tie="feeds"><title>feeds into Control Schedule</title></path>
+<path class="edge edge-feeds" d="M 258 1112 Q 749.0 1288.0 1240 1464" data-from="process:4.3" data-to="process:7.4" data-tie="feeds"><title>feeds into Control Costs</title></path>
+<path class="edge edge-feeds" d="M 258 1112 Q 826.0 1288.0 1394 1464" data-from="process:4.3" data-to="process:8.3" data-tie="feeds"><title>feeds into Control Quality</title></path>
+<path class="edge edge-feeds" d="M 385 1099 L 385 1078 L 1081 1078 L 1081 1099" data-from="process:4.3" data-to="process:9.5" data-tie="feeds"><title>feeds into Manage Team</title></path>
+<path class="edge edge-feeds" d="M 258 1112 Q 911.0 1288.0 1564 1464" data-from="process:4.3" data-to="process:9.6" data-tie="feeds"><title>feeds into Control Resources</title></path>
+<path class="edge edge-feeds edge-optional" d="M 504 1086 Q 381.0 769.0 258 452" data-from="process:4.4" data-to="process:10.1" data-tie="feeds"><title>feeds into Plan Communications Management</title></path>
+<path class="edge edge-feeds" d="M 504 1112 Q 365.0 1309.0 226 1506" data-from="process:4.4" data-to="process:10.3" data-tie="feeds"><title>feeds into Monitor Communications</title></path>
+<path class="edge edge-feeds edge-optional" d="M 504 1086 Q 502.0 769.0 500 452" data-from="process:4.4" data-to="process:11.1" data-tie="feeds"><title>feeds into Plan Risk Management</title></path>
+<path class="edge edge-feeds" d="M 504 1086 Q 964.0 769.0 1424 452" data-from="process:4.4" data-to="process:11.5" data-tie="feeds"><title>feeds into Plan Risk Responses</title></path>
+<path class="edge edge-feeds" d="M 607 1099 L 607 1078 L 1421 1078 L 1421 1099" data-from="process:4.4" data-to="process:11.6" data-tie="feeds"><title>feeds into Implement Risk Responses</title></path>
+<path class="edge edge-feeds" d="M 504 1112 Q 456.0 1309.0 408 1506" data-from="process:4.4" data-to="process:11.7" data-tie="feeds"><title>feeds into Monitor Risks</title></path>
+<path class="edge edge-feeds edge-optional" d="M 504 1086 Q 375.0 790.0 246 494" data-from="process:4.4" data-to="process:12.1" data-tie="feeds"><title>feeds into Plan Procurement Management</title></path>
+<path class="edge edge-feeds edge-optional" d="M 504 1112 Q 543.0 1309.0 582 1506" data-from="process:4.4" data-to="process:12.3" data-tie="feeds"><title>feeds into Control Procurements</title></path>
+<path class="edge edge-feeds edge-optional" d="M 504 1086 Q 504.0 790.0 504 494" data-from="process:4.4" data-to="process:13.2" data-tie="feeds"><title>feeds into Plan Stakeholder Engagement</title></path>
+<path class="edge edge-feeds edge-optional" d="M 504 1112 Q 664.0 1309.0 824 1506" data-from="process:4.4" data-to="process:13.4" data-tie="feeds"><title>feeds into Monitor Stakeholder Engagement</title></path>
+<path class="edge edge-feeds" d="M 401 1099 L 401 1120 L 385 1120 L 385 1099" data-from="process:4.4" data-to="process:4.3" data-tie="feeds"><title>feeds into Direct and Manage Project Work</title></path>
+<path class="edge edge-feeds edge-optional" d="M 504 1112 Q 385.0 1288.0 266 1464" data-from="process:4.4" data-to="process:4.5" data-tie="feeds"><title>feeds into Monitor and Control Project Work</title></path>
+<path class="edge edge-feeds edge-optional" d="M 504 1112 Q 530.0 1288.0 556 1464" data-from="process:4.4" data-to="process:4.6" data-tie="feeds"><title>feeds into Perform Integrated Change Control</title></path>
+<path class="edge edge-feeds edge-optional" d="M 504 1112 Q 365.0 1477.0 226 1842" data-from="process:4.4" data-to="process:4.7" data-tie="feeds"><title>feeds into Close Project or Phase</title></path>
+<path class="edge edge-feeds edge-optional" d="M 504 1086 Q 508.0 727.0 512 368" data-from="process:4.4" data-to="process:5.1" data-tie="feeds"><title>feeds into Plan Scope Management</title></path>
+<path class="edge edge-feeds edge-optional" d="M 504 1112 Q 645.0 1288.0 786 1464" data-from="process:4.4" data-to="process:5.5" data-tie="feeds"><title>feeds into Validate Scope</title></path>
+<path class="edge edge-feeds edge-optional" d="M 504 1112 Q 714.0 1288.0 924 1464" data-from="process:4.4" data-to="process:5.6" data-tie="feeds"><title>feeds into Control Scope</title></path>
+<path class="edge edge-feeds edge-optional" d="M 504 1086 Q 832.0 727.0 1160 368" data-from="process:4.4" data-to="process:6.1" data-tie="feeds"><title>feeds into Plan Schedule Management</title></path>
+<path class="edge edge-feeds edge-optional" d="M 504 1112 Q 793.0 1288.0 1082 1464" data-from="process:4.4" data-to="process:6.6" data-tie="feeds"><title>feeds into Control Schedule</title></path>
+<path class="edge edge-feeds edge-optional" d="M 504 1086 Q 569.0 748.0 634 410" data-from="process:4.4" data-to="process:7.1" data-tie="feeds"><title>feeds into Plan Cost Management</title></path>
+<path class="edge edge-feeds edge-optional" d="M 504 1112 Q 872.0 1288.0 1240 1464" data-from="process:4.4" data-to="process:7.4" data-tie="feeds"><title>feeds into Control Costs</title></path>
+<path class="edge edge-feeds" d="M 607 1099 L 607 1078 L 635 1078 L 635 1099" data-from="process:4.4" data-to="process:8.2" data-tie="feeds"><title>feeds into Manage Quality</title></path>
+<path class="edge edge-feeds edge-optional" d="M 504 1086 Q 941.0 748.0 1378 410" data-from="process:4.4" data-to="process:9.1" data-tie="feeds"><title>feeds into Plan Resource Management</title></path>
+<path class="edge edge-feeds" d="M 607 1099 L 607 1078 L 955 1078 L 955 1099" data-from="process:4.4" data-to="process:9.4" data-tie="feeds"><title>feeds into Develop Team</title></path>
+<path class="edge edge-feeds" d="M 607 1099 L 607 1078 L 1081 1078 L 1081 1099" data-from="process:4.4" data-to="process:9.5" data-tie="feeds"><title>feeds into Manage Team</title></path>
+<path class="edge edge-feeds" d="M 266 1464 Q 784.0 1288.0 1302 1112" data-from="process:4.5" data-to="process:10.2" data-tie="feeds"><title>feeds into Manage Communications</title></path>
+<path class="edge edge-feeds" d="M 266 1490 Q 337.0 1498.0 408 1506" data-from="process:4.5" data-to="process:11.7" data-tie="feeds"><title>feeds into Monitor Risks</title></path>
+<path class="edge edge-feeds" d="M 401 1477 L 401 1456 L 417 1456 L 417 1477" data-from="process:4.5" data-to="process:4.6" data-tie="feeds"><title>feeds into Perform Integrated Change Control</title></path>
+<path class="edge edge-feeds" d="M 266 1464 Q 699.0 1288.0 1132 1112" data-from="process:4.5" data-to="process:9.5" data-tie="feeds"><title>feeds into Manage Team</title></path>
+<path class="edge edge-feeds edge-optional" d="M 556 1464 Q 407.0 958.0 258 452" data-from="process:4.6" data-to="process:10.1" data-tie="feeds"><title>feeds into Plan Communications Management</title></path>
+<path class="edge edge-feeds" d="M 556 1464 Q 929.0 1288.0 1302 1112" data-from="process:4.6" data-to="process:10.2" data-tie="feeds"><title>feeds into Manage Communications</title></path>
+<path class="edge edge-feeds edge-optional" d="M 556 1490 Q 391.0 1498.0 226 1506" data-from="process:4.6" data-to="process:10.3" data-tie="feeds"><title>feeds into Monitor Communications</title></path>
+<path class="edge edge-feeds edge-optional" d="M 556 1464 Q 528.0 958.0 500 452" data-from="process:4.6" data-to="process:11.1" data-tie="feeds"><title>feeds into Plan Risk Management</title></path>
+<path class="edge edge-feeds edge-optional" d="M 556 1464 Q 401.0 979.0 246 494" data-from="process:4.6" data-to="process:12.1" data-tie="feeds"><title>feeds into Plan Procurement Management</title></path>
+<path class="edge edge-feeds edge-optional" d="M 556 1490 Q 569.0 1498.0 582 1506" data-from="process:4.6" data-to="process:12.3" data-tie="feeds"><title>feeds into Control Procurements</title></path>
+<path class="edge edge-feeds edge-optional" d="M 556 1464 Q 530.0 979.0 504 494" data-from="process:4.6" data-to="process:13.2" data-tie="feeds"><title>feeds into Plan Stakeholder Engagement</title></path>
+<path class="edge edge-feeds" d="M 556 1464 Q 506.0 1309.0 456 1154" data-from="process:4.6" data-to="process:13.3" data-tie="feeds"><title>feeds into Manage Stakeholder Engagement</title></path>
+<path class="edge edge-feeds edge-optional" d="M 556 1490 Q 690.0 1498.0 824 1506" data-from="process:4.6" data-to="process:13.4" data-tie="feeds"><title>feeds into Monitor Stakeholder Engagement</title></path>
+<path class="edge edge-feeds" d="M 556 1464 Q 407.0 1288.0 258 1112" data-from="process:4.6" data-to="process:4.3" data-tie="feeds"><title>feeds into Direct and Manage Project Work</title></path>
+<path class="edge edge-feeds edge-optional" d="M 556 1464 Q 530.0 1288.0 504 1112" data-from="process:4.6" data-to="process:4.4" data-tie="feeds"><title>feeds into Manage Project Knowledge</title></path>
+<path class="edge edge-feeds edge-optional" d="M 417 1477 L 417 1498 L 401 1498 L 401 1477" data-from="process:4.6" data-to="process:4.5" data-tie="feeds"><title>feeds into Monitor and Control Project Work</title></path>
+<path class="edge edge-feeds edge-optional" d="M 556 1490 Q 391.0 1666.0 226 1842" data-from="process:4.6" data-to="process:4.7" data-tie="feeds"><title>feeds into Close Project or Phase</title></path>
+<path class="edge edge-feeds edge-optional" d="M 556 1464 Q 534.0 916.0 512 368" data-from="process:4.6" data-to="process:5.1" data-tie="feeds"><title>feeds into Plan Scope Management</title></path>
+<path class="edge edge-feeds edge-optional" d="M 695 1477 L 695 1456 L 723 1456 L 723 1477" data-from="process:4.6" data-to="process:5.5" data-tie="feeds"><title>feeds into Validate Scope</title></path>
+<path class="edge edge-feeds edge-optional" d="M 695 1477 L 695 1456 L 865 1456 L 865 1477" data-from="process:4.6" data-to="process:5.6" data-tie="feeds"><title>feeds into Control Scope</title></path>
+<path class="edge edge-feeds edge-optional" d="M 556 1464 Q 858.0 916.0 1160 368" data-from="process:4.6" data-to="process:6.1" data-tie="feeds"><title>feeds into Plan Schedule Management</title></path>
+<path class="edge edge-feeds edge-optional" d="M 695 1477 L 695 1456 L 1011 1456 L 1011 1477" data-from="process:4.6" data-to="process:6.6" data-tie="feeds"><title>feeds into Control Schedule</title></path>
+<path class="edge edge-feeds edge-optional" d="M 556 1464 Q 595.0 937.0 634 410" data-from="process:4.6" data-to="process:7.1" data-tie="feeds"><title>feeds into Plan Cost Management</title></path>
+<path class="edge edge-feeds edge-optional" d="M 695 1477 L 695 1456 L 1181 1456 L 1181 1477" data-from="process:4.6" data-to="process:7.4" data-tie="feeds"><title>feeds into Control Costs</title></path>
+<path class="edge edge-feeds edge-optional" d="M 695 1477 L 695 1456 L 1327 1456 L 1327 1477" data-from="process:4.6" data-to="process:8.3" data-tie="feeds"><title>feeds into Control Quality</title></path>
+<path class="edge edge-feeds edge-optional" d="M 556 1464 Q 967.0 937.0 1378 410" data-from="process:4.6" data-to="process:9.1" data-tie="feeds"><title>feeds into Plan Resource Management</title></path>
+<path class="edge edge-feeds" d="M 226 1842 Q 226.0 1687.0 226 1532" data-from="process:4.7" data-to="process:10.3" data-tie="feeds"><title>feeds into Monitor Communications</title></path>
+<path class="edge edge-feeds" d="M 226 1842 Q 825.0 1147.0 1424 452" data-from="process:4.7" data-to="process:11.5" data-tie="feeds"><title>feeds into Plan Risk Responses</title></path>
+<path class="edge edge-feeds" d="M 226 1842 Q 875.0 1477.0 1524 1112" data-from="process:4.7" data-to="process:11.6" data-tie="feeds"><title>feeds into Implement Risk Responses</title></path>
+<path class="edge edge-feeds" d="M 226 1842 Q 317.0 1687.0 408 1532" data-from="process:4.7" data-to="process:11.7" data-tie="feeds"><title>feeds into Monitor Risks</title></path>
+<path class="edge edge-feeds" d="M 226 1842 Q 242.0 1477.0 258 1112" data-from="process:4.7" data-to="process:4.3" data-tie="feeds"><title>feeds into Direct and Manage Project Work</title></path>
+<path class="edge edge-feeds" d="M 226 1842 Q 365.0 1477.0 504 1112" data-from="process:4.7" data-to="process:4.4" data-tie="feeds"><title>feeds into Manage Project Knowledge</title></path>
+<path class="edge edge-feeds" d="M 226 1842 Q 462.0 1477.0 698 1112" data-from="process:4.7" data-to="process:8.2" data-tie="feeds"><title>feeds into Manage Quality</title></path>
+<path class="edge edge-feeds" d="M 226 1842 Q 618.0 1477.0 1010 1112" data-from="process:4.7" data-to="process:9.4" data-tie="feeds"><title>feeds into Develop Team</title></path>
+<path class="edge edge-feeds" d="M 226 1842 Q 679.0 1477.0 1132 1112" data-from="process:4.7" data-to="process:9.5" data-tie="feeds"><title>feeds into Manage Team</title></path>
+<path class="edge edge-feeds" d="M 603 355 L 603 334 L 619 334 L 619 355" data-from="process:5.1" data-to="process:5.2" data-tie="feeds"><title>feeds into Collect Requirements</title></path>
+<path class="edge edge-feeds" d="M 603 355 L 603 334 L 809 334 L 809 355" data-from="process:5.1" data-to="process:5.3" data-tie="feeds"><title>feeds into Define Scope</title></path>
+<path class="edge edge-feeds" d="M 603 355 L 603 334 L 935 334 L 935 355" data-from="process:5.1" data-to="process:5.4" data-tie="feeds"><title>feeds into Create WBS</title></path>
+<path class="edge edge-feeds" d="M 512 368 Q 830.0 376.0 1148 384" data-from="process:5.1" data-to="process:8.1" data-tie="feeds"><title>feeds into Plan Quality Management</title></path>
+<path class="edge edge-feeds" d="M 706 368 Q 482.0 397.0 258 426" data-from="process:5.2" data-to="process:10.1" data-tie="feeds"><title>feeds into Plan Communications Management</title></path>
+<path class="edge edge-feeds" d="M 706 368 Q 476.0 418.0 246 468" data-from="process:5.2" data-to="process:12.1" data-tie="feeds"><title>feeds into Plan Procurement Management</title></path>
+<path class="edge edge-feeds" d="M 793 355 L 793 334 L 809 334 L 809 355" data-from="process:5.2" data-to="process:5.3" data-tie="feeds"><title>feeds into Define Scope</title></path>
+<path class="edge edge-feeds" d="M 793 355 L 793 334 L 935 334 L 935 355" data-from="process:5.2" data-to="process:5.4" data-tie="feeds"><title>feeds into Create WBS</title></path>
+<path class="edge edge-feeds" d="M 706 368 Q 746.0 916.0 786 1464" data-from="process:5.2" data-to="process:5.5" data-tie="feeds"><title>feeds into Validate Scope</title></path>
+<path class="edge edge-feeds" d="M 706 368 Q 815.0 916.0 924 1464" data-from="process:5.2" data-to="process:5.6" data-tie="feeds"><title>feeds into Control Scope</title></path>
+<path class="edge edge-feeds" d="M 706 368 Q 927.0 376.0 1148 384" data-from="process:5.2" data-to="process:8.1" data-tie="feeds"><title>feeds into Plan Quality Management</title></path>
+<path class="edge edge-feeds" d="M 706 368 Q 1042.0 376.0 1378 384" data-from="process:5.2" data-to="process:9.1" data-tie="feeds"><title>feeds into Plan Resource Management</title></path>
+<path class="edge edge-feeds" d="M 864 368 Q 765.0 397.0 666 426" data-from="process:5.3" data-to="process:11.2" data-tie="feeds"><title>feeds into Identify Risks</title></path>
+<path class="edge edge-feeds" d="M 864 368 Q 874.0 397.0 884 426" data-from="process:5.3" data-to="process:11.3" data-tie="feeds"><title>feeds into Perform Qualitative Risk Analysis</title></path>
+<path class="edge edge-feeds" d="M 864 368 Q 565.0 916.0 266 1464" data-from="process:5.3" data-to="process:4.5" data-tie="feeds"><title>feeds into Monitor and Control Project Work</title></path>
+<path class="edge edge-feeds" d="M 809 355 L 809 376 L 793 376 L 793 355" data-from="process:5.3" data-to="process:5.2" data-tie="feeds"><title>feeds into Collect Requirements</title></path>
+<path class="edge edge-feeds" d="M 919 355 L 919 334 L 935 334 L 935 355" data-from="process:5.3" data-to="process:5.4" data-tie="feeds"><title>feeds into Create WBS</title></path>
+<path class="edge edge-feeds" d="M 919 355 L 919 334 L 1445 334 L 1445 355" data-from="process:5.3" data-to="process:6.3" data-tie="feeds"><title>feeds into Sequence Activities</title></path>
+<path class="edge edge-feeds" d="M 864 368 Q 1238.0 376.0 1612 384" data-from="process:5.3" data-to="process:9.2" data-tie="feeds"><title>feeds into Estimate Activity Resources</title></path>
+<path class="edge edge-feeds" d="M 982 368 Q 824.0 397.0 666 426" data-from="process:5.4" data-to="process:11.2" data-tie="feeds"><title>feeds into Identify Risks</title></path>
+<path class="edge edge-feeds" d="M 982 368 Q 933.0 397.0 884 426" data-from="process:5.4" data-to="process:11.3" data-tie="feeds"><title>feeds into Perform Qualitative Risk Analysis</title></path>
+<path class="edge edge-feeds" d="M 982 368 Q 1082.0 397.0 1182 426" data-from="process:5.4" data-to="process:11.4" data-tie="feeds"><title>feeds into Perform Quantitative Risk Analysis</title></path>
+<path class="edge edge-feeds" d="M 982 368 Q 614.0 418.0 246 468" data-from="process:5.4" data-to="process:12.1" data-tie="feeds"><title>feeds into Plan Procurement Management</title></path>
+<path class="edge edge-feeds" d="M 982 368 Q 769.0 916.0 556 1464" data-from="process:5.4" data-to="process:4.6" data-tie="feeds"><title>feeds into Perform Integrated Change Control</title></path>
+<path class="edge edge-feeds" d="M 1029 355 L 1029 334 L 1279 334 L 1279 355" data-from="process:5.4" data-to="process:6.2" data-tie="feeds"><title>feeds into Define Activities</title></path>
+<path class="edge edge-feeds" d="M 982 368 Q 891.0 376.0 800 384" data-from="process:5.4" data-to="process:7.2" data-tie="feeds"><title>feeds into Estimate Costs</title></path>
+<path class="edge edge-feeds" d="M 982 368 Q 966.0 376.0 950 384" data-from="process:5.4" data-to="process:7.3" data-tie="feeds"><title>feeds into Determine Budget</title></path>
+<path class="edge edge-feeds" d="M 982 368 Q 1065.0 376.0 1148 384" data-from="process:5.4" data-to="process:8.1" data-tie="feeds"><title>feeds into Plan Quality Management</title></path>
+<path class="edge edge-feeds" d="M 982 368 Q 1180.0 376.0 1378 384" data-from="process:5.4" data-to="process:9.1" data-tie="feeds"><title>feeds into Plan Resource Management</title></path>
+<path class="edge edge-feeds" d="M 982 368 Q 1297.0 376.0 1612 384" data-from="process:5.4" data-to="process:9.2" data-tie="feeds"><title>feeds into Estimate Activity Resources</title></path>
+<path class="edge edge-feeds" d="M 723 1477 L 723 1498 L 401 1498 L 401 1477" data-from="process:5.5" data-to="process:4.5" data-tie="feeds"><title>feeds into Monitor and Control Project Work</title></path>
+<path class="edge edge-feeds edge-optional" d="M 723 1477 L 723 1498 L 695 1498 L 695 1477" data-from="process:5.5" data-to="process:4.6" data-tie="feeds"><title>feeds into Perform Integrated Change Control</title></path>
+<path class="edge edge-feeds" d="M 786 1490 Q 506.0 1666.0 226 1842" data-from="process:5.5" data-to="process:4.7" data-tie="feeds"><title>feeds into Close Project or Phase</title></path>
+<path class="edge edge-feeds" d="M 865 1477 L 865 1498 L 401 1498 L 401 1477" data-from="process:5.6" data-to="process:4.5" data-tie="feeds"><title>feeds into Monitor and Control Project Work</title></path>
+<path class="edge edge-feeds edge-optional" d="M 865 1477 L 865 1498 L 695 1498 L 695 1477" data-from="process:5.6" data-to="process:4.6" data-tie="feeds"><title>feeds into Perform Integrated Change Control</title></path>
+<path class="edge edge-feeds" d="M 1263 355 L 1263 334 L 1279 334 L 1279 355" data-from="process:6.1" data-to="process:6.2" data-tie="feeds"><title>feeds into Define Activities</title></path>
+<path class="edge edge-feeds" d="M 1263 355 L 1263 334 L 1445 334 L 1445 355" data-from="process:6.1" data-to="process:6.3" data-tie="feeds"><title>feeds into Sequence Activities</title></path>
+<path class="edge edge-feeds" d="M 1160 368 Q 703.0 376.0 246 384" data-from="process:6.1" data-to="process:6.4" data-tie="feeds"><title>feeds into Estimate Activity Durations</title></path>
+<path class="edge edge-feeds" d="M 1160 368 Q 804.0 376.0 448 384" data-from="process:6.1" data-to="process:6.5" data-tie="feeds"><title>feeds into Develop Schedule</title></path>
+<path class="edge edge-feeds" d="M 1354 368 Q 806.0 727.0 258 1086" data-from="process:6.2" data-to="process:4.3" data-tie="feeds"><title>feeds into Direct and Manage Project Work</title></path>
+<path class="edge edge-feeds edge-optional" d="M 1354 368 Q 955.0 916.0 556 1464" data-from="process:6.2" data-to="process:4.6" data-tie="feeds"><title>feeds into Perform Integrated Change Control</title></path>
+<path class="edge edge-feeds" d="M 1429 355 L 1429 334 L 1445 334 L 1445 355" data-from="process:6.2" data-to="process:6.3" data-tie="feeds"><title>feeds into Sequence Activities</title></path>
+<path class="edge edge-feeds" d="M 1354 368 Q 800.0 376.0 246 384" data-from="process:6.2" data-to="process:6.4" data-tie="feeds"><title>feeds into Estimate Activity Durations</title></path>
+<path class="edge edge-feeds" d="M 1354 368 Q 901.0 376.0 448 384" data-from="process:6.2" data-to="process:6.5" data-tie="feeds"><title>feeds into Develop Schedule</title></path>
+<path class="edge edge-feeds" d="M 1354 368 Q 1483.0 376.0 1612 384" data-from="process:6.2" data-to="process:9.2" data-tie="feeds"><title>feeds into Estimate Activity Resources</title></path>
+<path class="edge edge-feeds" d="M 1528 368 Q 887.0 376.0 246 384" data-from="process:6.3" data-to="process:6.4" data-tie="feeds"><title>feeds into Estimate Activity Durations</title></path>
+<path class="edge edge-feeds" d="M 1528 368 Q 988.0 376.0 448 384" data-from="process:6.3" data-to="process:6.5" data-tie="feeds"><title>feeds into Develop Schedule</title></path>
+<path class="edge edge-feeds" d="M 1528 368 Q 1570.0 376.0 1612 384" data-from="process:6.3" data-to="process:9.2" data-tie="feeds"><title>feeds into Estimate Activity Resources</title></path>
+<path class="edge edge-feeds" d="M 361 397 L 361 376 L 377 376 L 377 397" data-from="process:6.4" data-to="process:6.5" data-tie="feeds"><title>feeds into Develop Schedule</title></path>
+<path class="edge edge-feeds" d="M 361 397 L 361 376 L 879 376 L 879 397" data-from="process:6.4" data-to="process:7.3" data-tie="feeds"><title>feeds into Determine Budget</title></path>
+<path class="edge edge-feeds" d="M 448 410 Q 557.0 418.0 666 426" data-from="process:6.5" data-to="process:11.2" data-tie="feeds"><title>feeds into Identify Risks</title></path>
+<path class="edge edge-feeds" d="M 448 410 Q 815.0 418.0 1182 426" data-from="process:6.5" data-to="process:11.4" data-tie="feeds"><title>feeds into Perform Quantitative Risk Analysis</title></path>
+<path class="edge edge-feeds" d="M 448 410 Q 765.0 937.0 1082 1464" data-from="process:6.5" data-to="process:6.6" data-tie="feeds"><title>feeds into Control Schedule</title></path>
+<path class="edge edge-feeds" d="M 519 397 L 519 376 L 737 376 L 737 397" data-from="process:6.5" data-to="process:7.2" data-tie="feeds"><title>feeds into Estimate Costs</title></path>
+<path class="edge edge-feeds" d="M 519 397 L 519 376 L 879 376 L 879 397" data-from="process:6.5" data-to="process:7.3" data-tie="feeds"><title>feeds into Determine Budget</title></path>
+<path class="edge edge-feeds" d="M 448 410 Q 656.0 748.0 864 1086" data-from="process:6.5" data-to="process:9.3" data-tie="feeds"><title>feeds into Acquire Resources</title></path>
+<path class="edge edge-feeds" d="M 448 410 Q 729.0 748.0 1010 1086" data-from="process:6.5" data-to="process:9.4" data-tie="feeds"><title>feeds into Develop Team</title></path>
+<path class="edge edge-feeds" d="M 448 410 Q 1006.0 937.0 1564 1464" data-from="process:6.5" data-to="process:9.6" data-tie="feeds"><title>feeds into Control Resources</title></path>
+<path class="edge edge-feeds" d="M 1082 1464 Q 874.0 958.0 666 452" data-from="process:6.6" data-to="process:11.2" data-tie="feeds"><title>feeds into Identify Risks</title></path>
+<path class="edge edge-feeds" d="M 1082 1464 Q 1132.0 958.0 1182 452" data-from="process:6.6" data-to="process:11.4" data-tie="feeds"><title>feeds into Perform Quantitative Risk Analysis</title></path>
+<path class="edge edge-feeds" d="M 1011 1477 L 1011 1498 L 401 1498 L 401 1477" data-from="process:6.6" data-to="process:4.5" data-tie="feeds"><title>feeds into Monitor and Control Project Work</title></path>
+<path class="edge edge-feeds edge-optional" d="M 1011 1477 L 1011 1498 L 695 1498 L 695 1477" data-from="process:6.6" data-to="process:4.6" data-tie="feeds"><title>feeds into Perform Integrated Change Control</title></path>
+<path class="edge edge-feeds" d="M 721 397 L 721 376 L 737 376 L 737 397" data-from="process:7.1" data-to="process:7.2" data-tie="feeds"><title>feeds into Estimate Costs</title></path>
+<path class="edge edge-feeds" d="M 721 397 L 721 376 L 879 376 L 879 397" data-from="process:7.1" data-to="process:7.3" data-tie="feeds"><title>feeds into Determine Budget</title></path>
+<path class="edge edge-feeds" d="M 800 410 Q 991.0 418.0 1182 426" data-from="process:7.2" data-to="process:11.4" data-tie="feeds"><title>feeds into Perform Quantitative Risk Analysis</title></path>
+<path class="edge edge-feeds" d="M 863 397 L 863 376 L 879 376 L 879 397" data-from="process:7.2" data-to="process:7.3" data-tie="feeds"><title>feeds into Determine Budget</title></path>
+<path class="edge edge-feeds" d="M 863 397 L 863 376 L 1497 376 L 1497 397" data-from="process:7.2" data-to="process:9.2" data-tie="feeds"><title>feeds into Estimate Activity Resources</title></path>
+<path class="edge edge-feeds" d="M 950 410 Q 808.0 418.0 666 426" data-from="process:7.3" data-to="process:11.2" data-tie="feeds"><title>feeds into Identify Risks</title></path>
+<path class="edge edge-feeds" d="M 950 410 Q 1066.0 418.0 1182 426" data-from="process:7.3" data-to="process:11.4" data-tie="feeds"><title>feeds into Perform Quantitative Risk Analysis</title></path>
+<path class="edge edge-feeds" d="M 950 410 Q 1187.0 418.0 1424 426" data-from="process:7.3" data-to="process:11.5" data-tie="feeds"><title>feeds into Plan Risk Responses</title></path>
+<path class="edge edge-feeds" d="M 950 410 Q 1095.0 937.0 1240 1464" data-from="process:7.3" data-to="process:7.4" data-tie="feeds"><title>feeds into Control Costs</title></path>
+<path class="edge edge-feeds" d="M 1181 1477 L 1181 1498 L 401 1498 L 401 1477" data-from="process:7.4" data-to="process:4.5" data-tie="feeds"><title>feeds into Monitor and Control Project Work</title></path>
+<path class="edge edge-feeds edge-optional" d="M 1181 1477 L 1181 1498 L 695 1498 L 695 1477" data-from="process:7.4" data-to="process:4.6" data-tie="feeds"><title>feeds into Perform Integrated Change Control</title></path>
+<path class="edge edge-feeds edge-optional" d="M 1148 410 Q 703.0 418.0 258 426" data-from="process:8.1" data-to="process:10.1" data-tie="feeds"><title>feeds into Plan Communications Management</title></path>
+<path class="edge edge-feeds edge-optional" d="M 1148 410 Q 687.0 958.0 226 1506" data-from="process:8.1" data-to="process:10.3" data-tie="feeds"><title>feeds into Monitor Communications</title></path>
+<path class="edge edge-feeds edge-optional" d="M 1148 410 Q 824.0 418.0 500 426" data-from="process:8.1" data-to="process:11.1" data-tie="feeds"><title>feeds into Plan Risk Management</title></path>
+<path class="edge edge-feeds edge-optional" d="M 1148 410 Q 697.0 439.0 246 468" data-from="process:8.1" data-to="process:12.1" data-tie="feeds"><title>feeds into Plan Procurement Management</title></path>
+<path class="edge edge-feeds edge-optional" d="M 1148 410 Q 865.0 958.0 582 1506" data-from="process:8.1" data-to="process:12.3" data-tie="feeds"><title>feeds into Control Procurements</title></path>
+<path class="edge edge-feeds edge-optional" d="M 1148 410 Q 826.0 439.0 504 468" data-from="process:8.1" data-to="process:13.2" data-tie="feeds"><title>feeds into Plan Stakeholder Engagement</title></path>
+<path class="edge edge-feeds edge-optional" d="M 1148 410 Q 986.0 958.0 824 1506" data-from="process:8.1" data-to="process:13.4" data-tie="feeds"><title>feeds into Monitor Stakeholder Engagement</title></path>
+<path class="edge edge-feeds edge-optional" d="M 1148 410 Q 703.0 748.0 258 1086" data-from="process:8.1" data-to="process:4.3" data-tie="feeds"><title>feeds into Direct and Manage Project Work</title></path>
+<path class="edge edge-feeds edge-optional" d="M 1148 410 Q 826.0 748.0 504 1086" data-from="process:8.1" data-to="process:4.4" data-tie="feeds"><title>feeds into Manage Project Knowledge</title></path>
+<path class="edge edge-feeds edge-optional" d="M 1148 410 Q 707.0 937.0 266 1464" data-from="process:8.1" data-to="process:4.5" data-tie="feeds"><title>feeds into Monitor and Control Project Work</title></path>
+<path class="edge edge-feeds edge-optional" d="M 1148 410 Q 852.0 937.0 556 1464" data-from="process:8.1" data-to="process:4.6" data-tie="feeds"><title>feeds into Perform Integrated Change Control</title></path>
+<path class="edge edge-feeds edge-optional" d="M 1148 410 Q 687.0 1126.0 226 1842" data-from="process:8.1" data-to="process:4.7" data-tie="feeds"><title>feeds into Close Project or Phase</title></path>
+<path class="edge edge-feeds edge-optional" d="M 1148 384 Q 830.0 376.0 512 368" data-from="process:8.1" data-to="process:5.1" data-tie="feeds"><title>feeds into Plan Scope Management</title></path>
+<path class="edge edge-feeds edge-optional" d="M 1148 410 Q 967.0 937.0 786 1464" data-from="process:8.1" data-to="process:5.5" data-tie="feeds"><title>feeds into Validate Scope</title></path>
+<path class="edge edge-feeds edge-optional" d="M 1148 410 Q 1036.0 937.0 924 1464" data-from="process:8.1" data-to="process:5.6" data-tie="feeds"><title>feeds into Control Scope</title></path>
+<path class="edge edge-feeds edge-optional" d="M 1148 384 Q 1154.0 376.0 1160 368" data-from="process:8.1" data-to="process:6.1" data-tie="feeds"><title>feeds into Plan Schedule Management</title></path>
+<path class="edge edge-feeds edge-optional" d="M 1148 410 Q 1115.0 937.0 1082 1464" data-from="process:8.1" data-to="process:6.6" data-tie="feeds"><title>feeds into Control Schedule</title></path>
+<path class="edge edge-feeds edge-optional" d="M 1049 397 L 1049 418 L 721 418 L 721 397" data-from="process:8.1" data-to="process:7.1" data-tie="feeds"><title>feeds into Plan Cost Management</title></path>
+<path class="edge edge-feeds" d="M 1049 397 L 1049 418 L 863 418 L 863 397" data-from="process:8.1" data-to="process:7.2" data-tie="feeds"><title>feeds into Estimate Costs</title></path>
+<path class="edge edge-feeds edge-optional" d="M 1148 410 Q 1194.0 937.0 1240 1464" data-from="process:8.1" data-to="process:7.4" data-tie="feeds"><title>feeds into Control Costs</title></path>
+<path class="edge edge-feeds" d="M 1148 410 Q 923.0 748.0 698 1086" data-from="process:8.1" data-to="process:8.2" data-tie="feeds"><title>feeds into Manage Quality</title></path>
+<path class="edge edge-feeds" d="M 1148 410 Q 1271.0 937.0 1394 1464" data-from="process:8.1" data-to="process:8.3" data-tie="feeds"><title>feeds into Control Quality</title></path>
+<path class="edge edge-feeds edge-optional" d="M 1247 397 L 1247 376 L 1275 376 L 1275 397" data-from="process:8.1" data-to="process:9.1" data-tie="feeds"><title>feeds into Plan Resource Management</title></path>
+<path class="edge edge-feeds edge-optional" d="M 698 1086 Q 478.0 769.0 258 452" data-from="process:8.2" data-to="process:10.1" data-tie="feeds"><title>feeds into Plan Communications Management</title></path>
+<path class="edge edge-feeds" d="M 761 1099 L 761 1078 L 1211 1078 L 1211 1099" data-from="process:8.2" data-to="process:10.2" data-tie="feeds"><title>feeds into Manage Communications</title></path>
+<path class="edge edge-feeds edge-optional" d="M 698 1112 Q 462.0 1309.0 226 1506" data-from="process:8.2" data-to="process:10.3" data-tie="feeds"><title>feeds into Monitor Communications</title></path>
+<path class="edge edge-feeds edge-optional" d="M 698 1086 Q 599.0 769.0 500 452" data-from="process:8.2" data-to="process:11.1" data-tie="feeds"><title>feeds into Plan Risk Management</title></path>
+<path class="edge edge-feeds edge-optional" d="M 698 1086 Q 472.0 790.0 246 494" data-from="process:8.2" data-to="process:12.1" data-tie="feeds"><title>feeds into Plan Procurement Management</title></path>
+<path class="edge edge-feeds edge-optional" d="M 698 1112 Q 640.0 1309.0 582 1506" data-from="process:8.2" data-to="process:12.3" data-tie="feeds"><title>feeds into Control Procurements</title></path>
+<path class="edge edge-feeds edge-optional" d="M 698 1086 Q 601.0 790.0 504 494" data-from="process:8.2" data-to="process:13.2" data-tie="feeds"><title>feeds into Plan Stakeholder Engagement</title></path>
+<path class="edge edge-feeds edge-optional" d="M 698 1112 Q 761.0 1309.0 824 1506" data-from="process:8.2" data-to="process:13.4" data-tie="feeds"><title>feeds into Monitor Stakeholder Engagement</title></path>
+<path class="edge edge-feeds edge-optional" d="M 635 1099 L 635 1120 L 385 1120 L 385 1099" data-from="process:8.2" data-to="process:4.3" data-tie="feeds"><title>feeds into Direct and Manage Project Work</title></path>
+<path class="edge edge-feeds edge-optional" d="M 635 1099 L 635 1120 L 607 1120 L 607 1099" data-from="process:8.2" data-to="process:4.4" data-tie="feeds"><title>feeds into Manage Project Knowledge</title></path>
+<path class="edge edge-feeds edge-optional" d="M 698 1112 Q 482.0 1288.0 266 1464" data-from="process:8.2" data-to="process:4.5" data-tie="feeds"><title>feeds into Monitor and Control Project Work</title></path>
+<path class="edge edge-feeds edge-optional" d="M 698 1112 Q 627.0 1288.0 556 1464" data-from="process:8.2" data-to="process:4.6" data-tie="feeds"><title>feeds into Perform Integrated Change Control</title></path>
+<path class="edge edge-feeds edge-optional" d="M 698 1112 Q 462.0 1477.0 226 1842" data-from="process:8.2" data-to="process:4.7" data-tie="feeds"><title>feeds into Close Project or Phase</title></path>
+<path class="edge edge-feeds edge-optional" d="M 698 1086 Q 605.0 727.0 512 368" data-from="process:8.2" data-to="process:5.1" data-tie="feeds"><title>feeds into Plan Scope Management</title></path>
+<path class="edge edge-feeds edge-optional" d="M 698 1112 Q 742.0 1288.0 786 1464" data-from="process:8.2" data-to="process:5.5" data-tie="feeds"><title>feeds into Validate Scope</title></path>
+<path class="edge edge-feeds edge-optional" d="M 698 1112 Q 811.0 1288.0 924 1464" data-from="process:8.2" data-to="process:5.6" data-tie="feeds"><title>feeds into Control Scope</title></path>
+<path class="edge edge-feeds edge-optional" d="M 698 1086 Q 929.0 727.0 1160 368" data-from="process:8.2" data-to="process:6.1" data-tie="feeds"><title>feeds into Plan Schedule Management</title></path>
+<path class="edge edge-feeds edge-optional" d="M 698 1112 Q 890.0 1288.0 1082 1464" data-from="process:8.2" data-to="process:6.6" data-tie="feeds"><title>feeds into Control Schedule</title></path>
+<path class="edge edge-feeds edge-optional" d="M 698 1086 Q 666.0 748.0 634 410" data-from="process:8.2" data-to="process:7.1" data-tie="feeds"><title>feeds into Plan Cost Management</title></path>
+<path class="edge edge-feeds edge-optional" d="M 698 1112 Q 969.0 1288.0 1240 1464" data-from="process:8.2" data-to="process:7.4" data-tie="feeds"><title>feeds into Control Costs</title></path>
+<path class="edge edge-feeds" d="M 698 1112 Q 1046.0 1288.0 1394 1464" data-from="process:8.2" data-to="process:8.3" data-tie="feeds"><title>feeds into Control Quality</title></path>
+<path class="edge edge-feeds edge-optional" d="M 698 1086 Q 1038.0 748.0 1378 410" data-from="process:8.2" data-to="process:9.1" data-tie="feeds"><title>feeds into Plan Resource Management</title></path>
+<path class="edge edge-feeds" d="M 1327 1477 L 1327 1498 L 401 1498 L 401 1477" data-from="process:8.3" data-to="process:4.5" data-tie="feeds"><title>feeds into Monitor and Control Project Work</title></path>
+<path class="edge edge-feeds edge-optional" d="M 1327 1477 L 1327 1498 L 695 1498 L 695 1477" data-from="process:8.3" data-to="process:4.6" data-tie="feeds"><title>feeds into Perform Integrated Change Control</title></path>
+<path class="edge edge-feeds" d="M 1327 1477 L 1327 1498 L 849 1498 L 849 1477" data-from="process:8.3" data-to="process:5.5" data-tie="feeds"><title>feeds into Validate Scope</title></path>
+<path class="edge edge-feeds" d="M 1394 1464 Q 1046.0 1288.0 698 1112" data-from="process:8.3" data-to="process:8.2" data-tie="feeds"><title>feeds into Manage Quality</title></path>
+<path class="edge edge-feeds" d="M 1378 410 Q 1022.0 418.0 666 426" data-from="process:9.1" data-to="process:11.2" data-tie="feeds"><title>feeds into Identify Risks</title></path>
+<path class="edge edge-feeds" d="M 1378 410 Q 1131.0 418.0 884 426" data-from="process:9.1" data-to="process:11.3" data-tie="feeds"><title>feeds into Perform Qualitative Risk Analysis</title></path>
+<path class="edge edge-feeds" d="M 1378 410 Q 1401.0 418.0 1424 426" data-from="process:9.1" data-to="process:11.5" data-tie="feeds"><title>feeds into Plan Risk Responses</title></path>
+<path class="edge edge-feeds" d="M 1378 410 Q 822.0 937.0 266 1464" data-from="process:9.1" data-to="process:4.5" data-tie="feeds"><title>feeds into Monitor and Control Project Work</title></path>
+<path class="edge edge-feeds" d="M 1378 384 Q 1042.0 376.0 706 368" data-from="process:9.1" data-to="process:5.2" data-tie="feeds"><title>feeds into Collect Requirements</title></path>
+<path class="edge edge-feeds" d="M 1378 384 Q 1121.0 376.0 864 368" data-from="process:9.1" data-to="process:5.3" data-tie="feeds"><title>feeds into Define Scope</title></path>
+<path class="edge edge-feeds" d="M 1481 397 L 1481 376 L 1497 376 L 1497 397" data-from="process:9.1" data-to="process:9.2" data-tie="feeds"><title>feeds into Estimate Activity Resources</title></path>
+<path class="edge edge-feeds" d="M 1378 410 Q 1121.0 748.0 864 1086" data-from="process:9.1" data-to="process:9.3" data-tie="feeds"><title>feeds into Acquire Resources</title></path>
+<path class="edge edge-feeds" d="M 1378 410 Q 1194.0 748.0 1010 1086" data-from="process:9.1" data-to="process:9.4" data-tie="feeds"><title>feeds into Develop Team</title></path>
+<path class="edge edge-feeds" d="M 1378 410 Q 1255.0 748.0 1132 1086" data-from="process:9.1" data-to="process:9.5" data-tie="feeds"><title>feeds into Manage Team</title></path>
+<path class="edge edge-feeds" d="M 1378 410 Q 1471.0 937.0 1564 1464" data-from="process:9.1" data-to="process:9.6" data-tie="feeds"><title>feeds into Control Resources</title></path>
+<path class="edge edge-feeds" d="M 1612 410 Q 1058.0 748.0 504 1086" data-from="process:9.2" data-to="process:4.4" data-tie="feeds"><title>feeds into Manage Project Knowledge</title></path>
+<path class="edge edge-feeds" d="M 1497 397 L 1497 418 L 361 418 L 361 397" data-from="process:9.2" data-to="process:6.4" data-tie="feeds"><title>feeds into Estimate Activity Durations</title></path>
+<path class="edge edge-feeds" d="M 1497 397 L 1497 418 L 863 418 L 863 397" data-from="process:9.2" data-to="process:7.2" data-tie="feeds"><title>feeds into Estimate Costs</title></path>
+<path class="edge edge-feeds" d="M 1497 397 L 1497 418 L 1021 418 L 1021 397" data-from="process:9.2" data-to="process:7.3" data-tie="feeds"><title>feeds into Determine Budget</title></path>
+<path class="edge edge-feeds" d="M 1612 410 Q 1238.0 748.0 864 1086" data-from="process:9.2" data-to="process:9.3" data-tie="feeds"><title>feeds into Acquire Resources</title></path>
+<path class="edge edge-feeds" d="M 1612 410 Q 1588.0 937.0 1564 1464" data-from="process:9.2" data-to="process:9.6" data-tie="feeds"><title>feeds into Control Resources</title></path>
+<path class="edge edge-feeds" d="M 789 1099 L 789 1120 L 607 1120 L 607 1099" data-from="process:9.3" data-to="process:4.4" data-tie="feeds"><title>feeds into Manage Project Knowledge</title></path>
+<path class="edge edge-feeds edge-optional" d="M 864 1112 Q 710.0 1288.0 556 1464" data-from="process:9.3" data-to="process:4.6" data-tie="feeds"><title>feeds into Perform Integrated Change Control</title></path>
+<path class="edge edge-feeds" d="M 864 1086 Q 555.0 748.0 246 410" data-from="process:9.3" data-to="process:6.4" data-tie="feeds"><title>feeds into Estimate Activity Durations</title></path>
+<path class="edge edge-feeds" d="M 864 1086 Q 656.0 748.0 448 410" data-from="process:9.3" data-to="process:6.5" data-tie="feeds"><title>feeds into Develop Schedule</title></path>
+<path class="edge edge-feeds" d="M 864 1086 Q 1238.0 748.0 1612 410" data-from="process:9.3" data-to="process:9.2" data-tie="feeds"><title>feeds into Estimate Activity Resources</title></path>
+<path class="edge edge-feeds" d="M 939 1099 L 939 1078 L 955 1078 L 955 1099" data-from="process:9.3" data-to="process:9.4" data-tie="feeds"><title>feeds into Develop Team</title></path>
+<path class="edge edge-feeds" d="M 939 1099 L 939 1078 L 1081 1078 L 1081 1099" data-from="process:9.3" data-to="process:9.5" data-tie="feeds"><title>feeds into Manage Team</title></path>
+<path class="edge edge-feeds" d="M 864 1112 Q 1214.0 1288.0 1564 1464" data-from="process:9.3" data-to="process:9.6" data-tie="feeds"><title>feeds into Control Resources</title></path>
+<path class="edge edge-feeds edge-optional" d="M 1010 1112 Q 783.0 1288.0 556 1464" data-from="process:9.4" data-to="process:4.6" data-tie="feeds"><title>feeds into Perform Integrated Change Control</title></path>
+<path class="edge edge-feeds" d="M 1065 1099 L 1065 1078 L 1081 1078 L 1081 1099" data-from="process:9.4" data-to="process:9.5" data-tie="feeds"><title>feeds into Manage Team</title></path>
+<path class="edge edge-feeds" d="M 1183 1099 L 1183 1078 L 1211 1078 L 1211 1099" data-from="process:9.5" data-to="process:10.2" data-tie="feeds"><title>feeds into Manage Communications</title></path>
+<path class="edge edge-feeds" d="M 1132 1112 Q 679.0 1309.0 226 1506" data-from="process:9.5" data-to="process:10.3" data-tie="feeds"><title>feeds into Monitor Communications</title></path>
+<path class="edge edge-feeds" d="M 1132 1112 Q 770.0 1309.0 408 1506" data-from="process:9.5" data-to="process:11.7" data-tie="feeds"><title>feeds into Monitor Risks</title></path>
+<path class="edge edge-feeds" d="M 1132 1112 Q 794.0 1120.0 456 1128" data-from="process:9.5" data-to="process:13.3" data-tie="feeds"><title>feeds into Manage Stakeholder Engagement</title></path>
+<path class="edge edge-feeds" d="M 1132 1112 Q 978.0 1309.0 824 1506" data-from="process:9.5" data-to="process:13.4" data-tie="feeds"><title>feeds into Monitor Stakeholder Engagement</title></path>
+<path class="edge edge-feeds" d="M 1081 1099 L 1081 1120 L 607 1120 L 607 1099" data-from="process:9.5" data-to="process:4.4" data-tie="feeds"><title>feeds into Manage Project Knowledge</title></path>
+<path class="edge edge-feeds" d="M 1132 1112 Q 699.0 1288.0 266 1464" data-from="process:9.5" data-to="process:4.5" data-tie="feeds"><title>feeds into Monitor and Control Project Work</title></path>
+<path class="edge edge-feeds edge-optional" d="M 1132 1112 Q 844.0 1288.0 556 1464" data-from="process:9.5" data-to="process:4.6" data-tie="feeds"><title>feeds into Perform Integrated Change Control</title></path>
+<path class="edge edge-feeds" d="M 1081 1099 L 1081 1120 L 1065 1120 L 1065 1099" data-from="process:9.5" data-to="process:9.4" data-tie="feeds"><title>feeds into Develop Team</title></path>
+<path class="edge edge-feeds" d="M 1132 1112 Q 1348.0 1288.0 1564 1464" data-from="process:9.5" data-to="process:9.6" data-tie="feeds"><title>feeds into Control Resources</title></path>
+<path class="edge edge-feeds" d="M 1489 1477 L 1489 1498 L 401 1498 L 401 1477" data-from="process:9.6" data-to="process:4.5" data-tie="feeds"><title>feeds into Monitor and Control Project Work</title></path>
+<path class="edge edge-feeds edge-optional" d="M 1489 1477 L 1489 1498 L 695 1498 L 695 1477" data-from="process:9.6" data-to="process:4.6" data-tie="feeds"><title>feeds into Perform Integrated Change Control</title></path>
+<g class="node node-process" data-node="process:4.1" data-kind="process" data-label="Develop Project Charter">
+<a href="/pmbok/4.1"><title>Develop Project Charter — process, Initiating / Integration</title>
+<rect class="node-shape" x="131" y="24" width="198" height="26" rx="6" data-group="initiating" data-area="integration" data-family=""/>
+<text x="230" y="37" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Develop Project Charter</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:13.1" data-kind="process" data-label="Identify Stakeholders">
+<a href="/pmbok/13.1"><title>Identify Stakeholders — process, Initiating / Stakeholder</title>
+<rect class="node-shape" x="357" y="24" width="182" height="26" rx="6" data-group="initiating" data-area="stakeholder" data-family=""/>
+<text x="448" y="37" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Identify Stakeholders</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:4.2" data-kind="process" data-label="Develop Project Management Plan">
+<a href="/pmbok/4.2"><title>Develop Project Management Plan — process, Planning / Integration</title>
+<rect class="node-shape" x="131" y="342" width="262" height="26" rx="6" data-group="planning" data-area="integration" data-family=""/>
+<text x="262" y="355" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Develop Project Management Plan</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:5.1" data-kind="process" data-label="Plan Scope Management">
+<a href="/pmbok/5.1"><title>Plan Scope Management — process, Planning / Scope</title>
+<rect class="node-shape" x="421" y="342" width="182" height="26" rx="6" data-group="planning" data-area="scope" data-family=""/>
+<text x="512" y="355" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Plan Scope Management</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:5.2" data-kind="process" data-label="Collect Requirements">
+<a href="/pmbok/5.2"><title>Collect Requirements — process, Planning / Scope</title>
+<rect class="node-shape" x="619" y="342" width="174" height="26" rx="6" data-group="planning" data-area="scope" data-family=""/>
+<text x="706" y="355" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Collect Requirements</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:5.3" data-kind="process" data-label="Define Scope">
+<a href="/pmbok/5.3"><title>Define Scope — process, Planning / Scope</title>
+<rect class="node-shape" x="809" y="342" width="110" height="26" rx="6" data-group="planning" data-area="scope" data-family=""/>
+<text x="864" y="355" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Define Scope</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:5.4" data-kind="process" data-label="Create WBS">
+<a href="/pmbok/5.4"><title>Create WBS — process, Planning / Scope</title>
+<rect class="node-shape" x="935" y="342" width="94" height="26" rx="6" data-group="planning" data-area="scope" data-family=""/>
+<text x="982" y="355" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Create WBS</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:6.1" data-kind="process" data-label="Plan Schedule Management">
+<a href="/pmbok/6.1"><title>Plan Schedule Management — process, Planning / Schedule</title>
+<rect class="node-shape" x="1057" y="342" width="206" height="26" rx="6" data-group="planning" data-area="schedule" data-family=""/>
+<text x="1160" y="355" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Plan Schedule Management</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:6.2" data-kind="process" data-label="Define Activities">
+<a href="/pmbok/6.2"><title>Define Activities — process, Planning / Schedule</title>
+<rect class="node-shape" x="1279" y="342" width="150" height="26" rx="6" data-group="planning" data-area="schedule" data-family=""/>
+<text x="1354" y="355" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Define Activities</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:6.3" data-kind="process" data-label="Sequence Activities">
+<a href="/pmbok/6.3"><title>Sequence Activities — process, Planning / Schedule</title>
+<rect class="node-shape" x="1445" y="342" width="166" height="26" rx="6" data-group="planning" data-area="schedule" data-family=""/>
+<text x="1528" y="355" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Sequence Activities</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:6.4" data-kind="process" data-label="Estimate Activity Durations">
+<a href="/pmbok/6.4"><title>Estimate Activity Durations — process, Planning / Schedule</title>
+<rect class="node-shape" x="131" y="384" width="230" height="26" rx="6" data-group="planning" data-area="schedule" data-family=""/>
+<text x="246" y="397" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Estimate Activity Durations</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:6.5" data-kind="process" data-label="Develop Schedule">
+<a href="/pmbok/6.5"><title>Develop Schedule — process, Planning / Schedule</title>
+<rect class="node-shape" x="377" y="384" width="142" height="26" rx="6" data-group="planning" data-area="schedule" data-family=""/>
+<text x="448" y="397" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Develop Schedule</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:7.1" data-kind="process" data-label="Plan Cost Management">
+<a href="/pmbok/7.1"><title>Plan Cost Management — process, Planning / Cost</title>
+<rect class="node-shape" x="547" y="384" width="174" height="26" rx="6" data-group="planning" data-area="cost" data-family=""/>
+<text x="634" y="397" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Plan Cost Management</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:7.2" data-kind="process" data-label="Estimate Costs">
+<a href="/pmbok/7.2"><title>Estimate Costs — process, Planning / Cost</title>
+<rect class="node-shape" x="737" y="384" width="126" height="26" rx="6" data-group="planning" data-area="cost" data-family=""/>
+<text x="800" y="397" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Estimate Costs</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:7.3" data-kind="process" data-label="Determine Budget">
+<a href="/pmbok/7.3"><title>Determine Budget — process, Planning / Cost</title>
+<rect class="node-shape" x="879" y="384" width="142" height="26" rx="6" data-group="planning" data-area="cost" data-family=""/>
+<text x="950" y="397" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Determine Budget</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:8.1" data-kind="process" data-label="Plan Quality Management">
+<a href="/pmbok/8.1"><title>Plan Quality Management — process, Planning / Quality</title>
+<rect class="node-shape" x="1049" y="384" width="198" height="26" rx="6" data-group="planning" data-area="quality" data-family=""/>
+<text x="1148" y="397" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Plan Quality Management</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:9.1" data-kind="process" data-label="Plan Resource Management">
+<a href="/pmbok/9.1"><title>Plan Resource Management — process, Planning / Resource</title>
+<rect class="node-shape" x="1275" y="384" width="206" height="26" rx="6" data-group="planning" data-area="resource" data-family=""/>
+<text x="1378" y="397" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Plan Resource Management</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:9.2" data-kind="process" data-label="Estimate Activity Resources">
+<a href="/pmbok/9.2"><title>Estimate Activity Resources — process, Planning / Resource</title>
+<rect class="node-shape" x="1497" y="384" width="230" height="26" rx="6" data-group="planning" data-area="resource" data-family=""/>
+<text x="1612" y="397" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Estimate Activity Resources</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:10.1" data-kind="process" data-label="Plan Communications Management">
+<a href="/pmbok/10.1"><title>Plan Communications Management — process, Planning / Communications</title>
+<rect class="node-shape" x="131" y="426" width="254" height="26" rx="6" data-group="planning" data-area="communications" data-family=""/>
+<text x="258" y="439" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Plan Communications Management</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:11.1" data-kind="process" data-label="Plan Risk Management">
+<a href="/pmbok/11.1"><title>Plan Risk Management — process, Planning / Risk</title>
+<rect class="node-shape" x="413" y="426" width="174" height="26" rx="6" data-group="planning" data-area="risk" data-family=""/>
+<text x="500" y="439" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Plan Risk Management</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:11.2" data-kind="process" data-label="Identify Risks">
+<a href="/pmbok/11.2"><title>Identify Risks — process, Planning / Risk</title>
+<rect class="node-shape" x="603" y="426" width="126" height="26" rx="6" data-group="planning" data-area="risk" data-family=""/>
+<text x="666" y="439" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Identify Risks</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:11.3" data-kind="process" data-label="Perform Qualitative Risk Analysis">
+<a href="/pmbok/11.3"><title>Perform Qualitative Risk Analysis — process, Planning / Risk</title>
+<rect class="node-shape" x="745" y="426" width="278" height="26" rx="6" data-group="planning" data-area="risk" data-family=""/>
+<text x="884" y="439" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Perform Qualitative Risk Analysis</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:11.4" data-kind="process" data-label="Perform Quantitative Risk Analysis">
+<a href="/pmbok/11.4"><title>Perform Quantitative Risk Analysis — process, Planning / Risk</title>
+<rect class="node-shape" x="1039" y="426" width="286" height="26" rx="6" data-group="planning" data-area="risk" data-family=""/>
+<text x="1182" y="439" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Perform Quantitative Risk Analysis</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:11.5" data-kind="process" data-label="Plan Risk Responses">
+<a href="/pmbok/11.5"><title>Plan Risk Responses — process, Planning / Risk</title>
+<rect class="node-shape" x="1341" y="426" width="166" height="26" rx="6" data-group="planning" data-area="risk" data-family=""/>
+<text x="1424" y="439" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Plan Risk Responses</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:12.1" data-kind="process" data-label="Plan Procurement Management">
+<a href="/pmbok/12.1"><title>Plan Procurement Management — process, Planning / Procurement</title>
+<rect class="node-shape" x="131" y="468" width="230" height="26" rx="6" data-group="planning" data-area="procurement" data-family=""/>
+<text x="246" y="481" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Plan Procurement Management</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:13.2" data-kind="process" data-label="Plan Stakeholder Engagement">
+<a href="/pmbok/13.2"><title>Plan Stakeholder Engagement — process, Planning / Stakeholder</title>
+<rect class="node-shape" x="389" y="468" width="230" height="26" rx="6" data-group="planning" data-area="stakeholder" data-family=""/>
+<text x="504" y="481" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Plan Stakeholder Engagement</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:4.3" data-kind="process" data-label="Direct and Manage Project Work">
+<a href="/pmbok/4.3"><title>Direct and Manage Project Work — process, Executing / Integration</title>
+<rect class="node-shape" x="131" y="1086" width="254" height="26" rx="6" data-group="executing" data-area="integration" data-family=""/>
+<text x="258" y="1099" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Direct and Manage Project Work</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:4.4" data-kind="process" data-label="Manage Project Knowledge">
+<a href="/pmbok/4.4"><title>Manage Project Knowledge — process, Executing / Integration</title>
+<rect class="node-shape" x="401" y="1086" width="206" height="26" rx="6" data-group="executing" data-area="integration" data-family=""/>
+<text x="504" y="1099" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Manage Project Knowledge</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:8.2" data-kind="process" data-label="Manage Quality">
+<a href="/pmbok/8.2"><title>Manage Quality — process, Executing / Quality</title>
+<rect class="node-shape" x="635" y="1086" width="126" height="26" rx="6" data-group="executing" data-area="quality" data-family=""/>
+<text x="698" y="1099" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Manage Quality</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:9.3" data-kind="process" data-label="Acquire Resources">
+<a href="/pmbok/9.3"><title>Acquire Resources — process, Executing / Resource</title>
+<rect class="node-shape" x="789" y="1086" width="150" height="26" rx="6" data-group="executing" data-area="resource" data-family=""/>
+<text x="864" y="1099" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Acquire Resources</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:9.4" data-kind="process" data-label="Develop Team">
+<a href="/pmbok/9.4"><title>Develop Team — process, Executing / Resource</title>
+<rect class="node-shape" x="955" y="1086" width="110" height="26" rx="6" data-group="executing" data-area="resource" data-family=""/>
+<text x="1010" y="1099" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Develop Team</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:9.5" data-kind="process" data-label="Manage Team">
+<a href="/pmbok/9.5"><title>Manage Team — process, Executing / Resource</title>
+<rect class="node-shape" x="1081" y="1086" width="102" height="26" rx="6" data-group="executing" data-area="resource" data-family=""/>
+<text x="1132" y="1099" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Manage Team</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:10.2" data-kind="process" data-label="Manage Communications">
+<a href="/pmbok/10.2"><title>Manage Communications — process, Executing / Communications</title>
+<rect class="node-shape" x="1211" y="1086" width="182" height="26" rx="6" data-group="executing" data-area="communications" data-family=""/>
+<text x="1302" y="1099" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Manage Communications</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:11.6" data-kind="process" data-label="Implement Risk Responses">
+<a href="/pmbok/11.6"><title>Implement Risk Responses — process, Executing / Risk</title>
+<rect class="node-shape" x="1421" y="1086" width="206" height="26" rx="6" data-group="executing" data-area="risk" data-family=""/>
+<text x="1524" y="1099" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Implement Risk Responses</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:12.2" data-kind="process" data-label="Conduct Procurements">
+<a href="/pmbok/12.2"><title>Conduct Procurements — process, Executing / Procurement</title>
+<rect class="node-shape" x="131" y="1128" width="174" height="26" rx="6" data-group="executing" data-area="procurement" data-family=""/>
+<text x="218" y="1141" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Conduct Procurements</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:13.3" data-kind="process" data-label="Manage Stakeholder Engagement">
+<a href="/pmbok/13.3"><title>Manage Stakeholder Engagement — process, Executing / Stakeholder</title>
+<rect class="node-shape" x="333" y="1128" width="246" height="26" rx="6" data-group="executing" data-area="stakeholder" data-family=""/>
+<text x="456" y="1141" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Manage Stakeholder Engagement</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:4.5" data-kind="process" data-label="Monitor and Control Project Work">
+<a href="/pmbok/4.5"><title>Monitor and Control Project Work — process, Monitoring and Controlling / Integration</title>
+<rect class="node-shape" x="131" y="1464" width="270" height="26" rx="6" data-group="monitoring_controlling" data-area="integration" data-family=""/>
+<text x="266" y="1477" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Monitor and Control Project Work</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:4.6" data-kind="process" data-label="Perform Integrated Change Control">
+<a href="/pmbok/4.6"><title>Perform Integrated Change Control — process, Monitoring and Controlling / Integration</title>
+<rect class="node-shape" x="417" y="1464" width="278" height="26" rx="6" data-group="monitoring_controlling" data-area="integration" data-family=""/>
+<text x="556" y="1477" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Perform Integrated Change Control</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:5.5" data-kind="process" data-label="Validate Scope">
+<a href="/pmbok/5.5"><title>Validate Scope — process, Monitoring and Controlling / Scope</title>
+<rect class="node-shape" x="723" y="1464" width="126" height="26" rx="6" data-group="monitoring_controlling" data-area="scope" data-family=""/>
+<text x="786" y="1477" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Validate Scope</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:5.6" data-kind="process" data-label="Control Scope">
+<a href="/pmbok/5.6"><title>Control Scope — process, Monitoring and Controlling / Scope</title>
+<rect class="node-shape" x="865" y="1464" width="118" height="26" rx="6" data-group="monitoring_controlling" data-area="scope" data-family=""/>
+<text x="924" y="1477" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Control Scope</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:6.6" data-kind="process" data-label="Control Schedule">
+<a href="/pmbok/6.6"><title>Control Schedule — process, Monitoring and Controlling / Schedule</title>
+<rect class="node-shape" x="1011" y="1464" width="142" height="26" rx="6" data-group="monitoring_controlling" data-area="schedule" data-family=""/>
+<text x="1082" y="1477" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Control Schedule</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:7.4" data-kind="process" data-label="Control Costs">
+<a href="/pmbok/7.4"><title>Control Costs — process, Monitoring and Controlling / Cost</title>
+<rect class="node-shape" x="1181" y="1464" width="118" height="26" rx="6" data-group="monitoring_controlling" data-area="cost" data-family=""/>
+<text x="1240" y="1477" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Control Costs</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:8.3" data-kind="process" data-label="Control Quality">
+<a href="/pmbok/8.3"><title>Control Quality — process, Monitoring and Controlling / Quality</title>
+<rect class="node-shape" x="1327" y="1464" width="134" height="26" rx="6" data-group="monitoring_controlling" data-area="quality" data-family=""/>
+<text x="1394" y="1477" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Control Quality</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:9.6" data-kind="process" data-label="Control Resources">
+<a href="/pmbok/9.6"><title>Control Resources — process, Monitoring and Controlling / Resource</title>
+<rect class="node-shape" x="1489" y="1464" width="150" height="26" rx="6" data-group="monitoring_controlling" data-area="resource" data-family=""/>
+<text x="1564" y="1477" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Control Resources</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:10.3" data-kind="process" data-label="Monitor Communications">
+<a href="/pmbok/10.3"><title>Monitor Communications — process, Monitoring and Controlling / Communications</title>
+<rect class="node-shape" x="131" y="1506" width="190" height="26" rx="6" data-group="monitoring_controlling" data-area="communications" data-family=""/>
+<text x="226" y="1519" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Monitor Communications</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:11.7" data-kind="process" data-label="Monitor Risks">
+<a href="/pmbok/11.7"><title>Monitor Risks — process, Monitoring and Controlling / Risk</title>
+<rect class="node-shape" x="349" y="1506" width="118" height="26" rx="6" data-group="monitoring_controlling" data-area="risk" data-family=""/>
+<text x="408" y="1519" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Monitor Risks</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:12.3" data-kind="process" data-label="Control Procurements">
+<a href="/pmbok/12.3"><title>Control Procurements — process, Monitoring and Controlling / Procurement</title>
+<rect class="node-shape" x="495" y="1506" width="174" height="26" rx="6" data-group="monitoring_controlling" data-area="procurement" data-family=""/>
+<text x="582" y="1519" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Control Procurements</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:13.4" data-kind="process" data-label="Monitor Stakeholder Engagement">
+<a href="/pmbok/13.4"><title>Monitor Stakeholder Engagement — process, Monitoring and Controlling / Stakeholder</title>
+<rect class="node-shape" x="697" y="1506" width="254" height="26" rx="6" data-group="monitoring_controlling" data-area="stakeholder" data-family=""/>
+<text x="824" y="1519" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Monitor Stakeholder Engagement</text>
+</a>
+</g>
+<g class="node node-process" data-node="process:4.7" data-kind="process" data-label="Close Project or Phase">
+<a href="/pmbok/4.7"><title>Close Project or Phase — process, Closing / Integration</title>
+<rect class="node-shape" x="131" y="1842" width="190" height="26" rx="6" data-group="closing" data-area="integration" data-family=""/>
+<text x="226" y="1855" text-anchor="middle" dominant-baseline="central"><tspan aria-hidden="true">◻</tspan> Close Project or Phase</text>
+</a>
+</g>
+</svg>

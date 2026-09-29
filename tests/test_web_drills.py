@@ -98,9 +98,11 @@ def test_the_portfolio_drill_nests_its_program_and_lists_program_less_projects(
     _seed(db)
     href = _links(client.get(f"/{Q}").text, "/portfolios")["Content Brands"]
     drill = client.get(f"{href}{Q}").text
-    assert re.search(r'<tr class="program" data-rag="\w+">\s*<td>Video</td>', drill)
-    assert re.search(r'<tr class="project nested" data-rag="\w+">\s*<td>GMS</td>', drill)
-    assert re.search(r'<tr class="project" data-rag="\w+">\s*<td>Solo</td>', drill)
+    assert re.search(r'<tr class="program" data-rag="\w+">\s*<td><a [^>]*>Video</a></td>', drill)
+    assert re.search(
+        r'<tr class="project nested" data-rag="\w+">\s*<td><a [^>]*>GMS</a></td>', drill
+    )
+    assert re.search(r'<tr class="project" data-rag="\w+">\s*<td><a [^>]*>Solo</a></td>', drill)
 
 
 def test_the_program_drill_shows_its_own_rollup_and_its_projects(
@@ -112,8 +114,68 @@ def test_the_program_drill_shows_its_own_rollup_and_its_projects(
     assert drill.status_code == 200, drill.text
     assert "<h1>Video</h1>" in drill.text
     assert (_tile(drill.text, "budget"), _tile(drill.text, "complete")) == ("1,000", "25%")
-    assert re.search(r'<tr class="project" data-rag="\w+">\s*<td>GMS</td>', drill.text)
+    assert re.search(r'<tr class="project" data-rag="\w+">\s*<td><a [^>]*>GMS</a></td>', drill.text)
     assert "Solo" not in drill.text, "a program drill lists only its own projects"
+
+
+def test_drill_preserves_scorecard_lenses_for_descendant_projects(
+    client: TestClient, db: Session
+) -> None:
+    _seed(db)
+    business = db.query(m.Business).filter_by(name="BRC Content Brands").one()
+    objective = m.StrategicObjective(
+        business=business, perspective="internal_operations", name="Ship reliably"
+    )
+    metric = m.ScorecardMetricDefinition(
+        objective=objective,
+        name="Escaped defects",
+        direction="lower_is_better",
+        unit="count",
+        target_value=1,
+        amber_threshold=2,
+        red_threshold=4,
+        cadence_days=30,
+    )
+    no_evidence = m.StrategicObjective(
+        business=business, perspective="people_capability", name="Build capability"
+    )
+    project = db.query(m.Project).filter_by(name="GMS").one()
+    solo = db.query(m.Project).filter_by(name="Solo").one()
+    db.add_all(
+        [
+            m.ScorecardContribution(
+                project=project,
+                objective=objective,
+                contribution_type="direct",
+                rationale="The release improves quality gates.",
+            ),
+            m.ScorecardMetricObservation(
+                metric_definition=metric,
+                observed_on=AS_OF,
+                value=5,
+                evidence_note="Quality review",
+            ),
+            m.ScorecardContribution(
+                project=solo,
+                objective=no_evidence,
+                contribution_type="supporting",
+                rationale="The team learns the new release process.",
+            ),
+        ]
+    )
+    db.commit()
+
+    href = _links(client.get(f"/{Q}").text, "/portfolios")["Content Brands"]
+    drill = client.get(f"{href}{Q}")
+
+    assert drill.status_code == 200
+    assert "Scorecard strategy" in drill.text
+    assert "Internal Operations" in drill.text
+    assert "Ship reliably" in drill.text
+    assert "Escaped defects" in drill.text
+    assert "red" in drill.text
+    assert "Build capability" in drill.text
+    assert "No metric evidence configured" in drill.text
 
 
 def test_an_unknown_portfolio_or_program_id_404s(client: TestClient, db: Session) -> None:

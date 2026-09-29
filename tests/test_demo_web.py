@@ -22,6 +22,7 @@ from driftless.api.app import get_session
 from driftless.db import Base, new_engine, new_session_factory
 from driftless.demo.cli import seed
 from driftless.demo.data import ANCHOR, demo_payload
+from driftless.pmbok import flow_facts
 
 Q = f"?as_of={ANCHOR.isoformat()}"
 
@@ -75,7 +76,15 @@ def _pages(client: TestClient) -> list[tuple[str, str]]:
     def ids(resource: str) -> list[int]:
         return [int(row["id"]) for row in client.get(resource).json()]
 
-    wide = (f"/{Q}", f"/threats{Q}", f"/process-map{Q}", "/org/departments", "/pmbok")
+    wide = (
+        f"/{Q}",
+        f"/scorecard{Q}",
+        "/org/configuration",
+        f"/threats{Q}",
+        f"/process-map{Q}",
+        "/org/departments",
+        "/pmbok",
+    )
     paths = [(path, "") for path in wide]
     paths += [(f"/org/departments/{i}", "") for i in ids("/departments")]
     for kind in ("portfolio", "program"):
@@ -128,6 +137,23 @@ def test_the_dashboard_rag_column_is_not_one_colour(client: TestClient) -> None:
     assert not missing, f"the dashboard only ever reads {sorted(rendered)}, never {missing}"
 
 
+def test_the_demo_scorecard_shows_all_perspectives_and_real_evidence(client: TestClient) -> None:
+    _seed(client)
+    page = client.get(f"/scorecard{Q}")
+
+    assert page.status_code == 200
+    for label in (
+        "Financial",
+        "Customer &amp; Stakeholder",
+        "Internal Operations",
+        "People &amp; Capability",
+    ):
+        assert label in page.text
+    assert "Protect delivery margin" in page.text
+    assert "Escaped defects" in page.text
+    assert "unknown" in page.text
+
+
 def test_the_demo_shows_someone_over_capacity(client: TestClient) -> None:
     """A seed where everybody fits inside their own capacity demonstrates nothing
     about capacity, and the RAG guard above can be satisfied by exactly that --
@@ -144,17 +170,20 @@ def test_the_demo_shows_someone_over_capacity(client: TestClient) -> None:
 
 
 def test_the_hub_shows_value_actually_earned(client: TestClient) -> None:
-    """Every task sat at 0% complete, so EV, CPI and SPI read 0.00 and EAC n/a on every
-    project -- money spent, nothing earned. Task progress is what makes the hub's
-    figures, the S-curve and the schedule's fill lengths mean anything."""
+    """Every task sat at 0% complete, so EV, CPI and SPI read 0.00 and EAC "no data
+    yet" on every project -- money spent, nothing earned. Task progress is what
+    makes the hub's figures, the S-curve and the schedule's fill lengths mean
+    anything."""
     _seed(client)
     hollow = _hollow()
     for path, project in _pages(client):
         if project in ("", hollow) or not path.endswith(f"hub{Q}"):
             continue
-        figures = dict(re.findall(r'id="evm-(\w+)">([\d.]+|n/a)<', client.get(path).text))
-        assert float(figures["ev"]) > 0 and float(figures["spi"]) > 0, f"{project} earned nothing"
-        assert figures["eac"] != "n/a", f"{project} forecasts nothing"
+        figures = dict(re.findall(r'id="evm-(\w+)">([\d,.]+|no data yet)<', client.get(path).text))
+        ev = float(figures["ev"].replace(",", ""))
+        spi = float(figures["spi"].replace(",", ""))
+        assert ev > 0 and spi > 0, f"{project} earned nothing"
+        assert figures["eac"] != "no data yet", f"{project} forecasts nothing"
 
 
 def test_seeded_store_charts_render_and_the_no_data_project_stays_unknown(
@@ -174,3 +203,50 @@ def test_seeded_store_charts_render_and_the_no_data_project_stays_unknown(
         r'<tr class="project" data-rag="unknown">\s*<td[^>]*><a[^>]*>Route Optimization Pilot</a>',
         html,
     ), "the no-data project still renders unknown, never a computed verdict"
+
+
+def test_the_adaptive_project_lights_every_flow_surface(client: TestClient, db: Session) -> None:
+    """The demo ran predictive end to end, so every flow surface demonstrated its EMPTY
+    state. These assert the figures, not their presence, so a seed that stops producing
+    them fails here rather than quietly regressing to it."""
+    _seed(client)
+    project = db.query(m.Project).filter(m.Project.name == "Fleet Modernization").one()
+    assert project.delivery_mode == "hybrid"
+
+    sprints = sorted(project.sprints, key=lambda s: s.start_date)
+    assert [s.completed_points for s in sprints] == [18, 21, 19, 8]
+    closed = [s for s in sprints if s.review_held_on is not None]
+    assert len(closed) >= 2 and all(s.goal for s in sprints)
+    assert all(s.review_notes and s.retrospective_notes for s in closed)
+    assert {s.release.name for s in sprints if s.release} == {"Driver App 2.0"}
+
+    items = db.query(m.BacklogItem).filter(m.BacklogItem.project_id == project.id).all()
+    assert {i.status for i in items} == set(m.BACKLOG_ITEM_STATUSES)
+    impediments = db.query(m.Impediment).filter(m.Impediment.project_id == project.id).all()
+    assert [i.status for i in impediments].count("open") == 1
+    assert any(i.resolved_on is not None for i in impediments)
+    assert db.query(m.DefinitionOfDoneItem).count() >= 2
+    assert {r.role for r in db.query(m.ProjectRole).all()} == {"product_owner", "scrum_master"}
+
+    snap = flow_facts.flow_snapshot(db, project, ANCHOR)
+    assert snap.wip == 2, "two cards are genuinely in progress"
+    assert snap.cycle_time.count == 3 and snap.lead_time.count == 3
+    # The seed dates every card in effective time, so the durations are the seeded
+    # story rather than an artefact of when the rows were written: a card finished
+    # inside the trailing week keeps throughput off zero, and three genuinely
+    # different started-to-done spans keep the medians off zero at a FIXED anchor in
+    # the past -- which is what the ``date.min`` fallback used to make impossible.
+    assert snap.throughput == 1, "the carried-over fuel log landed inside the week"
+    assert snap.cycle_time.median == 7.0 and snap.cycle_time.p85 == 22.0
+    assert snap.lead_time.median == 14.0 and snap.lead_time.p85 == 36.0
+    assert snap.active_sprint is not None
+    assert snap.active_sprint.start_date <= ANCHOR <= snap.active_sprint.end_date
+    assert snap.burndown[-1].remaining_points == 34.0
+    assert (snap.burnup[-1].scope_points, snap.burnup[-1].completed_points) == (50.0, 16.0)
+    assert (snap.cumulative_flow[-1].done, snap.cumulative_flow[-1].in_progress) == (3, 2)
+
+    band = snap.forecast
+    assert band is not None and band.sprints_used == 3
+    assert band.remaining_points == 21.0 and band.likely is not None and band.likely > ANCHOR
+    page = client.get(f"/projects/{project.id}/flow{Q}").text
+    assert "No completed sprint yet" not in page and "the likely completion date is" in page

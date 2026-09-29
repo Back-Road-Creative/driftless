@@ -22,6 +22,9 @@ def leaf(
     percent: str = "0",
     risks: int = 0,
     rag: str = "green",
+    wip: int | None = None,
+    throughput: int | None = None,
+    cycle: float | None = None,
 ) -> Node:
     return Node(
         level="project",
@@ -32,6 +35,9 @@ def leaf(
             percent_complete=Decimal(percent),
             open_high_risks=risks,
             rag=rag,  # type: ignore[arg-type]
+            wip=wip,
+            throughput_per_week=throughput,
+            median_cycle_days=cycle,
         ),
     )
 
@@ -195,6 +201,88 @@ def test_on_track_share_mixed_returns_the_exact_green_fraction() -> None:
     share = on_track_share(_projects("green", "red", "amber"))
     assert share == Decimal(100) / 3
     assert f"{share:.0f}%" == "33%"
+
+
+def test_a_leaf_with_no_agile_evidence_reports_flow_as_none() -> None:
+    """A predictive project's leaf carries no flow figures at all — n/a, not 0."""
+    kpis = roll_up(leaf("predictive", "100"), AS_OF)
+    assert (kpis.wip, kpis.throughput_per_week, kpis.median_cycle_days) == (None, None, None)
+
+
+def test_a_leaf_passes_its_own_flow_figures_through_unchanged() -> None:
+    kpis = roll_up(leaf("agile", "100", wip=3, throughput=5, cycle=2.5), AS_OF)
+    assert (kpis.wip, kpis.throughput_per_week, kpis.median_cycle_days) == (3, 5, 2.5)
+
+
+def test_wip_and_throughput_sum_across_children() -> None:
+    portfolio = Node(
+        level="portfolio",
+        name="brc",
+        children=(
+            leaf("a", "1", wip=2, throughput=3),
+            leaf("b", "1", wip=4, throughput=1),
+        ),
+    )
+    kpis = roll_up(portfolio, AS_OF)
+    assert (kpis.wip, kpis.throughput_per_week) == (6, 4)
+
+
+def test_wip_sum_skips_children_with_no_agile_evidence_rather_than_zeroing_them() -> None:
+    """A mix of agile and predictive projects still sums the agile ones — the
+    predictive sibling contributes nothing, but does not turn the sum into 0."""
+    portfolio = Node(
+        level="portfolio",
+        name="brc",
+        children=(leaf("agile", "1", wip=5, throughput=2), leaf("predictive", "1")),
+    )
+    kpis = roll_up(portfolio, AS_OF)
+    assert (kpis.wip, kpis.throughput_per_week) == (5, 2)
+
+
+def test_flow_is_none_when_no_child_has_any_agile_evidence() -> None:
+    portfolio = Node(level="portfolio", name="brc", children=(leaf("a", "1"), leaf("b", "1")))
+    kpis = roll_up(portfolio, AS_OF)
+    assert (kpis.wip, kpis.throughput_per_week, kpis.median_cycle_days) == (None, None, None)
+
+
+def test_median_cycle_days_is_a_throughput_weighted_mean() -> None:
+    """Two projects, one finishing four times as much work per week as the
+    other: its cycle time counts four times as heavily in the rollup mean."""
+    portfolio = Node(
+        level="portfolio",
+        name="brc",
+        children=(
+            leaf("fast", "1", wip=1, throughput=8, cycle=1.0),
+            leaf("slow", "1", wip=1, throughput=2, cycle=5.0),
+        ),
+    )
+    kpis = roll_up(portfolio, AS_OF)
+    # (8*1.0 + 2*5.0) / (8+2) = 18/10 = 1.8
+    assert kpis.median_cycle_days == pytest.approx(1.8)
+
+
+def test_median_cycle_days_excludes_a_child_with_zero_throughput_this_period() -> None:
+    """A child that reports a cycle time but zero throughput this window
+    contributes no weight — it cannot pull the mean toward its own figure."""
+    portfolio = Node(
+        level="portfolio",
+        name="brc",
+        children=(
+            leaf("idle", "1", wip=1, throughput=0, cycle=99.0),
+            leaf("active", "1", wip=1, throughput=3, cycle=2.0),
+        ),
+    )
+    kpis = roll_up(portfolio, AS_OF)
+    assert kpis.median_cycle_days == pytest.approx(2.0)
+
+
+def test_leaf_metrics_reject_negative_flow_fields() -> None:
+    with pytest.raises(ValueError, match="wip and throughput"):
+        leaf("x", "1", wip=-1)
+    with pytest.raises(ValueError, match="wip and throughput"):
+        leaf("x", "1", throughput=-1)
+    with pytest.raises(ValueError, match="median_cycle_days"):
+        leaf("x", "1", cycle=-1.0)
 
 
 def test_rollup_never_reads_the_wall_clock() -> None:

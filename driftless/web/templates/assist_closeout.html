@@ -1,0 +1,76 @@
+{# Project closeout: deliverable acceptance (Milestone status), the lessons learned
+   register (LessonLearned rows) and a final-report summary drawn from the same
+   figures the project hub already computes — nothing here is a second calculation. #}
+{% extends "base.html" %}
+{% block title %}Closeout — {{ project.name }}{% endblock %}
+{% block content %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{% import "_scroll.html" as scroll %}
+{% import "_assist.html" as assist %}
+{{ breadcrumbs.trail(project, "Closeout", as_of) }}
+<h1>Closeout — {{ project.name }}</h1>
+<p><em>As of {{ as_of }}</em> ·
+   <a href="/projects/{{ project.id }}/hub?as_of={{ as_of }}">Project hub</a></p>
+
+{{ assist.summary_strip([
+  {"label": "Milestones met", "value": milestones_met ~ " of " ~ milestones_total},
+  {"label": "Lessons learned", "value": lessons|length},
+  {"label": "Budget at completion", "value": final_report.bac},
+  {"label": "Variance at completion", "value": final_report.vac | or_no_data},
+]) }}
+
+{% call assist.section("Deliverable acceptance") %}
+<p>{{ milestones_met }} of {{ milestones_total }} milestone{{ milestones_total | s }} met
+  {%- if all_milestones_met %} — every milestone due so far has been met.
+  {%- else %}.{% endif %}</p>
+{% if milestones %}
+{% call scroll.wide(project.name ~ " milestones") %}
+<table>
+<caption class="sr-only">Milestones for {{ project.name }}</caption>
+<tr><th scope="col">Milestone</th><th scope="col">Target date</th><th scope="col">Status</th></tr>
+{% for m in milestones %}
+<tr><th scope="row">{{ m.name }}</th><td>{{ m.target_date }}</td><td>{{ m.status }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{{ assist.empty("No milestones due yet.") }}
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Lessons learned") %}
+{% if lessons %}
+{% call scroll.wide(project.name ~ " lessons learned") %}
+<table>
+<caption class="sr-only">Lessons learned for {{ project.name }}</caption>
+<tr><th scope="col">Raised</th><th scope="col">Category</th><th scope="col">What happened</th>
+  <th scope="col">What to do next time</th><th scope="col">Raised by</th></tr>
+{% for lesson in lessons %}
+<tr><th scope="row">{{ lesson.raised_on }}</th><td>{{ lesson.category }}</td>
+  <td>{{ lesson.what_happened }}</td><td>{{ lesson.what_to_do_next_time }}</td>
+  <td>{{ lesson.actor }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{{ assist.empty("No lessons raised yet.") }}
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Final report summary") %}
+<dl class="kv">
+<div><dt>Budget at completion</dt><dd>{{ final_report.bac }}</dd></div>
+<div><dt>Estimate at completion</dt><dd>{{ final_report.eac | or_no_data }}</dd></div>
+<div><dt>Variance at completion</dt><dd>{{ final_report.vac | or_no_data }}</dd></div>
+</dl>
+<p>The full narrative sits in the project's assessment report; this is the same figures,
+   never a second computation of them.</p>
+{% endcall %}
+
+{% call assist.section("Where this comes from", collapsed=True) %}
+<p>PMBOK-6 process <strong>{{ process }}</strong> (Close Project or Phase) · as of
+   <strong>{{ as_of }}</strong>.</p>
+{% endcall %}
+
+<p><a href="/projects/{{ project.id }}/hub?as_of={{ as_of }}">&larr; Back to {{ project.name }} hub</a></p>
+{% endblock %}

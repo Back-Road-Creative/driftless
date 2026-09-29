@@ -7,22 +7,39 @@
 {% block title %}{{ total.name }} — driftless{% endblock %}
 {% block content %}
 {% import "_empty.html" as empty %}
+{% import "_tiles.html" as tiles %}
 {% import "_scroll.html" as scroll %}
 <h1>{{ total.name }}</h1>
-<p>As of <strong>{{ as_of }}</strong> — every figure computed by <code>driftless.calc</code>.</p>
+<p>As of <strong>{{ as_of }}</strong> — every figure is computed from the records, never typed.</p>
 <section class="tiles">
-<div class="tile"><b>Budget</b><span id="kpi-budget" class="value">{{ total.budget }}</span></div>
-<div class="tile"><b>Actual</b><span id="kpi-actual" class="value">{{ total.actual }}</span></div>
-<div class="tile"><b>Complete</b><span id="kpi-complete" class="value">{{ total.complete }}</span></div>
-<div class="tile"><b>On track</b><span id="kpi-on-track" class="value">{{ on_track }}</span></div>
-<div class="tile"><b>Open high risks</b><span id="kpi-risks" class="value">{{ total.risks }}</span></div>
+{{ tiles.tile("Budget", total.budget, id="kpi-budget") }}
+{{ tiles.tile("Actual", total.actual, id="kpi-actual") }}
+{{ tiles.tile("Complete", total.complete, id="kpi-complete") }}
+{{ tiles.tile("On track", on_track, id="kpi-on-track") }}
+{{ tiles.tile("Open high risks", total.risks, id="kpi-risks") }}
+{{ tiles.tile("Work in progress", flow.wip, id="kpi-wip") }}
+{{ tiles.tile("Throughput / wk", flow.throughput_per_week, id="kpi-throughput") }}
+{{ tiles.tile("Median cycle time (days)", flow.median_cycle_days, id="kpi-cycle") }}
 </section>
+<h2>Scorecard strategy</h2>
+<p>Strategic evidence for the projects under this {{ kind }}; financial KPIs above do not replace these lenses.</p>
+{% for lens in scorecard_rows %}
+<section class="card scorecard-lens"><h3>{{ lens.label }}</h3>
+{% if lens.objectives %}
+{% for objective in lens.objectives %}
+<p><span class="badge {{ objective.status }}">{{ objective.status }}</span> <strong>{{ objective.objective }}</strong></p>
+{% if objective.metrics %}<ul>{% for metric in objective.metrics %}<li>{{ metric.name }}: <span class="{{ metric.status }}">{{ metric.status }}</span> ({{ metric.coverage }})</li>{% endfor %}</ul>{% else %}<p><em>No metric evidence configured — unknown.</em></p>{% endif %}
+{% if objective.projects %}<p><small>Contributing projects: {{ objective.projects | join(", ") }}</small></p>{% endif %}
+{% endfor %}
+{% else %}<p><em>No linked objective — unknown.</em></p>{% endif %}
+</section>
+{% endfor %}
 {% if rows %}{% call scroll.wide(total.name ~ " children") %}<table class="rollup">
 <caption class="sr-only">What sits under {{ total.name }} as of {{ as_of }}, with each RAG status and figures</caption>
 <tr><th scope="col">{{ "Program / project" if kind == "portfolio" else "Project" }}</th><th scope="col">RAG</th><th scope="col">Budget</th><th scope="col">Actual</th><th scope="col">Complete</th><th scope="col">Open high risks</th></tr>
 {% for kid in rows %}
 <tr class="{{ kid.kind }}{% if kid.nested %} nested{% endif %}" data-rag="{{ kid.rag }}">
-<td>{{ kid.name }}</td><td class="rag {{ kid.rag }}">{{ "no data" if kid.rag == "unknown" else kid.rag }}</td><td>{{ kid.budget }}</td><td>{{ kid.actual }}</td><td>{{ kid.complete }}</td><td>{{ kid.risks }}</td></tr>
+<td>{% if kid.get('id') %}<a href="{{ '/programs/' ~ kid.id ~ '/rollup' if kid.kind == 'program' else '/projects/' ~ kid.id ~ '/hub' }}?as_of={{ as_of }}">{{ kid.name }}</a>{% else %}{{ kid.name }}{% endif %}</td><td class="rag {{ kid.rag }}">{{ "no data" if kid.rag == "unknown" else kid.rag }}</td><td>{{ kid.budget }}</td><td>{{ kid.actual }}</td><td>{{ kid.complete }}</td><td>{{ kid.risks }}</td></tr>
 {% endfor %}
 </table>{% endcall %}
 {% else %}

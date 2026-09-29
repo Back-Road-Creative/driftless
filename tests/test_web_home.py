@@ -23,8 +23,9 @@ from driftless.pmbok.rollup import business_completeness, business_process_cells
 from driftless.report import gather
 from driftless.report.documents import business_rollup
 from driftless.web import create_router, csrf
+from driftless.web.as_of import as_of_dependency
 from driftless.web.home import _burn_series
-from test_web_a11y import _TEMPLATES, _ratio, _token_sets
+from test_web_a11y import _STATIC, _ratio, _token_sets
 
 AS_OF = date(2026, 3, 31)
 JAN = date(2026, 1, 31)
@@ -131,13 +132,48 @@ def test_the_default_as_of_is_resolved_once_per_request(db: Session) -> None:
         assert JUN.isoformat() in client.get("/").text
 
 
+def test_as_of_dependency_prefers_a_posted_value_over_the_default() -> None:
+    """``driftless.web.as_of.as_of_dependency`` is the resolver every
+    ``create_*_router`` factory now shares instead of redefining it."""
+    resolve_as_of = as_of_dependency(AS_OF)
+    assert resolve_as_of(JAN) == JAN
+    assert resolve_as_of(None) == AS_OF
+
+
+def test_as_of_dependency_invokes_a_callable_default_only_when_none_is_posted() -> None:
+    calls: list[date] = []
+
+    def clock() -> date:
+        calls.append(AS_OF)
+        return AS_OF
+
+    resolve_as_of = as_of_dependency(clock)
+    assert resolve_as_of(JAN) == JAN
+    assert calls == [], "a posted value must never touch the default"
+    assert resolve_as_of(None) == AS_OF
+    assert calls == [AS_OF]
+
+
+def test_as_of_dependency_keeps_the_as_of_query_param_contract() -> None:
+    """Wired through ``Depends`` exactly as ``create_router`` wires it: the sub-dependency's
+    own parameter is what FastAPI reads, so the shared resolver cannot rename or drop the
+    ``?as_of=`` query parameter every page address already carries."""
+    app = FastAPI()
+    app.include_router(create_router(AS_OF))
+    param = next(
+        p for p in app.openapi()["paths"]["/"]["get"]["parameters"] if p["name"] == "as_of"
+    )
+    assert param["in"] == "query"
+    assert param["required"] is False
+
+
 def test_an_empty_store_renders_the_onboarding_call_to_action(client: TestClient) -> None:
     page = client.get("/")
     assert page.status_code == 200, page.text
     assert "no portfolios" in page.text.lower()
-    assert (_tile(page.text, "budget"), _tile(page.text, "on-track")) == ("0", "n/a")
+    assert (_tile(page.text, "budget"), _tile(page.text, "on-track")) == ("0", "no data yet")
     assert 'id="onboarding"' in page.text and "wizard" in page.text and "<table" not in page.text
-    assert (_tile(page.text, "threats"), _tile(page.text, "process")) == ("0", "n/a")
+    assert (_tile(page.text, "threats"), _tile(page.text, "process")) == ("0", "no data yet")
     assert "Nothing needs attention" in page.text, "the empty rail states it plainly"
     assert 'class="scurve"' not in page.text and 'class="treemap"' not in page.text, (
         "an empty store has nothing to chart -- just the CTA"
@@ -169,14 +205,20 @@ def test_the_home_renders_the_business_curve_and_the_treemap(
     # each treemap link keyboard-reachable (tabindex — engines do not all focus an
     # SVG <a>) and opening with a <title> naming the portfolio, its BAC and its RAG
     # as a word, so the fill hue is never the verdict's only carrier (F-G6, F-G9).
+    # The same words ride on aria-label: a focusable SVG <a> is announced from
+    # that, not from a <title> child, in the readers that reach the treemap first
+    # (the published demo's site contract checks every tabindex="0" element for it).
     found = re.findall(
-        r'<a href="/portfolios/(\d+)/rollup" tabindex="0"><title>([^<]+)</title>', page
+        r'<a href="/portfolios/(\d+)/rollup" tabindex="0" aria-label="([^"]+)"><title>([^<]+)</title>',
+        page,
     )
     rect = re.search(r'<rect class="tm (\w+)"', page)
     assert rect is not None, "the treemap draws a rectangle"
     word = "no data" if rect.group(1) == "unknown" else rect.group(1)
-    assert found == [(str(pf.id), f"Content Brands — 1,000 — {word}")], (
-        "each treemap link opens with its portfolio, BAC and RAG spelled out"
+    label = f"Content Brands — 1,000 — {word}"
+    assert found == [(str(pf.id), label, label)], (
+        "each treemap link opens with its portfolio, BAC and RAG spelled out, on the "
+        "aria-label and the <title> alike"
     )
 
 
@@ -234,12 +276,41 @@ def test_the_two_scurve_end_labels_never_print_on_top_of_each_other(
     assert [text for _, text in labels] == ["51,000", "54,260"], "both endpoints are labelled"
     height, (low, high) = _px("text.curve-label", "font-size"), sorted(y for y, _ in labels)
     assert high - low >= height, f"labels {high - low:.2f}u apart, under a {height:.1f}px line"
-    assert low >= height * 0.8 and high <= 150 - height * 0.25, "both glyph boxes stay in view"
+    assert low >= height * 0.8 and high <= 140 - height * 0.25, "both glyph boxes stay in view"
     assert min(labels)[1] == "54,260", "the higher figure keeps the higher label"
     tinted = re.search(r'<g class="(?:green|amber|red|unknown)">(.*?)</g>', page, re.S)
     assert tinted is not None and "54,260" in tinted.group(1), (
         "the actual end label is tinted by its own series, never left in --ink"
     )
+
+
+def test_scurve_labels_carry_a_halo_and_the_chart_caps_its_width() -> None:
+    """Both series meet the right edge exactly where their figures print, so each
+    label is haloed in the page colour; and a chart whose text scales with its
+    viewBox caps its width so a full-column S-curve's ticks stay body-sized."""
+    assert _declared("text.curve-label", "paint-order") == "stroke"
+    assert _declared("text.curve-label", "stroke") == "var(--background)"
+    assert _declared(".scurve", "max-width") is not None
+
+
+def test_scurve_end_labels_stack_on_an_exact_tie_and_never_sink_into_the_ticks() -> None:
+    """Planned and actual finishing on the same figure is the tightest case: both
+    labels want one baseline. The macro is a pure function of its figures, so it is
+    driven directly -- a full line height between the two, and neither below the
+    plot's baseline where the x ticks print."""
+    from driftless.web.templating import TEMPLATES
+
+    s_curve = TEMPLATES.env.get_template("_chart.html").module.s_curve
+    height = _px("text.curve-label", "font-size")
+    for planned, actual in ((1000.0, 1000.0), (1000.0, 995.0), (990.0, 1000.0)):
+        html = s_curve(
+            ["2026-01-01", "2026-02-01"],
+            [("Planned", [0.0, planned], False), ("Actual", [0.0, actual], True)],
+            "tie",
+        )
+        low, high = sorted(y for y, _ in _curve_labels(html))
+        assert high - low >= height - 1e-6, f"{planned} vs {actual}: {high - low:.2f}u apart"
+        assert high <= 140 - 26 - 2 and low >= height * 0.8, "both inside the plot band"
 
 
 def test_the_dashboard_says_why_the_scurve_is_missing(client: TestClient, db: Session) -> None:
@@ -266,10 +337,10 @@ _RULE = re.compile(r"([^{}]+)\{([^{}]*)\}")
 
 
 def _home_css() -> str:
-    """home.html's own stylesheet, Jinja comments stripped — the rules a browser sees."""
-    block = re.search(r"<style>(.*?)</style>", (_TEMPLATES / "home.html").read_text(), re.S)
-    assert block is not None, "home.html carries an inline <style> block"
-    return re.sub(r"\{#.*?#\}", "", block.group(1), flags=re.S)
+    """The shared stylesheet home.html's charts and treemap now draw from (moved out of
+    a page-local <style> block so every page linking driftless.css sees the same rules),
+    CSS comments stripped — the rules a browser sees."""
+    return re.sub(r"/\*.*?\*/", "", (_STATIC / "driftless.css").read_text(), flags=re.S)
 
 
 def _declared(selector: str, prop: str) -> str | None:
@@ -607,9 +678,13 @@ def test_the_kpi_strip_and_rail_render_the_engine_figures_and_feed_verbatim(
     assert _rail_ids(page) == [i.id for i in items], "rail order is the feed's, verbatim"
     threat = next(i for i in items if i.kind == "threat")
     assert f'name="subject_ref" value="{threat.id.removeprefix("threat:")}"' in page
-    assert f'href="/projects/{threat.project_id}/status"' in page, "no_status links the fix"
+    assert re.search(rf'href="/projects/{threat.project_id}/status(\?as_of=[0-9-]+)?"', page), (
+        "no_status links the fix"
+    )
     thin = next(i for i in items if i.kind == "low_completeness")
-    assert f'href="/projects/{thin.project_id}/wizard"' in page, "low_completeness links it"
+    assert re.search(rf'href="/projects/{thin.project_id}/wizard(\?as_of=[0-9-]+)?"', page), (
+        "low_completeness links it"
+    )
     assert 'href="/process-map"' in page, "the rail links the whole-business map"
 
 
@@ -667,7 +742,7 @@ def test_the_home_marks_a_project_with_no_status_as_never(client: TestClient, db
 
 
 def test_the_rail_shows_a_trend_delta(client: TestClient, db: Session) -> None:
-    """Mirrors the threat board's week-over-week trend (pages._trend_delta) on the
+    """Mirrors the threat board's week-over-week trend (views._trend_delta) on the
     attention rail: the same worked example (a spend inside the last week widens
     the seeded cost overspend, CPI-derived score rising 3.75 -> 4.80), the same
     badge idiom (arrow next to the signed amount, never colour/symbol alone) and

@@ -39,7 +39,7 @@ from driftless.api.app import get_session
 from driftless.assess import engine as assess
 from driftless.demo.cli import seed
 from driftless.demo.data import ANCHOR, demo_payload
-from driftless.web import pages
+from driftless.web import views
 from driftless.web.errors import PageRoute
 
 #: The product's bound: the worst thing wrong is at most this many clicks from ``/``.
@@ -151,7 +151,7 @@ def test_the_worst_threat_and_its_actions_are_inside_the_click_budget(
     """
     _seed(client)
     worst = assess.top_threats(db, ANCHOR)[0]
-    card = pages.threat_cards(db, ANCHOR)[0]
+    card = views.threat_cards(db, ANCHOR)[0]
     assert card["id"] == worst.id, "the board's first card is no longer the worst threat"
     detail = [worst.description, 'action="/sign-off"', f'value="{worst.id}"']
     detail += [str(action["label"]) for action in card["actions"]]

@@ -48,13 +48,15 @@ from driftless.pmbok import catalog, rollup
 from driftless.pmbok import state as st
 from driftless.report import gather
 from driftless.report.documents import process_map, scope_baseline
-from driftless.web import create_router, pages
+from driftless.web import create_router, views
+from driftless.web.process_map import create_process_map_router
 from driftless.web.project_hub import create_project_hub_router
+from driftless.web.wizard_pages import create_wizard_router
 
-# ``driftless.api.app`` and ``driftless.web.pages`` import each other (the app
-# mounts the pages router; the pages router uses the app's ``fetch``/``insert``
+# ``driftless.api.app`` and the web route modules import each other (the app
+# mounts their routers; they use the app's ``fetch``/``insert``
 # helpers). Importing ``app`` first lets that cycle resolve the way every other
-# web test already relies on; importing ``pages`` directly first would hit a
+# web test already relies on; importing one of them directly first would hit a
 # partially-initialized module.
 
 AS_OF = date(2026, 6, 30)
@@ -91,20 +93,61 @@ N_PEOPLE = 4  # cycled across each project's tasks -- see the Resource N+1 note 
 # failed as a mystery breach. Downward drift is caught the same way — the report
 # path's two counts fell nine and nineteen on this master, and said so.
 MEASURED: dict[str, int] = {
-    "portfolio_nodes": 24,
-    "top_threats": 19,
-    "business_process_cells": 17,
-    "threat_cards": 54,
-    "threat_cards_scoped": 58,
-    "attention_feed": 37,
-    "home_render": 130,
-    "process_map_page": 17,
-    "project_hub_page": 86,
+    # The seven bumped below all run the risk evaluator, which now reads
+    # RiskResponse (risk-response planning) as well as Risk: +1 for a store-wide
+    # walk, where ``adapters.prefetched`` batches the extra read across every
+    # project in the scope; the three that also run ``live_threats`` twice
+    # OUTSIDE that scope for a week-over-week delta (threat_cards_scoped,
+    # project_hub_page) or read it inside AND out (threat_cards) pay more —
+    # each unscoped evaluate() call re-reads Risk and RiskResponse fresh.
+    #
+    # Same shape again for TaskDependency: schedule.evaluate() now reads it
+    # too, batched inside ``adapters.prefetched`` -- +1 (or +2, unscoped x2).
+    "portfolio_nodes": 26,
+    "top_threats": 21,
+    # The seven bumped again here all walk every resolver for completeness/state,
+    # which now also reads the scope records: ``requirements_documentation``
+    # checks filed ``Requirement`` rows before falling back to prose,
+    # ``requirements_traceability_matrix``/``work_breakdown_structure`` read
+    # ``Requirement``/``Deliverable``, and ``verified_deliverables``/
+    # ``accepted_deliverables`` join through ``AcceptanceRecord`` — each a new
+    # batched read inside ``adapters.prefetched``, not a per-project one.
+    #
+    # The same six bumped again here, +5 apiece: the resolver walk now also reads
+    # the resource records. ``resource_management_plan``/``team_charter``/
+    # ``team_performance_assessments`` check filed ``ResourceType``/
+    # ``ResponsibilityAssignment``/``TeamAssessment`` rows before falling back to
+    # prose, and ``resource_breakdown_structure``/``physical_resource_assignments``
+    # are new resolvers reading ``ResourceBreakdown`` and a joined
+    # ``Acquisition``/``ResourceType`` query — five new batched reads inside
+    # ``adapters.prefetched``, not a per-project one. ``home_render`` pays it three
+    # times over (the feed renders twice plus its own ``business_process_cells``
+    # call), so its own bump is +15.
+    #
+    # Every store-wide walk moved +1 once more when ``lessons_learned_register``
+    # started resolving off ``LessonLearned`` (a batched query of its own rather
+    # than sharing ``NarrativeArtifact``'s); ``project_hub_page`` +4 and
+    # ``home_render`` +3 because the hub's flow tile (``pmbok.flow_facts``) and
+    # the risk-reserve line (``pmbok.risk_facts``) each read one batched row set
+    # more. Honest batched reads inside ``adapters.prefetched``, never per-project.
+    # Every store-wide walk moved +1 once more: ``project_calendars`` now resolves
+    # off ``ProjectCalendar``, and ``schedule_data``/the network-diagram resolver
+    # read the ``TaskDependency`` join through one honest batched query each (both
+    # go through ``mapping._grouped``, not a per-project one). ``home_render`` pays
+    # it three times over (the feed renders twice plus its own
+    # ``business_process_cells`` call), so its own bump is +3.
+    "business_process_cells": 27,
+    "threat_cards": 60,
+    "threat_cards_scoped": 66,
+    "attention_feed": 49,
+    "home_render": 166,
+    "process_map_page": 27,
+    "project_hub_page": 110,
     "wizard_page": 3,
     "resource_evaluator": 19,
-    "process_map_document": 17,
+    "process_map_document": 27,
     "scope_baseline_document": 7,
-    "wizard_status_cli": 17,
+    "wizard_status_cli": 27,
 }
 
 
@@ -133,7 +176,7 @@ MAX_TOP_THREATS_STMTS = MEASURED["top_threats"] + 2
 # the same measured count.
 MAX_BUSINESS_MAP_STMTS = MEASURED["business_process_cells"] + 2
 
-# ``pages.threat_cards`` ran its OWN ``select(Project)`` with no eager options
+# ``views.threat_cards`` ran its OWN ``select(Project)`` with no eager options
 # before calling ``assess.assess_project`` per project — bypassing the same
 # ``adapters.eager_project()`` load ``top_threats`` uses for the same walk, so
 # the statement count scaled with tasks-per-project again (measured on this
@@ -185,7 +228,7 @@ FEW_PROJECTS, MANY_PROJECTS = 2, 12
 #
 # It was 55 and it did NOT catch it. Both halves of that claim are now measured
 # rather than argued, by deleting ``.options(*adapters.eager_project())`` from
-# ``pages.threat_cards``'s query — precisely "the baseline hierarchy loading
+# ``views.threat_cards``'s query — precisely "the baseline hierarchy loading
 # lazily again" — and re-running this file:
 #
 #   whole-store ``threat_cards``   54 -> 66  vs 56  fails, correctly
@@ -247,7 +290,7 @@ MAX_PROCESS_MAP_STMTS = MEASURED["process_map_page"] + 2
 # ability to FAIL is now measured, the way its siblings above are. Deleting the
 # ``with state.prefetched(db, [project])`` scope from ``project_hub`` — exactly
 # the "re-walking outside the prefetch cache" this names, and the shape the 218
-# above was measured on — takes this route 86 -> 476, re-priced on this master.
+# above was measured on — takes this route 87 -> 477, re-priced on this master.
 # So the defect costs 390 statements today against the 144 it cost at 218 -> 74,
 # and this ceiling catches it with 389 to spare: a guard, not decoration. It keeps
 # the +1 its siblings' +2 replaces — a ONE-project page's defects are priced per
@@ -260,8 +303,8 @@ MAX_PROCESS_MAP_STMTS = MEASURED["process_map_page"] + 2
 # zeroes its answers (this project's completeness 0.35 -> 0.0) — and nothing in
 # the suite fails on that, which is a gap on the correctness axis, not this
 # one's. Re-check this ceiling by DELETING the scope, never by emptying it — done
-# again for the task register's read: clean 86 recorded below, scope deleted 476.
-# Master's literal 86 had reached its own ceiling exactly — the drift this catches.
+# again for the task register's read: clean 87 recorded below, scope deleted 477.
+# Master's literal 87 had reached its own ceiling exactly — the drift this catches.
 MAX_PROJECT_HUB_STMTS = MEASURED["project_hub_page"] + 1
 MAX_WIZARD_STMTS = MEASURED["wizard_page"] + 2
 
@@ -420,8 +463,13 @@ def project_pages_client(tmp_path: Path) -> Iterator[tuple[Engine, TestClient, i
         project_id = db.scalars(select(m.Project.id).order_by(m.Project.name).limit(1)).one()
     with factory() as db:
         app = FastAPI()
-        app.include_router(pages.create_pages_router(AS_OF))
+        # One include per router serving a counted route. `pages.py` is being carved
+        # into per-controller modules, so a route this fixture counts leaves its module
+        # with no signal here but a 404, which reads as a render failure, not a missing
+        # mount.
+        app.include_router(create_process_map_router(AS_OF))
         app.include_router(create_project_hub_router(AS_OF))
+        app.include_router(create_wizard_router(AS_OF))
         app.dependency_overrides[get_session] = lambda: db
         with TestClient(app) as client:
             yield engine, client, project_id
@@ -763,7 +811,7 @@ def test_threat_cards_stays_under_the_statement_ceiling(
     seeded: tuple[Engine, sessionmaker[Session]],
 ) -> None:
     engine, factory = seeded
-    stmts = _count(engine, factory, lambda db: pages.threat_cards(db, AS_OF))
+    stmts = _count(engine, factory, lambda db: views.threat_cards(db, AS_OF))
     assert stmts <= MAX_THREAT_CARDS_STMTS, (
         f"threat_cards ran {stmts} statements (ceiling {MAX_THREAT_CARDS_STMTS}): "
         "its own project query is loading the baseline hierarchy lazily again"
@@ -779,7 +827,7 @@ def _scoped_rows_loaded(projects: int) -> int:
     with factory() as db:
         project_id = db.scalars(select(m.Project.id).order_by(m.Project.name).limit(1)).one()
     return _count_rows_loaded(
-        factory, lambda db: pages.threat_cards(db, AS_OF, project_id=project_id)
+        factory, lambda db: views.threat_cards(db, AS_OF, project_id=project_id)
     )
 
 
@@ -814,7 +862,7 @@ def test_threat_cards_scoped_stays_under_the_statement_ceiling(
     engine, factory = seeded
     with factory() as db:
         project_id = db.scalars(select(m.Project.id).order_by(m.Project.name).limit(1)).one()
-    stmts = _count(engine, factory, lambda db: pages.threat_cards(db, AS_OF, project_id=project_id))
+    stmts = _count(engine, factory, lambda db: views.threat_cards(db, AS_OF, project_id=project_id))
     assert stmts <= MAX_THREAT_CARDS_SCOPED_STMTS, (
         f"threat_cards(project_id=...) ran {stmts} statements "
         f"(ceiling {MAX_THREAT_CARDS_SCOPED_STMTS}): its one project's walk is "
@@ -831,8 +879,8 @@ def test_threat_cards_scoped_matches_the_whole_store_filtered(
     _, factory = seeded
     with factory() as db:
         project_id = db.scalars(select(m.Project.id).order_by(m.Project.name).limit(1)).one()
-        board = pages.threat_cards(db, AS_OF)
-        scoped = pages.threat_cards(db, AS_OF, project_id=project_id)
+        board = views.threat_cards(db, AS_OF)
+        scoped = views.threat_cards(db, AS_OF, project_id=project_id)
     assert scoped == [c for c in board if c["project_id"] == project_id]
     assert scoped, "the seed's overspend gives this project at least one live threat"
 

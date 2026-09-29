@@ -1,0 +1,181 @@
+{# The earned-value calculator: every figure comes straight off
+   adapters.project_snapshot, the same call the project hub and the cost
+   assessment make — nothing on this page is a second computation. #}
+{% extends "base.html" %}
+{% block title %}Earned value calculator — {{ project.name }}{% endblock %}
+{% block content %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{% import "_scroll.html" as scroll %}
+{% import "_assist.html" as assist %}
+{{ breadcrumbs.trail(project, "Earned value calculator", as_of) }}
+<h1>Earned value calculator — {{ project.name }}</h1>
+<p><em>As of {{ as_of }}</em> ·
+   <a href="/projects/{{ project.id }}/hub?as_of={{ as_of }}">Project hub</a></p>
+
+{{ assist.summary_strip([
+  {"label": "Budget at completion", "value": snapshot.bac | money},
+  {"label": "CPI", "value": snapshot.cpi | or_no_data},
+  {"label": "SPI", "value": snapshot.spi | or_no_data},
+  {"label": "Estimate at completion", "value": snapshot.eac | money},
+]) }}
+
+{% call assist.section("Where the project stands") %}
+{% call scroll.wide(project.name ~ " earned-value figures") %}
+<table>
+<caption class="sr-only">Earned-value figures for {{ project.name }}</caption>
+<tr><th scope="col">Figure</th><th scope="col">Value</th><th scope="col">How it is worked out</th></tr>
+<tr><th scope="row">Budget at completion (BAC)</th><td>{{ snapshot.bac | money }}</td>
+  <td>The total approved cost of the plan.</td></tr>
+<tr><th scope="row">Planned value (PV)</th><td>{{ snapshot.pv | money }}</td>
+  <td>How much of the budget the plan says should be spent by now.</td></tr>
+<tr><th scope="row">Earned value (EV)</th><td>{{ snapshot.ev | money }}</td>
+  <td>The budget's worth of the work actually finished so far.</td></tr>
+<tr><th scope="row">Actual cost (AC)</th><td>{{ snapshot.ac | money }}</td>
+  <td>What has really been spent so far.</td></tr>
+<tr><th scope="row">Cost performance index (CPI)</th>
+  <td>{{ snapshot.cpi | or_no_data }}</td>
+  <td>Earned value divided by actual cost — above 1.0 is efficient, below 1.0 is not.</td></tr>
+<tr><th scope="row">Schedule performance index (SPI)</th>
+  <td>{{ snapshot.spi | or_no_data }}</td>
+  <td>Earned value divided by planned value — above 1.0 is ahead of plan.</td></tr>
+<tr><th scope="row">Estimate at completion (EAC)</th>
+  <td>{{ snapshot.eac | money }}</td>
+  <td>Budget divided by CPI — the likely total cost at today's efficiency.</td></tr>
+<tr><th scope="row">Estimate to complete (ETC)</th>
+  <td>{{ snapshot.etc | money }}</td>
+  <td>Estimate at completion minus what has already been spent.</td></tr>
+<tr><th scope="row">Variance at completion (VAC)</th>
+  <td>{{ snapshot.vac | money }}</td>
+  <td>Budget minus the estimate at completion — negative means over budget.</td></tr>
+<tr><th scope="row">Cost variance (CV)</th><td id="evm-cv">{{ snapshot.cv | money }}</td>
+  <td>Earned value minus actual cost — {{ cv_words }}.</td></tr>
+<tr><th scope="row">Schedule variance (SV)</th><td id="evm-sv">{{ snapshot.sv | money }}</td>
+  <td>Earned value minus planned value — {{ sv_words }}.</td></tr>
+<tr><th scope="row">Cost variance % (CV%)</th>
+  <td id="evm-cv-pct">{{ snapshot.cv_pct | or_no_data }}</td>
+  <td>Cost variance divided by earned value.</td></tr>
+<tr><th scope="row">Schedule variance % (SV%)</th>
+  <td id="evm-sv-pct">{{ snapshot.sv_pct | or_no_data }}</td>
+  <td>Schedule variance divided by planned value.</td></tr>
+<tr><th scope="row">Earned schedule (ES)</th>
+  <td id="evm-es">{{ earned_schedule.es | or_no_data }}</td>
+  <td>The elapsed-day point on the plan's own curve where planned value first
+    reaches today's earned value.</td></tr>
+<tr><th scope="row">Actual time (AT)</th>
+  <td id="evm-at">{{ earned_schedule.at | or_no_data }}</td>
+  <td>Elapsed days from the plan's start through today.</td></tr>
+<tr><th scope="row">Planned duration (PD)</th>
+  <td id="evm-pd">{{ earned_schedule.pd | or_no_data }}</td>
+  <td>Elapsed days the whole plan spans.</td></tr>
+<tr><th scope="row">Schedule performance index — time (SPI(t))</th>
+  <td id="evm-spi-t">{{ earned_schedule.spi_t | or_no_data }}</td>
+  <td>Earned schedule divided by actual time — above 1.0 is ahead of plan.</td></tr>
+<tr><th scope="row">Schedule variance — time (SV(t))</th>
+  <td id="evm-sv-t">{{ earned_schedule.sv_t | or_no_data }}</td>
+  <td>Earned schedule minus actual time, in days.</td></tr>
+<tr><th scope="row">Independent estimate at completion — time (IEAC(t))</th>
+  <td id="evm-ieac-t">{{ earned_schedule.ieac_t | or_no_data }}</td>
+  <td>Planned duration divided by SPI(t) — the likely total duration at today's
+    schedule efficiency.</td></tr>
+</table>
+{% endcall %}
+
+<p id="evm-interpretation">{{ cpi_interpretation }}</p>
+{% endcall %}
+
+{% call assist.section("Estimate at completion — every standard method") %}
+<p>Four documented ways to forecast the total cost. Pick the one matching how you
+   expect the remaining work to run.</p>
+<form method="get" action="/projects/{{ project.id }}/assist/earned-value">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label for="eac-method">Method</label>
+  <select id="eac-method" name="method" onchange="this.form.submit()">
+    {% for option in eac_options %}
+    <option value="{{ option.id }}" {% if option.selected %}selected{% endif %}>{{ option.label }}</option>
+    {% endfor %}
+  </select>
+  <noscript><button type="submit" class="btn btn-secondary">Apply</button></noscript>
+</form>
+{% call scroll.wide(project.name ~ " estimate-at-completion methods") %}
+<table>
+<caption class="sr-only">Estimate at completion, every method, for {{ project.name }}</caption>
+<tr><th scope="col">Method</th><th scope="col">EAC</th><th scope="col">When to use it</th></tr>
+{% for option in eac_options %}
+<tr {% if option.selected %}class="selected"{% endif %}>
+  <th scope="row" id="eac-method-{{ option.id }}">{{ option.label }}</th>
+  <td id="eac-value-{{ option.id }}">{{ option.eac | money }}</td>
+  <td>{{ option.when }}</td>
+</tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% endcall %}
+
+{% call assist.section("To-complete performance index (TCPI)") %}
+<p>How efficiently the REMAINING work must run to hit a target — computed from the same
+   figures above, never a second measurement.</p>
+{% call scroll.wide(project.name ~ " to-complete performance index") %}
+<table>
+<caption class="sr-only">To-complete performance index for {{ project.name }}</caption>
+<tr><th scope="col">Target</th><th scope="col">TCPI</th><th scope="col">How it is worked out</th></tr>
+<tr><th scope="row">To finish at the original budget</th>
+  <td>{{ tcpi.to_bac | or_no_data }}</td>
+  <td>(Budget − earned value) ÷ (budget − actual cost).</td></tr>
+<tr><th scope="row">To finish at the current forecast (EAC)</th>
+  <td>{{ tcpi.to_eac | or_no_data }}</td>
+  <td>(Budget − earned value) ÷ (estimate at completion − actual cost).</td></tr>
+</table>
+{% endcall %}
+
+<p id="tcpi-interpretation">{{ tcpi_interpretation }}</p>
+{% endcall %}
+
+{% call assist.section("What if the remaining work costs something else?") %}
+<p>Try a different estimate for what is left to spend, or a different efficiency, and see the
+   estimate at completion and the to-complete performance index either implies. Nothing here
+   is saved.</p>
+<form method="get" action="/projects/{{ project.id }}/assist/earned-value">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label for="whatif-remaining-cost">Hypothetical remaining cost</label>
+  <input type="number" step="0.01" id="whatif-remaining-cost" name="whatif_remaining_cost"
+    value="{{ whatif_remaining_cost if whatif_remaining_cost is not none else '' }}">
+  <label for="whatif-cpi">Hypothetical cost performance index</label>
+  <input type="number" step="0.01" id="whatif-cpi" name="whatif_cpi"
+    value="{{ whatif_cpi if whatif_cpi is not none else '' }}">
+  <button type="submit" class="btn btn-primary">Recompute</button>
+</form>
+{% if whatif %}
+<dl class="kv">
+<div><dt>Hypothetical remaining cost</dt><dd>{{ whatif.remaining_cost | money }}</dd></div>
+<div><dt>Estimate at completion</dt><dd>{{ whatif.eac | money }}</dd></div>
+<div><dt>Variance at completion</dt><dd>{{ whatif.vac | money }}</dd></div>
+<div><dt>To-complete performance index (to this estimate)</dt>
+  <dd>{{ whatif.tcpi_to_eac | or_no_data }}</dd></div>
+</dl>
+{% endif %}
+{% if whatif_cpi_result %}
+<dl class="kv">
+<div><dt>Hypothetical cost performance index</dt><dd>{{ whatif_cpi_result.cpi }}</dd></div>
+<div><dt>Estimate at completion</dt>
+  <dd>{{ whatif_cpi_result.eac | money }}</dd></div>
+<div><dt>Variance at completion</dt>
+  <dd>{{ whatif_cpi_result.vac | money }}</dd></div>
+<div><dt>To-complete performance index (to this estimate)</dt>
+  <dd>{{ whatif_cpi_result.tcpi_to_eac | or_no_data }}</dd></div>
+</dl>
+<p id="whatif-cpi-interpretation">{{ whatif_cpi_result.interpretation }}</p>
+{% endif %}
+
+<p>If a hypothetical above should become the real plan, it still only changes one
+   way: <a href="{{ change_boundary.href }}">{{ change_boundary.label }}</a> against
+   process {{ change_boundary.origin_process_id }} — <code>{{ change_boundary.instruction }}</code></p>
+{% endcall %}
+
+{% call assist.section("Where this comes from", collapsed=True) %}
+<p>Technique: <strong>{{ provenance.technique }}</strong> · PMBOK-6 process
+   <strong>{{ provenance.process }}</strong> (Control Costs) · as of
+   <strong>{{ provenance.as_of }}</strong> · source <strong>{{ provenance.source }}</strong>.</p>
+{% endcall %}
+
+<p><a href="/projects/{{ project.id }}/hub?as_of={{ as_of }}">&larr; Back to {{ project.name }} hub</a></p>
+{% endblock %}

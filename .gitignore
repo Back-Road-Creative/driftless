@@ -2,12 +2,22 @@
 # be deleted and regenerated identically from the store.
 reports/
 
+# Session scratch from the workspaces monorepo this service was extracted out of.
+# Nothing here is driftless's -- that monorepo's tooling writes session logs into
+# this directory beside a checkout, so a `git add -A` would otherwise commit
+# another project's logs (and the host home paths in them) into this repo.
+.data/
+
 # Local database files (Postgres is the runtime store; SQLite is for tests).
 *.db
 *.sqlite3
 
-# Local virtualenv
+# Local virtualenv. bin/driftless-gates.sh builds three more beside it — the
+# pinned lint toolchain, mypy's own interpreter, and pip-audit's — for the same
+# reason CI keeps them apart: each answers its question against a different
+# dependency set, and merging them lets one install decide another's answer.
 .venv/
+.venv-gates-*/
 
 # Compiled bytecode. Interpreter output, rebuilt on the next import, and a
 # `git add -A` after any test run otherwise sweeps hundreds of files into a

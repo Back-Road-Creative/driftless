@@ -38,6 +38,11 @@ TEMPLATE = SERVICE / "deploy" / "secrets.env.example"
 # reason it is not needed there. Asserted as an exact set below: adding a read without
 # exporting it fails until someone writes the reason down here.
 NOT_IN_THE_CONTAINER = {
+    "DRIFTLESS_ALLOW_UNAUTHENTICATED": (
+        "the local-development opt-out of the startup refusal, which must stay visible in "
+        "the compose invocation; in the encrypted overlay it would be invisible, and left "
+        "on it serves the whole API open with no credential at all"
+    ),
     "DRIFTLESS_ALLOW_SCHEMA_AHEAD": (
         "a temporary rollback override that must stay visible in the compose invocation; "
         "in the encrypted overlay it would be invisible, and left on it corrupts quietly"
@@ -56,6 +61,12 @@ NOT_IN_THE_CONTAINER = {
         "parts and exports under the canonical name"
     ),
     "PMHUB_DB_URL": "the CLIs' historical database-URL alias, superseded the same way",
+    "DRIFTLESS_GIT_SHA": (
+        "the packaged build's own SHA, baked in at image build time (e.g. a Docker ARG/ENV "
+        "set from the CI checkout), never sourced from the encrypted secrets overlay this "
+        "entrypoint decrypts; read_git_sha() falls back to git-in-checkout and then "
+        "'unknown', so an image that never sets it still starts"
+    ),
 }
 
 EXPORT = re.compile(r"^\s*export\s+(.*)$", re.M)

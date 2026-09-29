@@ -15,6 +15,17 @@ _As of {{ as_of }}_
 None recorded.
 {% endif %}
 
+## Risk responses
+{% if responses %}
+| Risk | Strategy | Owner | Trigger | Planned action | Residual exposure | Cost | Schedule (days) | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+{% for resp in responses %}
+| {{ cell(resp.risk_id) }} | {{ resp.strategy }} | {{ resp.owner.name }} | {{ resp.trigger }} | {{ resp.planned_action }} | {{ n(resp.residual_exposure) }} | {{ n(resp.cost_of_response) }} | {{ resp.schedule_days }} | {{ resp.status }} |
+{% endfor %}
+{% else %}
+None recorded.
+{% endif %}
+
 ## Issues
 {% if issues %}
 | Description | Raised | Resolved | Status | Risk |

@@ -1,0 +1,225 @@
+/* The method map's own styling (D.2 of the 2026-08-29 design pass). Loaded
+   AFTER driftless.css (method_map.html links it second), so every rule below
+   that repeats a driftless.css selector at equal specificity wins by source
+   order alone — nothing here needed `!important`. driftless.css keeps its
+   own `.node*`/`.edge*` rules (a sibling unit owns that file); this sheet
+   overrides them rather than asking for them to move.
+
+   Colour: driftless.css's `--token` palette is for TEXT pairs
+   (tests/test_web_a11y.py rates every one against WCAG AA) and stays the
+   single source for that. The ten knowledge-area tints below are a
+   DIFFERENT kind of colour — a decorative fill distinguishing 10+ categories
+   at a glance, not a text/background pair a reader must parse letter by
+   letter — so they are computed and pinned here instead: every one measures
+   >=3:1 against white (WCAG 1.4.11, a graphical object against its page) and
+   >=4.5:1 against the #1a1a1a label ink this sheet also pins for text drawn
+   ON the tint (never `var(--ink)`, which flips light in dark mode and would
+   read the label against these same fixed tints at ~2.9:1 — see the fixed
+   `.node text` rule below). tests/test_map_css_contrast.py recomputes every
+   ratio from this file directly; it is the only gate that reads map.css. */
+.node-shape { stroke: #1a1a1a; stroke-width: 1; fill: #8c8c8c; }
+/* Equal specificity to driftless.css's own `.node text`, so source order (this
+   sheet loads second) decides — but driftless.css's WASH overrides
+   (`.node.st-ok/.st-signed/.st-muted text`) are two classes deep and stay
+   more specific than this one-class rule either way, so a washed process
+   keeps its own already-rated ink (--signed-ink / --muted-ink) rather than
+   this fixed literal, which a dark-mode re-point would otherwise fight. */
+.node text { fill: #1a1a1a; }
+
+/* Process = filled rounded square, tinted by its own knowledge area
+   (data-area, ten PMBOK areas). Technique = filled circle, tinted the SAME
+   way where its own family (data-family) names one (nine of ten
+   TechniqueFamily values are literally a KnowledgeArea's name; "general" is
+   not one and gets its own neutral). Artifact = filled diamond: its family
+   taxonomy (ArtifactFamily) shares no vocabulary with KnowledgeArea, and the
+   template does not carry it here (method_map.py, out of this unit's scope),
+   so every artifact gets one neutral fill — shape alone carries its kind. */
+.node-shape[data-area="integration"] { fill: #cb764b; }
+.node-shape[data-area="scope"] { fill: #3298ac; }
+.node-shape[data-area="schedule"] { fill: #5b9c2d; }
+.node-shape[data-area="cost"] { fill: #c17c38; }
+.node-shape[data-area="quality"] { fill: #2e9f66; }
+.node-shape[data-area="resource"] { fill: #9a7bd9; }
+.node-shape[data-area="communications"] { fill: #d265ae; }
+.node-shape[data-area="risk"] { fill: #d46d6d; }
+.node-shape[data-area="procurement"] { fill: #678bd3; }
+.node-shape[data-area="stakeholder"] { fill: #2d9b91; }
+.node-technique .node-shape[data-family="integration"] { fill: #cb764b; }
+.node-technique .node-shape[data-family="scope"] { fill: #3298ac; }
+.node-technique .node-shape[data-family="schedule"] { fill: #5b9c2d; }
+.node-technique .node-shape[data-family="cost"] { fill: #c17c38; }
+.node-technique .node-shape[data-family="quality"] { fill: #2e9f66; }
+.node-technique .node-shape[data-family="resource"] { fill: #9a7bd9; }
+.node-technique .node-shape[data-family="risk"] { fill: #d46d6d; }
+.node-technique .node-shape[data-family="procurement"] { fill: #678bd3; }
+.node-technique .node-shape[data-family="stakeholder"] { fill: #2d9b91; }
+.node-technique .node-shape[data-family="general"] { fill: #8c8c8c; }
+.node-artifact .node-shape { fill: #7b8cb0; }
+
+/* Edges: 0.75px, 22% by default (the design pass's legibility fix — the old
+   1px/full-opacity grey lines were the hairball). A node's own edges and
+   neighbours go fully opaque on hover/focus; the rest fade to 8%, not the
+   35%/20% driftless.css shipped, so a focused tie reads at a glance. */
+/* Band captions/backgrounds (method_map.html): five rows, Initiating through
+   Closing, so a reader can tell the bands apart without counting shapes. The
+   rect is decorative striping only — every OTHER band, not all five, so it
+   reads as alternating rows rather than a wash over the whole map; 3% ink is
+   the same fixed literal every other rule on this sheet pins (never
+   var(--ink), for the dark-mode reason above), just at much lower opacity
+   than a node fill. The label stays var(--muted-ink): it sits on the plain
+   page background, never on a tinted shape, so the dark-mode re-point that
+   the fixed node-label ink deliberately avoids is exactly right here. */
+.band { fill: var(--ink); opacity: .03; }
+.band-label {
+  fill: var(--muted-ink); font-size: var(--fs-sm);
+  text-transform: uppercase; letter-spacing: .08em;
+}
+
+/* The tray (method_map.html): the strip below the last band holding the
+   members no tie reaches. Same 3% ink as a band stripe so it reads as one
+   more row of the same map, but its caption is a SENTENCE, not a band's
+   name — never uppercased, and never aria-hidden the way the band captions
+   are (the no-JS tie list repeats a band; nothing else says what the tray
+   is). */
+.tray { fill: var(--ink); opacity: .03; }
+.tray-label { fill: var(--muted-ink); font-size: var(--fs-sm); }
+
+.edge { stroke-width: .75; opacity: .22; }
+.edge-lit { opacity: 1; }
+.map-active .edge:not(.edge-lit) { opacity: .08; }
+
+/* Labels: a process's own name is always on; a technique's or artifact's
+   stays off until the shape (or its `<a>`) is hovered/focused, or a filter
+   has narrowed the map to a legible handful — map.js toggles `.map-narrow`
+   on the svg once the visible count drops to ~60 or fewer. Reachable
+   without JS too: `:hover`/`:focus-within` are native CSS, so a reader with
+   scripting off (or the exported showcase, which drops every `<script>`)
+   still reveals a label on hover, just never auto-reveals on a filter it
+   cannot run. */
+.node-technique text, .node-artifact text { opacity: 0; transition: opacity .15s ease; }
+.node-technique:hover text, .node-artifact:hover text,
+.node-technique:focus-within text, .node-artifact:focus-within text,
+.node.node-lit text,
+.map-narrow .node-technique text, .map-narrow .node-artifact text { opacity: 1; }
+
+/* Controls: checkbox pills (a fieldset of unstyled inputs read as one grey
+   fieldset with no way to tell a wanted filter from an unwanted one) — the
+   input hides, its label reads as a rounded pill, and `:has()` fills the
+   pill solid the moment its own checkbox is checked. */
+.map-filters { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin: 1rem 0; }
+.map-filters fieldset { display: flex; flex-wrap: wrap; gap: .3rem; border: none; margin: 0; padding: 0; }
+.map-filters legend { font-size: .75rem; font-weight: 600; width: 100%; padding: 0; }
+.map-pill {
+  display: inline-flex; align-items: center; gap: .3rem;
+  border: 1px solid var(--ink); border-radius: 999px;
+  padding: .15rem .7rem; font-size: .8rem; cursor: pointer; user-select: none;
+}
+.map-pill input[type="checkbox"] { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.map-pill:has(input:checked) { background: var(--ink); color: var(--background); }
+.map-pill:has(input:focus-visible) { outline: 3px solid #0b4fd4; outline-offset: 2px; }
+.map-pill input[type="search"] { border: none; padding: 0; font-size: .8rem; background: transparent; }
+
+/* Legend: shape = kind, colour = knowledge area, spelled out rather than
+   left for a reader to infer from 217 unlabelled shapes. */
+.map-legend { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .8rem; margin: 0 0 1rem; }
+.map-legend dt { font-size: .75rem; font-weight: 600; width: 100%; margin: .3rem 0 0; }
+.map-legend dt:first-child { margin-top: 0; }
+.map-legend dd { display: inline-flex; align-items: center; gap: .3rem; margin: 0; font-size: .8rem; }
+.map-legend-swatch { width: 1rem; height: 1rem; flex: none; }
+/* Process = tinted by knowledge area, not a flat neutral: #8c8c8c is a fill NO
+   process ever draws (only a "general" technique does, line 56 above), so the
+   swatch used to show a colour a reader would never actually meet on the map.
+   Rather than invent a wording change for "tinted by area" (method_map.html is
+   a sibling unit's file), this shows one real example -- the same "integration"
+   tint every integration-area process node already wears. */
+.map-legend-process { fill: #cb764b; stroke: #1a1a1a; stroke-width: 1; }
+.map-legend-technique { fill: #8c8c8c; stroke: #1a1a1a; stroke-width: 1; }
+.map-legend-artifact { fill: #7b8cb0; stroke: #1a1a1a; stroke-width: 1; }
+.map-legend-area { stroke: #1a1a1a; stroke-width: 1; }
+.map-legend-area[data-area="integration"] { fill: #cb764b; }
+.map-legend-area[data-area="scope"] { fill: #3298ac; }
+.map-legend-area[data-area="schedule"] { fill: #5b9c2d; }
+.map-legend-area[data-area="cost"] { fill: #c17c38; }
+.map-legend-area[data-area="quality"] { fill: #2e9f66; }
+.map-legend-area[data-area="resource"] { fill: #9a7bd9; }
+.map-legend-area[data-area="communications"] { fill: #d265ae; }
+.map-legend-area[data-area="risk"] { fill: #d46d6d; }
+.map-legend-area[data-area="procurement"] { fill: #678bd3; }
+.map-legend-area[data-area="stakeholder"] { fill: #2d9b91; }
+.map-legend-tie-swatch { width: 1.5rem; }
+.map-legend-edge { stroke: #1a1a1a; stroke-width: 1.5; }
+
+/* One tie kind can rest entirely on artifacts a process only MAY produce
+   (Q05): the dash pattern below applies over a kind's own (driftless.css),
+   equal specificity, source order alone -- map.css links AFTER driftless.css
+   (see the header note above) -- so an optional feeds edge is dashed no
+   matter which kind's dasharray it started from. */
+.edge-optional { stroke-dasharray: 3 2; }
+
+@media (prefers-reduced-motion: reduce) {
+  .node-technique text, .node-artifact text { transition: none; }
+}
+
+/* Said above the drawing: the count sentence method_map.html composes from
+   GraphView.counts(), and the links between the three reads. */
+.map-count { font-weight: 600; margin: 1rem 0 .2rem; }
+.map-views { margin: 0 0 1rem; color: var(--muted-ink); font-size: var(--fs-sm); }
+
+/* The drawing scales to the column (Fit, the no-JS default) instead of a fixed
+   pixel size shipping 4+ screens of sideways scroll on a phone: `width: 100%`
+   with the viewBox's own aspect ratio carrying `height`. The `min-width` floor is
+   declared HERE and only its value arrives per-drawing, as the `--map-floor`
+   method_map.html sets from the SAME data-width the SVG carries, so a
+   14px label never renders under ~11px even before map.js can widen it back out
+   with the zoom buttons below. `_scroll.wide`'s box moves sideways instead once
+   that floor (or a zoom step) is wider than the column: `min-width: 0` on the box
+   itself stops a flex/grid parent sizing it to its content and pushing the whole
+   document sideways, which is the defect tests/browser found on /process-map — a
+   declared scroll container that does not constrain. */
+.scroll-x { min-width: 0; }
+.map-svg { display: block; width: 100%; height: auto; min-width: var(--map-floor, 0); }
+
+/* The drawing and its per-node panel (method_map.html `.map-layout`) as one flex
+   row: the drawing takes the remaining width (`.scroll-x` already owns its own
+   scrolling/min-width above) and the panel column holds a fixed width and
+   `position: sticky` so it stays level with whatever shape is lit as a reader
+   scrolls a tall map, rather than scrolling out of view above the fold. Below
+   the site's one 60rem breakpoint (driftless.css) the row stacks instead: a
+   cramped sticky strip beside a map that is already at its narrowest useful
+   width is worse than the panel simply following the drawing down the page. */
+.map-layout { display: flex; align-items: flex-start; gap: var(--space-md); }
+.map-panels {
+  flex: 0 0 18rem; position: sticky; top: var(--space-md); min-width: 0;
+}
+@media (max-width: 60rem) {
+  .map-layout { display: block; }
+  .map-panels { position: static; }
+}
+
+/* Fit / 100% / +/- (map.js only, ~M.1): four real buttons, so Tab/Enter/Space
+   reach every one without a script beyond the click handler that resizes
+   `.map-svg`. Inert with JS off — the page is already the Fit view then. */
+.map-zoom { display: flex; gap: .5rem; margin: 0 0 .5rem; }
+.map-zoom [data-zoom] { min-width: 2.75rem; }
+
+/* Keyboard reaches what the pointer reaches. An outline on an <a> inside <svg> is not
+   painted the way it is in HTML, so the ring is the shape's own stroke. driftless.css's
+   `.node.focus`/`.node.focus-neighbour` (the `?focus=` URL ring) also thicken this same
+   stroke to 3.5/2.5, so a keyboard user tabbed onto the SAME node the URL already
+   highlights would see one indistinguishable ring for two different reasons. Colour
+   (--focus, the site's one focus token) plus a dasharray makes "I am here" read apart
+   from "this is what the URL asked to highlight" even with colour vision off. */
+.node a:focus-visible .node-shape {
+  stroke: var(--focus); stroke-width: 3.5; stroke-dasharray: 4 2;
+}
+.node a:focus-visible text { opacity: 1; }
+
+/* High contrast: the faint edge wash and the band striping are the first things to go
+   for a reader who asked for more contrast, so both come up. Shape and mark already
+   carry kind without colour; this only makes them firmer. */
+@media (prefers-contrast: more) {
+  .edge { opacity: .75; }
+  .map-active .edge:not(.edge-lit) { opacity: .3; }
+  .node-shape { stroke-width: 2; }
+  .band, .tray { opacity: .08; }
+}

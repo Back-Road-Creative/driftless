@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from driftless import models as m
 from driftless.api import secure
 from driftless.api.app import app as real_app
-from driftless.api.search import PER_KIND, SEARCHED, search
+from driftless.api.search import PER_KIND, SEARCHED, Hit, search
 from driftless.auth import sessions
 import test_web_pages
 from test_web_routes_not_shadowed import _leaves
@@ -71,13 +71,16 @@ def test_one_term_finds_every_kind_that_names_it_and_the_json_shape_is_pinned(
     client: TestClient, db: Session
 ) -> None:
     _findable(db)
+    # risk id 2, not 1: test_web_pages._seed now seeds one Risk of its own (for the
+    # risk-response planner's own coverage), so the "falcon lens" row this test adds
+    # is the SECOND risk row, never the first.
     assert [(hit.kind, hit.id, hit.label) for hit in search(db, "FALCON")] == [
         ("portfolio", 1, "Falcon Portfolio"),
         ("program", 1, "Falcon Program"),
         ("project", 1, "Falcon Project"),
         ("workstream", 2, "falcon edit"),
         ("task", 2, "Grade the FALCON reel"),
-        ("risk", 1, "falcon lens"),
+        ("risk", 2, "falcon lens"),
     ]
     assert search(db, "FALCON") == search(db, TERM)  # the term's case never moves a hit
     assert [hit.kind for hit in search(db, "reel")] == ["task"]  # mid-string, not a prefix
@@ -85,6 +88,54 @@ def test_one_term_finds_every_kind_that_names_it_and_the_json_shape_is_pinned(
     top = {"kind": "portfolio", "id": 1, "label": "Falcon Portfolio"}
     assert body[0] == top | {"path": "/portfolios/1/rollup"}  # the shape a caller pins
     assert all(set(hit) == {"kind", "id", "label", "path"} for hit in body)
+
+
+def test_the_method_registries_are_searched_too(client: TestClient, db: Session) -> None:
+    """One representative query per registry kind: a process, a technique, an artifact,
+    a glossary term and a method practice, none of them backed by a store row."""
+    by_kind = {hit.kind: hit for hit in search(db, "integrated change control")}
+    assert by_kind["process"] == Hit(
+        kind="process", id="4.6", label="Perform Integrated Change Control", path="/pmbok/4.6"
+    )
+    by_kind = {hit.kind: hit for hit in search(db, "turns its options into one chosen course")}
+    assert by_kind["technique"] == Hit(
+        kind="technique",
+        id="decision_making",
+        label="Decision Making",
+        path="/techniques/decision-making",
+    )
+    by_kind = {hit.kind: hit for hit in search(db, "cost management plan")}
+    assert by_kind["artifact"] == Hit(
+        kind="artifact",
+        id="cost_management_plan",
+        label="Cost Management Plan",
+        path="/artifacts/cost-management-plan",
+    )
+    by_kind = {hit.kind: hit for hit in search(db, "critical path")}
+    assert by_kind["glossary"] == Hit(
+        kind="glossary", id="critical-path", label="Critical path", path="/glossary#critical-path"
+    )
+    by_kind = {hit.kind: hit for hit in search(db, "limit work in progress")}
+    assert by_kind["practice"] == Hit(
+        kind="practice",
+        id="kanban:limit_work_in_progress",
+        label="Limit Work in Progress",
+        path="/methods/kanban",
+    )
+    for path in (
+        "/pmbok/4.6",
+        "/techniques/decision-making",
+        "/artifacts/cost-management-plan",
+        "/glossary",
+        "/methods/kanban",
+    ):
+        assert client.get(path).status_code == 200, path
+
+
+def test_a_registry_hit_needs_no_project(db: Session) -> None:
+    """A registry query on an empty project still finds its matches — the Method
+    registries are frozen, in-memory data, never scoped to a project's rows."""
+    assert [hit.kind for hit in search(db, "cost management plan")] == ["artifact"]
 
 
 def test_no_match_and_no_term_are_product_states_the_page_names(client: TestClient) -> None:

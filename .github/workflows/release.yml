@@ -15,11 +15,11 @@ name: Release
 # publishes nothing — an empty release looks answered, which is worse than a
 # missing one, and is how the notes went stale in the first place.
 #
-# Runs on GitHub-hosted ubuntu-latest, not the self-hosted pool: this job needs
-# `gh` and a python3 and none of the toolchain those runners cache, and a
-# release should not wait behind — or take a slot from — the two runners the
-# suite shares. Hosted runners are verified available for this org's private
-# repos (see scheduled-failure-alert.yml).
+# Runs on the self-hosted pool (2026-08-29). It used to ask for GitHub-hosted
+# ubuntu-latest so a release never queued behind the suite, but this org buys
+# no hosted minutes: every hosted job is refused in seconds ("recent account
+# payments have failed or your spending limit needs to be increased"), so a
+# tag published nothing at all. The runners have `gh` and python3.
 
 on:
   push:
@@ -27,6 +27,17 @@ on:
       # The shape this repo already tags: v0.1.0. A tag that is not a release
       # (a marker, a checkpoint) does not start this.
       - 'v[0-9]+.[0-9]+.[0-9]+'
+  # A failed push run can only be re-run against the tag's OWN copy of this
+  # file, so a fix merged afterwards never reaches it (v0.4.0: the run failed
+  # at `gh release create` and re-running replayed the same failure). Dispatch
+  # runs the CURRENT file for an existing tag. The image step stays on the push
+  # path below: the tag push already built the image.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'An existing vX.Y.Z tag to publish the notes for'
+        required: true
+        type: string
 
 # Read-only by default like every workflow here, so a compromised step cannot
 # push or tag; the job below re-grants itself the single write it needs. Actions
@@ -38,20 +49,69 @@ permissions:
 jobs:
   release:
     name: Publish the release notes for the tag
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, heavy]
+    # Not on the public repository: this job, run here, is what publishes there
+    # (the mirror steps below), and that repository reaches no self-hosted runner.
+    if: github.repository != 'Back-Road-Creative/driftless'
     timeout-minutes: 10
     permissions:
       # Creating a release is a `contents` write and nothing more. No secret is
       # added: GITHUB_TOKEN is the workflow's own, scoped to this repository and
       # expiring with the run.
       contents: write
+      # And `actions: write` is what lets the last step call the
+      # workflow-dispatch API. Without it that step 403s with "Resource not
+      # accessible by integration" — `contents: write` does not cover
+      # dispatching a workflow, and the failure is at the end of a run that has
+      # already published the release, so the notes ship and the image does not.
+      actions: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+
+      # `tag` is `required: true`, which the workflow_dispatch UI enforces by
+      # refusing to submit an empty field -- but the API path (`gh workflow run
+      # ... -f tag=`) can still pass an empty string, and every TAG below reads
+      # `inputs.tag || github.ref_name`, which is truthy for anything but "".
+      - name: Refuse an empty dispatched tag
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ -z "$TAG" ]; then
+            echo "::error::the dispatch tag input is empty -- the UI refuses that, but the API's -f tag= does not. Pass an existing vX.Y.Z tag."
+            exit 1
+          fi
+
+      - name: The tag must be the version this tree declares
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          # docs/release-publishing.md has always said to bump pyproject.toml and
+          # driftless/__init__.py before tagging. Nothing enforced it, and v0.3.0
+          # shipped from a tree still declaring 0.2.0 -- so the package metadata
+          # and bin/driftless-showcase.py's default `--source v<__version__>`
+          # both named a release that was not the one being published. A
+          # checklist step with no gate is a step that gets skipped.
+          declared_project=$(python3 -c "import tomllib,pathlib;print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
+          declared_module=$(python3 -c "import re,pathlib;print(re.search(r'__version__ = \"([^\"]+)\"', pathlib.Path('driftless/__init__.py').read_text()).group(1))")
+          if [ "$declared_project" != "$declared_module" ]; then
+            echo "::error::pyproject.toml says $declared_project and driftless/__init__.py says $declared_module — they must agree."
+            exit 1
+          fi
+          if [ "v$declared_project" != "$TAG" ]; then
+            echo "::error::tag $TAG does not name the declared version v$declared_project. Bump both files, merge that, then tag."
+            exit 1
+          fi
+          echo "$TAG matches the declared version."
 
       - name: Release notes for this tag from CHANGELOG.md
         env:
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
           # The heading must be the DATED form `## [x.y.z] - YYYY-MM-DD`, which
@@ -61,6 +121,7 @@ jobs:
           # release fold ever stamped. The file is written by the extractor
           # itself, so a failure leaves no file for a later step to publish.
           python3 - "${TAG#v}" "$RUNNER_TEMP/release-notes.md" <<'EXTRACT'
+          import os
           import pathlib
           import re
           import sys
@@ -80,21 +141,340 @@ jobs:
           notes = (rest if following is None else rest[: following.start()]).strip()
           if not notes:
               sys.exit(f"::error::the {version} section of CHANGELOG.md is empty — nothing to publish")
+          # GitHub refuses a release body over 125,000 characters (HTTP 422, "body
+          # is too long"), but the limit is enforced in UTF-8 BYTES, not code
+          # points: a section fat with accents or em dashes can sit under 125,000
+          # `len(str)` and still 422. v0.4.0's section was 145 KB — 210 folded
+          # fragments — and the run failed AFTER the version gate passed, so the
+          # tag had no release. Cut at a line boundary with room left for the
+          # notice and the image footer the shell appends below, and say where
+          # the rest is.
+          limit = 125_000 - 1_500
+          encoded = notes.encode("utf-8")
+          if len(encoded) > limit:
+              repository = os.environ.get("GITHUB_REPOSITORY")
+              whole = (
+                  f"https://github.com/{repository}/blob/v{version}/CHANGELOG.md"
+                  if repository
+                  else f"CHANGELOG.md at v{version}"
+              )
+              # Decode what fits, dropping a multi-byte character severed at the
+              # boundary, then cut back further to the last full line.
+              cut = encoded[:limit].decode("utf-8", errors="ignore")
+              newline = cut.rfind("\n")
+              kept = (cut[:newline] if newline != -1 else cut).rstrip()
+              notes = (
+                  f"{kept}\n\n_These notes are truncated at {len(kept.encode('utf-8')):,} of"
+                  f" {len(encoded):,} bytes, GitHub's release-body limit. The full {version}"
+                  f" section is {whole}._"
+              )
           pathlib.Path(destination).write_text(notes + "\n", encoding="utf-8")
           EXTRACT
+          # The image the tag also builds, appended rather than written into
+          # CHANGELOG.md: the changelog records what changed, and where to pull
+          # the build from is the same sentence every release. Appended AFTER
+          # the extractor, so a tag with no section still publishes nothing at
+          # all rather than a release whose only content is a docker command.
+          # Guarded on the repository comparison docker-publish.yml makes before
+          # it pushes, and for the same reason: a tag anywhere else builds no
+          # image, so this footer would name a pull nobody can perform. `:-`
+          # keeps it runnable by the test that executes this step outside a run.
+          if [ "${GITHUB_REPOSITORY:-}" = "Back-Road-Creative/driftless" ]; then {
+            echo
+            echo '### Container image'
+            echo
+            echo '```sh'
+            echo "docker pull ghcr.io/back-road-creative/driftless:${TAG#v}"
+            echo '```'
+            echo
+            echo "Built from this tag by \`.github/workflows/docker-publish.yml\`."
+            echo "\`docker-compose.yml\` in this tag builds \`driftless-app\` from the same"
+            echo "tree, so the image is the alternative to that build rather than something"
+            echo "compose reaches for; running and upgrading a deployment is \`OPERATIONS.md\`."
+          } >> "$RUNNER_TEMP/release-notes.md"; fi
           echo "release notes for $TAG:"
           cat "$RUNNER_TEMP/release-notes.md"
 
       - name: Publish the GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
-          # --verify-tag: create the release for the tag that was pushed, never
-          # invent one the remote does not have.
-          gh release create "$TAG" \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "$TAG" \
-            --notes-file "$RUNNER_TEMP/release-notes.md" \
-            --verify-tag
+          # A re-dispatch for a tag whose release already exists (the documented
+          # recovery path for a push run that failed after publishing) must edit
+          # that release, not fail with "release already exists" -- `gh release
+          # view` is the read `gh release create` has no dry-run equivalent for.
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$TAG" \
+              --notes-file "$RUNNER_TEMP/release-notes.md"
+          else
+            # --verify-tag: create the release for the tag that was pushed, never
+            # invent one the remote does not have.
+            gh release create "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$TAG" \
+              --notes-file "$RUNNER_TEMP/release-notes.md" \
+              --verify-tag
+          fi
+
+      # The site's demo bundle is generated FROM a tagged release, and until this
+      # step nothing published that bundle anywhere a downstream sync could reach
+      # it without a private-repo checkout. Built with the same generator the
+      # site's own driftless-bundle-regen.sh calls, at this tag rather than
+      # whatever master happens to hold — a bundle built off-tag silently drifts
+      # from what the tag actually shipped, which is the exact defect
+      # docs/release-publishing.md's manual "Update the public showcase" step
+      # exists to catch by hand. Validated the same way that script validates a
+      # bundle before trusting it, so a defect here fails the release instead of
+      # surfacing later as a stale or broken demo.
+      - name: Build and validate the showcase asset
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          # The generator does `import driftless`; the runner's python3 has never
+          # installed this package (the v0.7.0 re-dispatch, run 36279535298, died
+          # on ModuleNotFoundError before building anything). Same uv-then-pip
+          # venv shape as ci.yml's "Install dependencies", runtime deps only.
+          export PATH="$HOME/.local/bin:$PATH"
+          # `.[dev]` under requirements.lock, exactly as ci.yml's Tests job: the
+          # generator renders through fastapi.testclient (httpx is a dev extra),
+          # and an unconstrained install resolved a starlette newer than the lock
+          # that refused to import (run 36324094669).
+          VENV="$RUNNER_TEMP/showcase-venv"
+          grep -v '^-e ' requirements.lock > "$RUNNER_TEMP/constraints-showcase.txt"
+          if command -v uv >/dev/null 2>&1; then
+            uv venv "$VENV" --python "$(command -v python3)" -q
+            uv pip install --python "$VENV/bin/python" -q --constraint "$RUNNER_TEMP/constraints-showcase.txt" ".[dev]"
+          else
+            python3 -m venv "$VENV"
+            "$VENV/bin/pip" install -q --constraint "$RUNNER_TEMP/constraints-showcase.txt" ".[dev]"
+          fi
+          OUT="$RUNNER_TEMP/showcase"
+          "$VENV/bin/python" bin/driftless-showcase.py --out "$OUT" --source "$TAG"
+
+          python3 - "$OUT" "$TAG" <<'PYEOF'
+          import hashlib
+          import json
+          import re
+          import sys
+          from pathlib import Path
+
+          out, tag = Path(sys.argv[1]), sys.argv[2]
+          manifest_path = out / "manifest.json"
+          if not manifest_path.exists():
+              sys.exit(f"::error::{manifest_path} is missing -- the generator wrote no manifest")
+          manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+          if manifest.get("source") != tag:
+              sys.exit(f"::error::manifest \"source\" is {manifest.get('source')!r}, want {tag!r}")
+
+          html_files = sorted(p.name for p in out.glob("*.html"))
+          if manifest.get("pages") != len(html_files):
+              sys.exit(
+                  f"::error::manifest \"pages\" is {manifest.get('pages')}, want "
+                  f"{len(html_files)} (html files on disk)"
+              )
+
+          sha256 = manifest.get("sha256") or {}
+          if not sha256:
+              sys.exit("::error::manifest has no \"sha256\" entries")
+          for name, want in sha256.items():
+              path = out / name
+              if not path.exists():
+                  sys.exit(f"::error::sha256 entry {name} is not on disk")
+              got = hashlib.sha256(path.read_bytes()).hexdigest()
+              if got != want:
+                  sys.exit(f"::error::sha256 mismatch for {name}: got {got}, want {want}")
+
+          script_re = re.compile(r"<script\b", re.IGNORECASE)
+          for html in html_files:
+              count = len(script_re.findall((out / html).read_text(encoding="utf-8")))
+              if count > 1:
+                  sys.exit(f"::error::{html} has {count} <script tags, want at most 1")
+
+          print(f"showcase bundle for {tag} validated: {len(html_files)} pages")
+          PYEOF
+
+          ASSET="$RUNNER_TEMP/driftless-showcase-${TAG}.tar.gz"
+          # Files at the archive root, never a wrapping directory -- `-C "$OUT" .`
+          # is what lets a consumer untar this straight into its own bundle
+          # directory unchanged.
+          tar -czf "$ASSET" -C "$OUT" .
+          echo "SHOWCASE_ASSET=$ASSET" >> "$GITHUB_ENV"
+
+      # `--clobber` so a re-dispatch for a tag whose asset was already uploaded
+      # replaces it rather than failing with "asset already exists" -- the same
+      # recovery shape the publish step above gives the release object itself.
+      - name: Upload the showcase asset to this release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" "$SHOWCASE_ASSET" --repo "$GITHUB_REPOSITORY" --clobber
+
+      # `if:` cannot read `secrets.*` directly, so whether the mirror below runs
+      # is decided here and handed forward as a plain env var the later steps'
+      # `if:` conditions can read. No secret is ever set unset intentionally --
+      # this repo publishes releases (this job's whole point) whether or not
+      # anyone ever installs a public-repo token.
+      - name: Check for the public mirror token
+        env:
+          TOKEN: ${{ secrets.DRIFTLESS_PUBLIC_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -n "$TOKEN" ]; then
+            echo "HAS_PUBLIC_TOKEN=true" >> "$GITHUB_ENV"
+          else
+            echo "HAS_PUBLIC_TOKEN=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Warn when the public mirror is skipped
+        if: env.HAS_PUBLIC_TOKEN != 'true'
+        run: |
+          echo "::warning::DRIFTLESS_PUBLIC_TOKEN not set — public mirror skipped; the site will not see this release"
+
+      # The last gate before an irreversible publish: the public repository's own
+      # leak-scan.yml answers only after a branch is already public. It scans the
+      # exact tree the mirror step below commits -- the same `git archive` of the
+      # tag, staged the same way, and that step's own diff check refuses any tree
+      # that differs from it. It is a step of its own so the scanner never runs
+      # beside DRIFTLESS_PUBLIC_TOKEN: the public-repo list is read here by this
+      # workflow's shell, and the scanner, fetched at a pinned commit, runs with no
+      # token in its environment at all.
+      - name: Leak-scan the snapshot before it is published
+        if: env.HAS_PUBLIC_TOKEN == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+          # Same commit as ci.yml's LEAK_SCAN_REF; tests/test_leak_scan_gate.py holds them equal.
+          LEAK_SCAN_REF: '7fd71700189a491ed7b33298caa436e918aaa5a9'  # pragma: allowlist secret  (a git commit id, not a credential)
+        run: |
+          set -euo pipefail
+          SNAP="$RUNNER_TEMP/leak-scan-snapshot"
+          TOOL="$RUNNER_TEMP/leak-scan-tool"
+          rm -rf "$SNAP" "$TOOL"
+          git init -q "$SNAP"
+          git -C "$GITHUB_WORKSPACE" archive "$TAG" | tar -x -C "$SNAP"
+          git -C "$SNAP" add -A
+          PUBLIC_REPOS="$(gh api "/orgs/$GITHUB_REPOSITORY_OWNER/repos" --paginate \
+            --jq '.[] | select(.visibility == "public") | .name' | paste -sd, -)"
+          test -n "$PUBLIC_REPOS"
+          git init -q "$TOOL"
+          git -C "$TOOL" fetch -q --depth 1 https://github.com/Back-Road-Creative/.github.git "$LEAK_SCAN_REF"
+          git -C "$TOOL" checkout -q FETCH_HEAD
+          env -u GH_TOKEN python3 "$TOOL/scripts/leak_scan.py" \
+            --repo-root "$SNAP" --self-name Back-Road-Creative/driftless \
+            --public-repos "$PUBLIC_REPOS"
+
+      # decision 1 (2026-09-26 plan): mirror by AUTOMATING the manual procedure
+      # docs/release-publishing.md already documents, never by pushing this
+      # repository's own git ref to the public one. This repository's branch and
+      # pull-request history must never reach the public repository -- that is
+      # the entire reason the documented procedure builds a fresh commit from
+      # `git archive` instead of sharing history, and this step keeps that
+      # property: the public checkout below shares no ancestry with this job's
+      # checkout before this step runs, and none is created by it either.
+      - name: Mirror the snapshot, release and asset to the public repository
+        if: env.HAS_PUBLIC_TOKEN == 'true'
+        env:
+          TOKEN: ${{ secrets.DRIFTLESS_PUBLIC_TOKEN }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          PUBLIC="$RUNNER_TEMP/public"
+          git clone --depth 1 "https://x-access-token:${TOKEN}@github.com/Back-Road-Creative/driftless.git" "$PUBLIC"
+          cd "$PUBLIC"
+          # The `git rm` first is what makes a DELETION propagate: without it, a
+          # file dropped from this tree since the last release would survive in
+          # the public tree forever.
+          git rm -rq .
+          git -C "$GITHUB_WORKSPACE" archive "$TAG" | tar -x -C "$PUBLIC"
+          git add -A
+
+          # docs/release-publishing.md's own pre-commit check (section 1): catch
+          # a partial `git rm -rq .` or a stale checkout before anything is
+          # tagged, while it is still local and nothing has shipped yet.
+          # `tar -tf` lists each directory as its own `dir/` entry and
+          # `git ls-files` never does, so those entries are dropped first.
+          diff <(git -C "$GITHUB_WORKSPACE" archive "$TAG" | tar -tf - | grep -v '/$' | sort) \
+               <(git ls-files | sort)
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -q -m "release: $TAG (source $GITHUB_SHA)"
+
+          # The snapshot lands on a `release/<tag>` branch and reaches master
+          # through a pull request a person merges. The self-hosted runner's
+          # `git` refuses any push to main/master, with no override, and that
+          # guard is kept: the tag, the release and the asset below do not need
+          # master, so the site sees the release as soon as this step ends. The
+          # `+` lets a re-dispatch replace the branch; nothing else writes to it.
+          BRANCH="release/$TAG"
+          git push origin "+HEAD:refs/heads/$BRANCH"
+          # A tag already on the public repository is never moved: a re-dispatch
+          # reuses it, and its tree is the same `git archive` of the same tag.
+          if [ -z "$(git ls-remote --tags origin "refs/tags/$TAG")" ]; then
+            git tag -a "$TAG" -m "$TAG"
+            git push origin "refs/tags/$TAG"
+          else
+            echo "::notice::$TAG already exists on the public repository; reusing it"
+          fi
+
+          export GH_TOKEN="$TOKEN"
+          if gh release view "$TAG" --repo Back-Road-Creative/driftless >/dev/null 2>&1; then
+            gh release edit "$TAG" \
+              --repo Back-Road-Creative/driftless \
+              --title "$TAG" \
+              --notes-file "$RUNNER_TEMP/release-notes.md"
+          else
+            gh release create "$TAG" \
+              --repo Back-Road-Creative/driftless \
+              --title "$TAG" \
+              --notes-file "$RUNNER_TEMP/release-notes.md" \
+              --verify-tag
+          fi
+          gh release upload "$TAG" "$SHOWCASE_ASSET" --repo Back-Road-Creative/driftless --clobber
+
+          # Last, and allowed to fail: everything a reader needs is published
+          # above. Opening the pull request needs `pull-requests: write` on the
+          # token; without it the warning carries the link to open it by hand.
+          COMPARE="https://github.com/Back-Road-Creative/driftless/compare/master...$BRANCH"
+          if [ -n "$(gh pr list --repo Back-Road-Creative/driftless --head "$BRANCH" --state open --json number --jq '.[].number')" ]; then
+            echo "::notice::a pull request from $BRANCH is already open"
+          elif ! gh pr create --repo Back-Road-Creative/driftless --base master --head "$BRANCH" \
+                 --title "release: $TAG" \
+                 --body "Snapshot of $TAG. The tag, release and showcase asset are already published; merging brings master up to it."; then
+            echo "::warning::could not open the master pull request for $TAG; open it at $COMPARE"
+          fi
+
+      # The notes now name an image, so this is what makes that true. A tag
+      # pushed by a person starts docker-publish.yml directly and this step is a
+      # second route to the same image — deliberately, because the person is not
+      # the only pusher: a tag created by a GITHUB_TOKEN does NOT re-trigger
+      # `push: tags` workflows, so on that path the image would never be built.
+      # workflow_dispatch is the exception a GITHUB_TOKEN CAN trigger, and
+      # dispatching ON THE TAG (`--ref`) builds the released tree rather than
+      # master-at-dispatch. Both routes push the same two names from the same
+      # commit, and docker-publish.yml's concurrency group collapses them.
+      # The mechanism is rigscore's ("Trigger tag-scoped workflows" in its own
+      # release.yml), and so is the `actions: write` above: it was missing there,
+      # the step 403'd, and v2.2.0 shipped a release and a tag with no image.
+      - name: Build and publish the image for this tag
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          # ONE tag, spelled the same in both arguments. docker-publish.yml
+          # documents its `tag` input as "leading v required" and checks out
+          # exactly that string, so stripping the leading v here asked it to
+          # check out `0.6.1` -- a ref no repository has. The v came off because
+          # the IMAGE tag carries none; docker-publish.yml normalises that itself.
+          gh workflow run docker-publish.yml --repo "$GITHUB_REPOSITORY" \
+            --ref "$TAG" -f tag="$TAG" -f push=true

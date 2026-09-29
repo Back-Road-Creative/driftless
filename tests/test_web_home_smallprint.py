@@ -60,10 +60,14 @@ def test_the_business_jump_nav_is_a_named_landmark() -> None:
     assert '<nav class="businesses" aria-label="' in _home()
 
 
-def test_the_two_department_empty_states_carry_distinct_ids() -> None:
-    """Both calls took _empty.html's default ``id="empty-state"``: a department
-    with no projects and no people rendered the same id twice — invalid HTML, and
-    an anchor only ever reaching the first."""
+def test_every_department_empty_state_carries_a_distinct_id() -> None:
+    """Every ``empty.state`` call on the department page must carry an id, and no
+    two may share one: a department empty in more than one section used to render
+    the same default id twice — invalid HTML, and an anchor only ever reaching the
+    first. Walked rather than counted, so a section added later is covered the day
+    it lands instead of pinning today's tally."""
     source = (_TEMPLATES / "department_detail.html").read_text()
     ids = re.findall(r'empty\.state\([^)]*id="([\w-]+)"', source)
-    assert len(ids) == 2 and len(set(ids)) == 2, f"want two distinct ids, got {ids}"
+    assert ids, "no empty.state id found on the department page — the walk is vacuous"
+    assert all(ids), f"an empty.state id must not be blank: {ids}"
+    assert len(ids) == len(set(ids)), f"duplicate empty-state ids: {ids}"

@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}{{ artifact.display_name }}{% endblock %}
+{# One artifact kind in full. Every prose section below is skipped when the
+   registry holds nothing for it, the same rule technique_detail.html applies to
+   its own optional fields. #}
+{% block content %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{% if live %}
+{{ breadcrumbs.trail(live.project, artifact.display_name, live.as_of) }}
+{% else %}
+{{ breadcrumbs.theory("Artifacts", "/artifacts", artifact.display_name, family=artifact.family.value | humanize, family_href="/artifacts#family-" ~ artifact.family.value) }}
+{% endif %}
+<h1>{{ artifact.display_name }}</h1>
+<p><em>{{ artifact.family.value | humanize }} artifact</em> ·
+   <a href="/artifacts#family-{{ artifact.family.value }}">&larr; Artifact catalog</a></p>
+{% if artifact.plain_summary %}<h2>What it is</h2><p>{{ artifact.plain_summary | gloss }}</p>{% endif %}
+{% if artifact.why_it_matters %}<h2>Why it matters</h2><p>{{ artifact.why_it_matters | gloss }}</p>{% endif %}
+{% if artifact.what_it_looks_like_here %}<h2>What it looks like here</h2><p>{{ artifact.what_it_looks_like_here | gloss }}</p>{% endif %}
+{# The project and the as-of as a query string, or nothing at all in theory mode —
+   the same ``live_query`` convention pmbok_detail.html builds, so a reader who
+   arrived with a project in scope keeps it on the hop into a process. #}
+{% set live_query = ("?project=" ~ live.project.id ~ "&as_of=" ~ live.as_of) if live else "" %}
+<h2>Made by</h2>
+{% if produced_by %}<ul>{% for id, name in produced_by %}<li><a href="/pmbok/{{ id }}{{ live_query }}">{{ id }} {{ name }}</a></li>{% endfor %}</ul>
+{% else %}<p>No process in the catalog produces this artifact.</p>{% endif %}
+<h2>Used by</h2>
+{% if read_by %}<ul>{% for id, name in read_by %}<li><a href="/pmbok/{{ id }}{{ live_query }}">{{ id }} {{ name }}</a></li>{% endfor %}</ul>
+{% else %}<p>No process in the catalog reads this artifact.</p>{% endif %}
+<p>{% if artifact.tracked_by %}This product tracks this artifact against a real project's data.
+   {%- else %}This product does not track this artifact against a real project's data{% if disposition %} — {{ disposition }}{% endif %}.{% endif %}</p>
+{% if template %}
+{# One blank per field, no JS and no submit; _worksheet.html's classes carry the print rules. #}
+<h2>What one looks like</h2>
+<div class="worksheet">
+  {% for section in template.sections %}
+  {% set section_index = loop.index0 %}
+  <fieldset class="worksheet-section">
+    <legend>{{ section.heading }}</legend>
+    {% for field in section.fields %}
+    {% set field_id = "tpl-" ~ (artifact.key | artifact_slug) ~ "-" ~ section_index ~ "-" ~ loop.index0 %}
+    <p class="worksheet-field">
+      <label for="{{ field_id }}">{{ field.label }}<span class="template-guidance">{{ field.guidance }}</span></label>
+      <textarea id="{{ field_id }}" class="worksheet-textarea" rows="2"></textarea>
+    </p>
+    {% endfor %}
+  </fieldset>
+  {% endfor %}
+  {% if template.filled_from %}<p class="worksheet-outputs">Filled here from: {{ template.filled_from }}</p>{% endif %}
+  <p class="worksheet-print-hint">Print this page to use it on paper.</p>
+</div>
+{% endif %}
+{% if live %}
+<h2>On {{ live.project.name }}</h2>
+<p>As of {{ live.as_of }}, this artifact reads
+   <span class="badge st-{{ live.cell.rank }}">{{ live.cell.label }} — {{ live.cell.detail }}</span>
+   on this project. <a href="/projects/{{ live.project.id }}/process-map?as_of={{ live.as_of }}">&larr; Back to {{ live.project.name }}'s process map</a></p>
+{% else %}
+<p>Reached from a project's own process map, this page also shows what that
+   project's own data says about this artifact.</p>
+{% endif %}
+{% import "_related.html" as related_block %}
+{{ related_block.related(related) }}
+{% endblock %}

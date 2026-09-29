@@ -1,0 +1,142 @@
+{# The risk-response planner: every register figure comes straight off
+   driftless.pmbok.risk_facts.gather, the one adapter the threat board, the gantt
+   note and the cost workbench reserve line also read — nothing here is a second
+   computation. #}
+{% extends "base.html" %}
+{% block title %}Risk responses — {{ project.name }}{% endblock %}
+{% block content %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{% import "_scroll.html" as scroll %}
+{% import "_empty.html" as empty %}
+{% import "_assist.html" as assist %}
+{{ breadcrumbs.trail(project, "Risk responses", as_of) }}
+<h1>Risk responses — {{ project.name }}</h1>
+<p><em>As of {{ as_of }}</em> ·
+   <a href="/projects/{{ project.id }}/hub?as_of={{ as_of }}">Project hub</a> ·
+   <a href="/projects/{{ project.id }}/raid?as_of={{ as_of }}">RAID log</a></p>
+
+{{ assist.summary_strip([
+  {"label": "Open risks", "value": register|length},
+  {"label": "Residual exposure", "value": "{:,.2f}".format(facts.residual_exposure)},
+  {"label": "Responded cost", "value": "{:,.2f}".format(facts.responded_cost)},
+  {"label": "Schedule impact (days)", "value": facts.responded_schedule_days},
+]) }}
+
+{% call assist.section("Open register") %}
+{% if register %}
+{% call scroll.wide(project.name ~ " risk register with response status") %}
+<table>
+<caption class="sr-only">Open risks, their kind, exposure and response status for {{ project.name }}</caption>
+<tr><th scope="col">Description</th><th scope="col">Kind</th><th scope="col">Exposure</th>
+    <th scope="col">Strategy</th><th scope="col">Owner</th><th scope="col">Residual exposure</th>
+    <th scope="col">Response status</th></tr>
+{% for row in register %}
+<tr>
+<td>{{ row.risk.description }}</td>
+<td>{{ row.risk.kind }}</td>
+<td>{{ "%.2f"|format(row.exposure) }}</td>
+<td>{{ row.response.strategy if row.response else "—" }}</td>
+<td>{{ row.response.owner.name if row.response else "—" }}</td>
+<td>{{ "%.2f"|format(row.residual_exposure) }}</td>
+<td>{% if row.no_response_planned %}<span class="badge sev-red">no response planned</span>
+    {% else %}<span class="badge sev-green">{{ row.response.status }}</span>{% endif %}</td>
+</tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No open risks for this project", id="register-empty") %}
+Register one with <code>POST /risks</code> with <code>{"project_id": {{ project.id }}}</code>.
+{% endcall %}
+{% endif %}
+
+<p>Total residual exposure across the open register:
+  <strong>{{ "{:,.2f}".format(facts.residual_exposure) }}</strong>
+  — the figure the cost workbench reads as its suggested risk reserve. Filed responses carry
+  <strong>{{ facts.responded_schedule_days }}</strong> day{{ facts.responded_schedule_days | s }} of schedule impact and
+  <strong>{{ "{:,.2f}".format(facts.responded_cost) }}</strong> of response cost.</p>
+
+{% if over_contingency %}
+<p id="over-contingency">A filed response costs more than the contingency held: {% for row in over_contingency %}{{ row.risk.description }}{% if not loop.last %}, {% endif %}{% endfor %}.
+  <a href="/projects/{{ project.id }}/raid?as_of={{ as_of }}#changes-empty">Raise a change request</a>.</p>
+{% endif %}
+{% endcall %}
+
+{% call assist.section("File a response") %}
+{% if target %}
+<p>Filing against <strong>{{ target.description }}</strong> (a {{ target.kind }}). Choose a
+   different open risk by reloading this page with <code>?risk_id=</code>.</p>
+<form method="post" action="/projects/{{ project.id }}/assist/risk-responses">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <input type="hidden" name="risk_id" value="{{ target.id }}">
+  <label for="response-strategy">Strategy</label>
+  <select id="response-strategy" name="strategy">
+    {% for strat in strategies %}<option value="{{ strat }}">{{ strat }}</option>{% endfor %}
+  </select>
+  <label for="response-owner">Owner</label>
+  <select id="response-owner" name="owner_id">
+    {% for owner in owners %}<option value="{{ owner.id }}">{{ owner.name }}</option>{% endfor %}
+  </select>
+  <label for="response-status">Status</label>
+  <select id="response-status" name="status">
+    <option value="planned">planned</option>
+    <option value="in_progress">in_progress</option>
+    <option value="implemented">implemented</option>
+    <option value="abandoned">abandoned</option>
+  </select>
+  <p><label for="response-trigger">Trigger</label><br>
+     <textarea id="response-trigger" name="trigger" rows="2" cols="50"></textarea></p>
+  <p><label for="response-action">Planned action</label><br>
+     <textarea id="response-action" name="planned_action" rows="2" cols="50"></textarea></p>
+  <label for="response-residual-probability">Residual probability</label>
+  <input type="number" step="0.01" min="0" max="1" id="response-residual-probability"
+    name="residual_probability" value="0.1">
+  <label for="response-residual-impact">Residual impact</label>
+  <input type="number" step="0.01" min="0" id="response-residual-impact"
+    name="residual_impact" value="0">
+  <label for="response-cost">Cost of response</label>
+  <input type="number" step="0.01" min="0" id="response-cost" name="cost_of_response" value="0">
+  <label for="response-schedule-days">Schedule impact (days)</label>
+  <input type="number" step="1" min="0" id="response-schedule-days" name="schedule_days" value="0">
+  <label for="response-actor">Filed by</label>
+  <input type="text" id="response-actor" name="actor" value="web">
+  <button type="submit" class="btn btn-primary">File response</button>
+</form>
+{% else %}
+{% call empty.state("No open risk to file a response against", id="file-empty") %}
+Every open risk in this project already has one, or none is registered yet.
+{% endcall %}
+{% endif %}
+{% endcall %}
+
+{% call assist.section("What if the residual reading were different?") %}
+<p>Try a different residual probability and impact and see the residual exposure it implies.
+   Nothing here is saved.</p>
+<form method="get" action="/projects/{{ project.id }}/assist/risk-responses">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label for="whatif-probability">Hypothetical residual probability</label>
+  <input type="number" step="0.01" id="whatif-probability" name="whatif_probability"
+    value="{{ whatif.probability if whatif is not none else '' }}">
+  <label for="whatif-impact">Hypothetical residual impact</label>
+  <input type="number" step="0.01" id="whatif-impact" name="whatif_impact"
+    value="{{ whatif.impact if whatif is not none else '' }}">
+  <button type="submit" class="btn btn-primary">Recompute</button>
+</form>
+{% if whatif %}
+<dl class="kv">
+<div><dt>Hypothetical residual probability</dt><dd>{{ whatif.probability }}</dd></div>
+<div><dt>Hypothetical residual impact</dt><dd>{{ whatif.impact }}</dd></div>
+<div><dt>Residual exposure</dt><dd>{{ whatif.residual_exposure }}</dd></div>
+</dl>
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Where this comes from", collapsed=True) %}
+<p>Technique: <strong>{{ provenance.technique }}</strong> · PMBOK-6 process
+   <strong>{{ provenance.process }}</strong> (Plan Risk Responses) · as of
+   <strong>{{ provenance.as_of }}</strong>.</p>
+{% endcall %}
+
+<p><a href="/projects/{{ project.id }}/hub?as_of={{ as_of }}">&larr; Back to {{ project.name }} hub</a></p>
+{% endblock %}

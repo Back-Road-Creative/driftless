@@ -24,16 +24,24 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, TypeVar
 
-from sqlalchemy import String, cast, event, select
+from sqlalchemy import ColumnElement, ScalarResult, String, cast, event, select
 from sqlalchemy.orm import Session, object_session, selectinload
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from driftless.calc import evm
 from driftless.db.changelog import ChangeLog
-from driftless.models import Baseline, BaselineLine, CostEntry, Project, Task, Workstream
+from driftless.models import (
+    Baseline,
+    BaselineLine,
+    CostEntry,
+    Project,
+    ScorecardMetricDefinition,
+    Task,
+    Workstream,
+)
 from driftless.pmbok import mapping
 
 _M = TypeVar("_M")
@@ -119,7 +127,9 @@ def project_rows(session: Session, model: type[_M], project_id: int) -> list[_M]
     table: Any = model
 
     def load(ids: Sequence[int]) -> Iterable[tuple[int, Any]]:
-        rows = session.scalars(select(table).where(table.project_id.in_(ids)).order_by(table.id))
+        rows: ScalarResult[Any] = session.scalars(
+            select(table).where(table.project_id.in_(ids)).order_by(table.id)
+        )
         return ((row.project_id, row) for row in rows)
 
     return project_grouped(session, model, load, project_id)
@@ -142,9 +152,10 @@ def eager_project() -> tuple[_AbstractLoad, ...]:
     )
 
 
-def plan_baseline(project: Project) -> Baseline | None:
-    """The baseline that IS ``project``'s plan: its newest *approved* version, or
-    ``None`` when nobody has approved one.
+def plan_baseline(project: Project, as_of: date | None = None) -> Baseline | None:
+    """The baseline that IS ``project``'s plan: its newest *approved* version whose
+    approval an as-of of ``as_of`` can already see, or ``None`` when nobody had
+    approved one by then.
 
     THE one definition, imported by every surface that needs a plan, because the
     alternative shipped: this module took the newest baseline of any status, so an
@@ -155,14 +166,69 @@ def plan_baseline(project: Project) -> Baseline | None:
     when someone approves it, which is the rule the Gantt page, the capacity heatmap,
     the PMBOK artifact map and the Scope & Baseline document already applied.
 
-    ``None`` means the project has no approved plan, and every caller must treat it
-    exactly as it treats a project that was never baselined — BAC 0 and the empty
-    state those surfaces already render — never as a licence to fall back to a draft.
+    ``as_of`` narrows the approved candidates to those a rendering at that date
+    could have known about: a version whose ``approved_at`` falls after ``as_of`` is
+    invisible, because the second defect shipped alongside the first — a baseline
+    approved in July silently became the plan for a report already rendered as of
+    March, so re-rendering that same March as-of after the July approval printed
+    different numbers for a date that had already happened, exactly what
+    ``docs/temporal-model.md`` forbids. A row with ``approved_at is None`` stays
+    visible at every ``as_of`` instead of being dropped: a missing approval instant
+    is not evidence the approval happened after any particular date, and treating
+    silence as "must be recent" would erase plans that predate the column.
+
+    ``as_of=None`` is a second, deliberately permissive reading: newest approved,
+    full stop — the LIVE view the re-baseline write guard needs, since refusing a
+    second approved baseline (``web.wizard_pages.wizard_apply``) must see every approval
+    right now, or a stale ``as_of`` could sneak one past the 409. Not a convenience
+    default for a report surface: every such caller passes its own ``as_of``, and
+    ``tests/test_baseline_selection.py`` names every present-day exception so a new
+    one cannot join silently. ``None`` from either reading means no plan is visible,
+    treated like a project never baselined — BAC 0, never a fall back to a draft.
     ``(project_id, version)`` is uniquely constrained, so the ``max`` is total. Pure:
-    reads the eager-loaded collection :func:`eager_project` fetches, fires no query.
+    reads the eager-loaded collection :func:`eager_project` fetches and the plain
+    mapped ``approved_at`` column, firing no query.
     """
     approved = [b for b in project.baselines if b.status == "approved"]
+    if as_of is not None:
+        approved = [b for b in approved if b.approved_at is None or b.approved_at.date() <= as_of]
     return max(approved, key=lambda b: b.version) if approved else None
+
+
+def metric_definition_as_of(
+    definitions: Sequence[ScorecardMetricDefinition], as_of: date | None = None
+) -> ScorecardMetricDefinition | None:
+    """The version of ONE logical metric — the rows in ``definitions`` sharing one
+    ``(objective_id, name)`` — in force as of ``as_of``. :func:`plan_baseline`'s
+    structural twin: ``as_of=None`` is the same permissive LIVE reading, a start of
+    ``METRIC_ALWAYS`` answers every date as an unset ``approved_at`` does, and
+    ``id`` breaks a same-day tie."""
+    eligible = [d for d in definitions if as_of is None or d.effective_from <= as_of]
+    return max(eligible, key=lambda d: (d.effective_from, d.id)) if eligible else None
+
+
+def approved_as_of(as_of: date) -> ColumnElement[bool]:
+    """The SQL-level twin of :func:`plan_baseline`'s date gate, for the two surfaces that
+    pick a baseline in a QUERY rather than over an already-loaded ``Project`` — the Gantt
+    page and the capacity heatmap. A row with no recorded ``approved_at`` stays visible at
+    every ``as_of`` — the SAME null policy as :func:`plan_baseline`, never a second one
+    invented for SQL: a missing approval instant is not evidence the approval happened
+    after any particular date. Callers still write ``Baseline.status == "approved"``
+    themselves, so "approved" stays a literal in their own scope, where
+    ``tests/test_baseline_selection.py`` reads it off the syntax tree.
+
+    Expressed as a HALF-OPEN instant compare — everything strictly before midnight ending
+    ``as_of`` — which is exactly :func:`plan_baseline`'s ``approved_at.date() <= as_of``
+    for the naive timestamps this column stores, so an approval at 09:00 on ``as_of``
+    itself still counts. Deliberately not a day-truncating SQL function over the column:
+    the suite runs entirely on SQLite while a deployment runs Postgres, and the one CI job
+    that speaks Postgres runs ``tests/test_migrations.py`` and no application query — so a
+    function that exists in one dialect and not the other would be green here and fail only
+    in production. A plain comparison is the same answer in every dialect, and leaves the
+    column bare so an index on it can still be used.
+    """
+    midnight_after = datetime.combine(as_of + timedelta(days=1), time())
+    return (Baseline.approved_at.is_(None)) | (Baseline.approved_at < midnight_after)
 
 
 def _utc_date(moment: datetime) -> date:
@@ -227,8 +293,12 @@ def _forget_history(session: Session, *_: object) -> None:
     session.info.pop(_ALL_CHANGES_KEY, None)
 
 
-def progress_history(session: Session, project: Project) -> list[evm.ProgressReport]:
-    """The dated progress readings ``project``'s plan tasks actually followed.
+def progress_history(
+    session: Session, project: Project, as_of: date | None = None
+) -> list[evm.ProgressReport]:
+    """The dated progress readings ``project``'s plan tasks actually followed, as of
+    ``as_of`` — replayed over :func:`plan_baseline`'s lines at that date, so the task
+    ids returned can change with which plan version ``as_of`` sees.
 
     ``Task.percent_complete`` is one undated *current* number, so stamping it with the
     as-of being asked about made today's reading the measurement of every date: EV came
@@ -267,19 +337,27 @@ def progress_history(session: Session, project: Project) -> list[evm.ProgressRep
     log, so everything logged before it is the dead task's and is dropped; the reborn
     task's own rows follow it and replay from scratch.
 
-    Memoized per project on the session (the replay is a pure function of the stored
-    rows) and batched across an open :func:`prefetched` scope, so a store-wide walk
-    pays one query for the lot rather than one per snapshot. The memo is invalidated
-    on the session's own flushes and rollbacks — listeners registered once per session
-    the first time it memoizes — so a session that writes progress and reads again is
-    never served the pre-write replay, and a read-only walk keeps the memo across
-    every scope for free."""
-    baseline = plan_baseline(project)
+    Memoized on the session per ``(project, the baseline replayed against)`` and
+    batched across an open :func:`prefetched` scope, so a store-wide walk pays one
+    query for the lot, not one per snapshot. The project alone used to be key
+    enough; once :func:`plan_baseline` became date-aware, two as-ofs in one session
+    would have shared one replay — a wrong answer, not a slow one. The PLAN keys
+    it, not ``as_of``: the date reaches this replay only by choosing which lines it
+    runs over, so two dates picking one version have identical output and a date
+    key would pay twice — as the dashboard would, reading every project at the
+    as-of and again a week back for its trend. Invalidated on the session's own
+    flushes and rollbacks — listeners registered once per session the first time it
+    memoizes — so a session that writes progress and reads again is never served
+    the pre-write replay, and a read-only walk keeps it across every scope free."""
+    baseline = plan_baseline(project, as_of)
     if baseline is None:
         return []
-    cache: dict[int, list[evm.ProgressReport]] = session.info.setdefault(_HISTORY_KEY, {})
-    if project.id in cache:
-        return cache[project.id]
+    cache: dict[tuple[int, int], list[evm.ProgressReport]] = session.info.setdefault(
+        _HISTORY_KEY, {}
+    )
+    key = (project.id, baseline.id)
+    if key in cache:
+        return cache[key]
     if not session.info.get(_HISTORY_WATCH_KEY):
         event.listen(session, "after_flush", _forget_history)
         event.listen(session, "after_soft_rollback", _forget_history)
@@ -300,7 +378,7 @@ def progress_history(session: Session, project: Project) -> list[evm.ProgressRep
             evm.ProgressReport(str(line.task_id), on, percent / 100)
             for on, percent in sorted(dated.items())
         )
-    cache[project.id] = reports
+    cache[key] = reports
     return reports
 
 
@@ -312,11 +390,12 @@ def snapshot_from(
 ) -> evm.EarnedValueSnapshot:
     """The earned-value snapshot for ``project`` from its plan baseline and ``costs``.
 
-    :func:`plan_baseline` says which version is the plan; its time-phased lines, the
-    task progress and the dated spend become calc value objects, then calc runs once.
-    No approved plan means no lines, so BAC is 0 and every ratio derived from it is
-    ``None`` — the snapshot an unbaselined project already returns.
-    Collections are sorted so the float sums are byte-stable across runs.
+    :func:`plan_baseline` says which version is the plan, resolved at this same
+    ``as_of`` so a later approval cannot repaint an earlier render. Its time-phased
+    lines, the task progress and the dated spend become calc value objects, then
+    calc runs once. No approved plan means no lines, so BAC is 0 and every ratio
+    derived from it is ``None`` — the snapshot an unbaselined project already
+    returns. Collections are sorted so the float sums are byte-stable across runs.
 
     **An as-of the store cannot answer is refused, not answered with a number.**
     ``Task.percent_complete`` is a bare *current* reading: no column anywhere dates
@@ -339,7 +418,7 @@ def snapshot_from(
     has approved.
 
     PV and AC are genuinely time-phased and still answer every as-of, which is why
-    the swept S-curves (``gather.business_curve``, ``pages.evm_curve``,
+    the swept S-curves (``gather.business_curve``, ``views.evm_curve``,
     ``home._burn_series``) are untouched: they plot those two lines and never EV.
     Inside the plan window, ``progress`` is the dated series :func:`progress_history`
     replays out of the ChangeLog, and EV is read at the date asked for. **Omitting it
@@ -352,7 +431,7 @@ def snapshot_from(
     task carrying its current percentage, dated ``date.min`` so it answers every
     as-of: exactly the reading the replay itself gives a task with no logged history.
     """
-    baseline = plan_baseline(project)
+    baseline = plan_baseline(project, as_of)
     lines = baseline.lines if baseline else []
     if lines and as_of < min(line.planned_start for line in lines):
         lines = []  # the plan had not begun: nothing to earn against, nothing to date
@@ -363,7 +442,7 @@ def snapshot_from(
     ]
     if progress is None:
         session = object_session(project)
-        progress = progress_history(session, project) if session is not None else None
+        progress = progress_history(session, project, as_of) if session is not None else None
     done = (
         list(progress)
         if progress is not None
@@ -388,7 +467,7 @@ def project_costs(session: Session, project: Project) -> list[CostEntry]:
 def project_snapshot(session: Session, project: Project, as_of: date) -> evm.EarnedValueSnapshot:
     """Fetch this project's costs and dated progress, and compute its snapshot."""
     costs = project_costs(session, project)
-    return snapshot_from(project, costs, as_of, progress_history(session, project))
+    return snapshot_from(project, costs, as_of, progress_history(session, project, as_of))
 
 
 def remaining_budget(snapshot: evm.EarnedValueSnapshot) -> float:

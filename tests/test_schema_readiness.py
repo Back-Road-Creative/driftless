@@ -36,9 +36,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from driftless.api import app as app_module
 from driftless.api.app import ALLOW_SCHEMA_AHEAD_ENV, app, get_session
 from driftless.db import Base, new_engine, new_session_factory
+from driftless.db import session as db_session
 from driftless.db.schema_version import EXPECTED_REVISION, KNOWN_REVISIONS, SchemaAheadError
 
 ALEMBIC_INI = Path(__file__).resolve().parents[1] / "alembic.ini"
@@ -177,7 +177,7 @@ UNKNOWN_REVISION = "ffffffffffff"  # pragma: allowlist secret
 
 def _serving_from(url: str, monkeypatch: pytest.MonkeyPatch) -> None:
     """Point the app's own lazy factory — what the startup check reads — at ``url``."""
-    monkeypatch.setattr(app_module, "_factory", new_session_factory(new_engine(url)))
+    monkeypatch.setattr(db_session, "_factory", new_session_factory(new_engine(url)))
 
 
 def _ahead_store(tmp_path: Path) -> str:
@@ -255,3 +255,12 @@ def test_a_database_that_will_not_answer_still_boots(
     _serving_from(f"sqlite:///{tmp_path / 'no-such-dir' / 'x.db'}", monkeypatch)
     with TestClient(app) as client:
         assert client.get("/health/ready").json() == {"detail": "database unreachable"}
+
+
+def test_temporary_factory_restores_the_app_factory(tmp_path: Path) -> None:
+    """Snapshot clients may borrow the app factory without leaking it to later tests."""
+    original = db_session._factory
+    borrowed = new_session_factory(new_engine(f"sqlite:///{tmp_path / 'borrowed.db'}"))
+    with db_session.temporary_factory(borrowed):
+        assert db_session._factory is borrowed
+    assert db_session._factory is original

@@ -61,6 +61,13 @@ RESOLVED_BUT_NEVER_PRODUCED = {
         "no process produces, so it answers input-readiness and never a process's state"
     ),
     "status_report": RESOLVED_OUTSIDE_THE_VOCABULARY["status_report"],
+    "work_breakdown_structure": (
+        "PMBOK-6 makes the WBS a component of the scope baseline, not a process output "
+        "of its own — 5.4 Create WBS's one named output is scope_baseline "
+        "(artifacts.COMPONENT_OF says so, and pmbok.graph draws it as a part_of edge) — "
+        "so this resolver answers 'is the tree there?' for the wizard and for "
+        "scope_baseline's own health check rather than moving a process state of its own"
+    ),
 }
 
 EXPECTED_PER_GROUP = {

@@ -19,7 +19,10 @@ the deployment files rather than the image: no tracked compose or CI file may *d
 secret-bearing mount to a path inside the build context, because a default is the value
 nobody typed — it survives every doc that moves the key out of the repository, and points
 the deployment back at the one directory a build would bake. The last test runs the other
-way: neither lock may take away a path the image needs, and CI builds no image to notice.
+way: neither lock may take away a path the image needs. CI does build the image now — the
+``docker-build`` job in ``.github/workflows/ci.yml`` runs on every pull request — so a
+narrowed ``COPY`` no longer ships unnoticed; that job is the proof, and this test is the
+faster and more specific report of the same break.
 """
 
 from __future__ import annotations
@@ -284,7 +287,8 @@ def test_no_deployment_file_mounts_a_secret_from_inside_the_build_context() -> N
 
 
 def test_neither_lock_takes_away_a_path_the_image_needs() -> None:
-    """Narrowing a COPY or widening an ignore breaks the build, and CI builds no image."""
+    """Narrowing a COPY or widening an ignore breaks the build. The docker-build job in CI
+    catches that too, by failing; this names the file and the rule that took it away."""
     rules, sources = dockerignore_rules(), [s for srcs, _ in _copies() for s in srcs]
     for source in sources:
         assert (SERVICE / source).exists(), f"the Dockerfile copies {source}, which is absent"

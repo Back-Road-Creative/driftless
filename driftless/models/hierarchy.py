@@ -17,8 +17,22 @@ shares belongs here under a name they may say out loud.
 by import: ``delivery`` imports this module, so an import back the other way
 would be a cycle. SQLAlchemy resolves those names off its class registry once
 both modules have been imported, which ``driftless.models`` guarantees.
+
+Every model reachable through the API's generic PATCH/DELETE (``driftless.api.crud.writes``)
+also carries ``row_revision``: an integer that starts at 1 and is bumped on every
+successful write, checked against the client's ``If-Match`` header
+(``driftless.api.crud._apply``, ``_delete``) so a stale write is refused with 409
+rather than silently overwriting a concurrent edit. Named ``row_revision`` and not
+``version`` on purpose — ``delivery.Baseline.version`` already names something
+unrelated, the domain re-baselining count a PM chooses by hand, and confusing the
+two would make a concurrency token look like something a client is meant to set.
+Create-only and append-only rows (``CostEntry``, ``StatusSnapshot``, ``SignOff``,
+``ScorecardMetricObservation``, ``QualityMeasurement``, auth's ``User``/``ApiToken``)
+carry no such column: nothing ever PATCHes or DELETEs them, so a token would guard
+nothing.
 """
 
+from datetime import date
 from typing import TYPE_CHECKING
 
 from sqlalchemy import CheckConstraint, ForeignKey, String
@@ -27,12 +41,20 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from driftless.db import Base
 
 if TYPE_CHECKING:  # names for the annotations only — never imported at runtime
+    from driftless.models.agile import (
+        BacklogItem,
+        DefinitionOfDoneItem,
+        Impediment,
+        ProjectRole,
+        Release,
+    )
     from driftless.models.delivery import Baseline, BaselineLine, Milestone, Sprint
-    from driftless.models.governance import SignOff
+    from driftless.models.closeout import LessonLearned
+    from driftless.models.governance import Gate, SignOff
     from driftless.models.narrative import NarrativeArtifact
     from driftless.models.people import Department, Person
     from driftless.models.procurement import ProcurementAgreement
-    from driftless.models.quality import QualityMeasurement
+    from driftless.models.quality import QualityMeasurement, QualityMetric
     from driftless.models.records import (
         BudgetLine,
         ChangeRequest,
@@ -42,8 +64,29 @@ if TYPE_CHECKING:  # names for the annotations only — never imported at runtim
         Stakeholder,
         StatusSnapshot,
     )
+    from driftless.models.risk import RiskResponse
+    from driftless.models.schedule import (
+        EstimateScenario,
+        ProjectCalendar,
+        TaskDependency,
+    )
+    from driftless.models.scope import Deliverable, Requirement, RequirementTrace
+    from driftless.models.scorecard import (
+        ScorecardContribution,
+        ScorecardSource,
+        StrategicObjective,
+    )
+    from driftless.models.team import (
+        Acquisition,
+        ConflictRecord,
+        ResourceBreakdown,
+        ResourceType,
+        ResponsibilityAssignment,
+        TeamAssessment,
+    )
+    from driftless.models.technique_runs import TechniqueRun
 
-DELIVERY_MODES = ("predictive", "agile", "hybrid")
+DELIVERY_MODES = ("predictive", "agile", "hybrid", "operations")
 ESTIMATE_UNITS = ("points", "hours")
 TASK_STATUSES = ("todo", "in_progress", "blocked", "done")
 
@@ -61,6 +104,7 @@ class Business(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(200), unique=True)
+    row_revision: Mapped[int] = mapped_column(nullable=False, default=1, server_default="1")
 
     portfolios: Mapped[list["Portfolio"]] = relationship(back_populates="business")
     # Read-only from the business side: the writable side of ``department.business_id``
@@ -68,6 +112,15 @@ class Business(Base):
     # is how two in-memory collections come to disagree. Declared so the delete guard
     # sees a business's departments and names them.
     departments: Mapped[list["Department"]] = relationship("Department", viewonly=True)
+    # A business owns its strategic intent as well as its portfolios.  View-only keeps
+    # ``StrategicObjective.business`` the one writable side while still letting the
+    # generic delete guard refuse a destructive business removal.
+    objectives: Mapped[list["StrategicObjective"]] = relationship(
+        "StrategicObjective", viewonly=True
+    )
+    scorecard_sources: Mapped[list["ScorecardSource"]] = relationship(
+        "ScorecardSource", viewonly=True
+    )
 
 
 class Portfolio(Base):
@@ -78,6 +131,7 @@ class Portfolio(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(200))
     business_id: Mapped[int] = mapped_column(ForeignKey("business.id"), index=True)
+    row_revision: Mapped[int] = mapped_column(nullable=False, default=1, server_default="1")
 
     business: Mapped[Business] = relationship(back_populates="portfolios")
     programs: Mapped[list["Program"]] = relationship(back_populates="portfolio")
@@ -92,6 +146,7 @@ class Program(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(200))
     portfolio_id: Mapped[int] = mapped_column(ForeignKey("portfolio.id"), index=True)
+    row_revision: Mapped[int] = mapped_column(nullable=False, default=1, server_default="1")
 
     portfolio: Mapped[Portfolio] = relationship(back_populates="programs")
     projects: Mapped[list["Project"]] = relationship(back_populates="program")
@@ -116,6 +171,7 @@ class Project(Base):
     responsible_department_id: Mapped[int | None] = mapped_column(
         ForeignKey("department.id"), default=None, index=True
     )
+    row_revision: Mapped[int] = mapped_column(nullable=False, default=1, server_default="1")
 
     portfolio: Mapped[Portfolio] = relationship(back_populates="projects")
     program: Mapped[Program | None] = relationship(back_populates="projects")
@@ -145,17 +201,74 @@ class Project(Base):
     quality_measurements: Mapped[list["QualityMeasurement"]] = relationship(
         "QualityMeasurement", viewonly=True
     )
+    quality_metrics: Mapped[list["QualityMetric"]] = relationship("QualityMetric", viewonly=True)
     narrative_artifacts: Mapped[list["NarrativeArtifact"]] = relationship(
         "NarrativeArtifact", viewonly=True
     )
     procurement_agreements: Mapped[list["ProcurementAgreement"]] = relationship(
         "ProcurementAgreement", viewonly=True
     )
+    scorecard_contributions: Mapped[list["ScorecardContribution"]] = relationship(
+        "ScorecardContribution", viewonly=True
+    )
     # The sign-off ledger is append-only, so its rows are the decision history of
     # this project and dropping the project would drop them. Read-only for the same
     # reason as the rest, and visible to the guard so the refusal says "still has
     # sign_offs" rather than an opaque constraint 409.
     sign_offs: Mapped[list["SignOff"]] = relationship("SignOff", viewonly=True)
+    # Stage gates are the project's governance checkpoints; dropping the project would
+    # drop their readiness history. Read-only for the same reason as the rest.
+    gates: Mapped[list["Gate"]] = relationship("Gate", viewonly=True)
+    # Same reason as sign_offs above: TechniqueRun is append-only project history,
+    # visible here only so the delete guard names it rather than answering an
+    # opaque constraint 409.
+    technique_runs: Mapped[list["TechniqueRun"]] = relationship("TechniqueRun", viewonly=True)
+    # The agile records, read-only for the same reason as every other child family
+    # above: their writable side is each row's own ``project``, and declaring them
+    # here is what lets the delete guard name "still has backlog_items" instead of
+    # an opaque constraint 409.
+    project_roles: Mapped[list["ProjectRole"]] = relationship("ProjectRole", viewonly=True)
+    backlog_items: Mapped[list["BacklogItem"]] = relationship("BacklogItem", viewonly=True)
+    releases: Mapped[list["Release"]] = relationship("Release", viewonly=True)
+    definition_of_done_items: Mapped[list["DefinitionOfDoneItem"]] = relationship(
+        "DefinitionOfDoneItem", viewonly=True
+    )
+    impediments: Mapped[list["Impediment"]] = relationship("Impediment", viewonly=True)
+    # The schedule records, read-only for the same reason as every other child family
+    # above: a task dependency and an estimate scenario are FK'd to the project (or, for
+    # a dependency, reached through its own tasks — see Task below), and declaring the
+    # calendar/estimate collections here is what lets the delete guard name "still has
+    # calendars"/"still has estimate_scenarios" instead of an opaque constraint 409.
+    calendars: Mapped[list["ProjectCalendar"]] = relationship("ProjectCalendar", viewonly=True)
+    estimate_scenarios: Mapped[list["EstimateScenario"]] = relationship(
+        "EstimateScenario", viewonly=True
+    )
+    # Response plans, read-only for the same reason as every other child family above:
+    # the writable side is each response's own ``project``, and declaring the collection
+    # here is what lets the delete guard name "still has risk_responses" instead of an
+    # opaque constraint 409.
+    risk_responses: Mapped[list["RiskResponse"]] = relationship("RiskResponse", viewonly=True)
+    # Scope records, read-only for the same reason as every other child family above:
+    # the writable side is each row's own ``project``, and declaring the collection
+    # here is what lets the delete guard name "still has requirements"/"still has
+    # deliverables" instead of an opaque constraint 409.
+    requirements: Mapped[list["Requirement"]] = relationship("Requirement", viewonly=True)
+    deliverables: Mapped[list["Deliverable"]] = relationship("Deliverable", viewonly=True)
+    # Resource records, read-only for the same reason as every other child family above:
+    # the writable side is each row's own ``project``, and declaring the collection here
+    # is what lets the delete guard name "still has resource_types" etc instead of an
+    # opaque constraint 409.
+    resource_types: Mapped[list["ResourceType"]] = relationship("ResourceType", viewonly=True)
+    resource_breakdown_nodes: Mapped[list["ResourceBreakdown"]] = relationship(
+        "ResourceBreakdown", viewonly=True
+    )
+    responsibility_assignments: Mapped[list["ResponsibilityAssignment"]] = relationship(
+        "ResponsibilityAssignment", viewonly=True
+    )
+    acquisitions: Mapped[list["Acquisition"]] = relationship("Acquisition", viewonly=True)
+    team_assessments: Mapped[list["TeamAssessment"]] = relationship("TeamAssessment", viewonly=True)
+    conflict_records: Mapped[list["ConflictRecord"]] = relationship("ConflictRecord", viewonly=True)
+    lessons_learned: Mapped[list["LessonLearned"]] = relationship("LessonLearned", viewonly=True)
 
 
 class Workstream(Base):
@@ -166,6 +279,7 @@ class Workstream(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(200))
     project_id: Mapped[int] = mapped_column(ForeignKey("project.id"), index=True)
+    row_revision: Mapped[int] = mapped_column(nullable=False, default=1, server_default="1")
 
     project: Mapped[Project] = relationship(back_populates="workstreams")
     tasks: Mapped[list["Task"]] = relationship(back_populates="workstream")
@@ -195,9 +309,15 @@ class Task(Base):
     estimate_unit: Mapped[str] = mapped_column(String(10), default="points")
     actual_effort: Mapped[float | None] = mapped_column(default=None)
     percent_complete: Mapped[int] = mapped_column(default=0)
+    # The two dates the DCMA schedule-health checks (invalid dates, missed tasks, BEI)
+    # read off a task — this model has nowhere else to record them. Both nullable:
+    # a task with neither is simply not yet assessable by those checks.
+    actual_finish: Mapped[date | None] = mapped_column(default=None)
+    forecast_finish: Mapped[date | None] = mapped_column(default=None)
     assignee_id: Mapped[int | None] = mapped_column(
         ForeignKey("person.id"), default=None, index=True
     )
+    row_revision: Mapped[int] = mapped_column(nullable=False, default=1, server_default="1")
 
     workstream: Mapped[Workstream] = relationship(back_populates="tasks")
     # Writable side of the person link: assign by setting ``task.assignee``; the
@@ -207,3 +327,35 @@ class Task(Base):
     # and names them rather than 500ing on the foreign key — losing a planned line is
     # exactly the data loss the guard refuses.
     baseline_lines: Mapped[list["BaselineLine"]] = relationship("BaselineLine", viewonly=True)
+    # A task dependency's own writable side is TaskDependency.predecessor/.successor;
+    # declared read-only here, twice, so the delete guard names "still has
+    # dependencies_as_predecessor"/"still has dependencies_as_successor" rather than an
+    # opaque constraint 409 on either edge of the same self-referential table.
+    dependencies_as_predecessor: Mapped[list["TaskDependency"]] = relationship(
+        "TaskDependency",
+        foreign_keys="TaskDependency.predecessor_task_id",
+        viewonly=True,
+    )
+    dependencies_as_successor: Mapped[list["TaskDependency"]] = relationship(
+        "TaskDependency",
+        foreign_keys="TaskDependency.successor_task_id",
+        viewonly=True,
+    )
+    # Same reason as baseline_lines above: the writable side of an estimate scenario's
+    # optional subject is its own ``subject_task``, so this stays read-only and exists
+    # only so the delete guard names "still has subject_of_estimates".
+    subject_of_estimates: Mapped[list["EstimateScenario"]] = relationship(
+        "EstimateScenario", viewonly=True
+    )
+    # Same reason as baseline_lines above: the writable side of a requirement trace
+    # naming this task is its own ``task``, so this stays read-only and exists only
+    # so the delete guard names "still has traces_as_target".
+    traces_as_target: Mapped[list["RequirementTrace"]] = relationship(
+        "RequirementTrace", viewonly=True
+    )
+    # Same reason as traces_as_target above: the writable side of a responsibility
+    # assignment naming this task is its own ``task``, so this stays read-only and
+    # exists only so the delete guard names "still has responsibility_assignments_as_target".
+    responsibility_assignments_as_target: Mapped[list["ResponsibilityAssignment"]] = relationship(
+        "ResponsibilityAssignment", viewonly=True
+    )

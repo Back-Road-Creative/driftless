@@ -38,7 +38,7 @@ def test_every_producible_kind_refuses_the_fields_it_was_not_given(
     """Asked for with nothing, a producer refuses and writes no row — for EVERY kind, so a
     producer added later is covered by this test on the commit that adds it."""
     with pytest.raises(MissingField):
-        produce(db, bare, kind, {}, AS_OF)
+        produce(db, bare, kind, {}, AS_OF, "test")
     db.rollback()
     assert not mapping.resolve(kind, bare, db, AS_OF).present, "a refusal wrote a row"
 
@@ -48,7 +48,7 @@ def test_seed_fields_answers_every_producible_kind(db: Session, bare: m.Project,
     """The placeholders live on the seeding side now, so an unattended run still converges,
     and ``seed_fields`` reads the table ``required_fields`` does: no kind can require a
     field nothing seeds."""
-    produce(db, bare, kind, seed_fields(kind, AS_OF), AS_OF)
+    produce(db, bare, kind, seed_fields(kind, AS_OF), AS_OF, "test")
     assert mapping.resolve(kind, bare, db, AS_OF).present
 
 

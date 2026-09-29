@@ -1,5 +1,5 @@
 """``completeness`` says "nothing to assess" as ``None`` — never as a fake 0.0
-(F-T8: the ``0.0`` mutation survived the whole suite). ``pages.pct`` renders
+(F-T8: the ``0.0`` mutation survived the whole suite). ``views.pct`` renders
 ``None`` as "n/a" and a real 0.0 as "0%", and the feed flags ``None`` as
 "nothing assessable yet", so both sides of the boundary are pinned here."""
 

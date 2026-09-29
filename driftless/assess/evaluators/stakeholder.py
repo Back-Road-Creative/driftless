@@ -29,7 +29,7 @@ def evaluate(session: Session, project: Project, as_of: date) -> Assessment:
     """Assess the project's stakeholder health as of ``as_of``."""
     stakeholders = adapters.project_rows(session, Stakeholder, project.id)
     if not stakeholders:
-        return Assessment(KIND, as_of, 0.0, "green")
+        return Assessment(KIND, as_of, 0.0, "green", coverage="missing")
 
     gaps = [s for s in stakeholders if s.influence == "high" and s.interest == "low"]
     count = len(gaps)

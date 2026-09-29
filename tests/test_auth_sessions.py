@@ -88,14 +88,29 @@ def test_a_signed_cookie_round_trips_and_nothing_else_verifies() -> None:
     assert (sessions.verify(value, SECRET, NOW) or {})["name"] == "jp"
     body, mac = value.split(".")
     forged = sessions.issue(7, "root", "admin", LATER, SECRET).split(".")[0]
+    # A body that is genuinely signed with this key (the MAC check at the top
+    # of verify() passes) but does not decode as base64+JSON at all — the
+    # other four cases below all fail the MAC first, so none of them ever
+    # reaches verify()'s own try/except.
+    undecodable = "not-valid-base64-json"
     for bad in (
         f"{forged}.{mac}",  # tampered payload
         f"{body}.{'A' * len(mac)}",  # tampered signature
         sessions.issue(7, "jp", "admin", LATER, "another secret"),  # signed elsewhere
         "not.a.cookie",
+        f"{undecodable}.{sessions._mac(undecodable, SECRET)}",  # signed, but not decodable
     ):
         assert sessions.verify(bad, SECRET, NOW) is None, bad
     assert sessions.verify(value, SECRET, LATER + timedelta(seconds=1)) is None  # expired
+
+
+def test_a_valid_signature_over_invalid_base64_or_json_verifies_to_none() -> None:
+    """The signature check passes on the raw ``body`` string; what it protects need
+    not be valid base64 or JSON at all — that failure is still ``None``, not a
+    traceback."""
+    body = "not valid base64!!"
+    mac = sessions._mac(body, SECRET)
+    assert sessions.verify(f"{body}.{mac}", SECRET, NOW) is None
 
 
 def test_the_epoch_is_stamped_only_when_passed_and_a_user_id_must_be_a_plain_integer() -> None:
@@ -188,6 +203,13 @@ def test_repeated_failures_are_throttled_per_username_and_client(
     assert _submit(limited, "gone", PASSWORD).status_code == 401  # another username is not locked
     now[0] = NOW + login.LOGIN_WINDOW  # the window rolled over on the injected clock
     assert _submit(limited, "jp", PASSWORD).status_code == 303
+
+
+def test_revoke_on_a_payload_for_a_user_no_longer_in_the_store_is_a_noop(db: Session) -> None:
+    """A valid, unexpired cookie naming a user id the store has since dropped: nothing
+    to bump, nothing raised."""
+    login._revoke(db, {"uid": 999999, "name": "ghost"})
+    assert db.query(User).count() == 0
 
 
 def _peer(app: FastAPI, host: str) -> TestClient:

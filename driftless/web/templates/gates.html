@@ -1,0 +1,55 @@
+{# One project's stage gates: readiness and passage, both computed on every render
+   — a gate stores no status of its own. Readiness reads the same derived process
+   states the process map draws; passage reads the sign-off ledger, same as a
+   waived or signed-off process does. #}
+{% extends "base.html" %}
+{% block title %}Gates — {{ project.name }}{% endblock %}
+{% block content %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{% import "_empty.html" as empty %}
+{% import "_signoff.html" as signoff %}
+{{ breadcrumbs.trail(project, "Gates", as_of) }}
+<h1>Gates — {{ project.name }}</h1>
+{% if gates %}
+{% for row in gates %}
+{% set gate = row.gate %}
+<section aria-labelledby="gate-{{ gate.id }}-name">
+  <h2 id="gate-{{ gate.id }}-name">{{ gate.position }}. {{ gate.name }}</h2>
+  <p>
+    {% if row.passed %}<strong>Passed.</strong>{% elif row.ready %}Ready to pass.{% else %}Not ready.{% endif %}
+  </p>
+  {% if gate.required_processes %}
+  <p>Required processes: {{ gate.required_processes }}</p>
+  {% if row.missing %}
+  <p>Missing: {{ row.missing | join(", ") }}</p>
+  {% endif %}
+  {% else %}
+  <p>No required processes named.</p>
+  {% endif %}
+  <h3>Sign-off ledger</h3>
+  {% if row.signoffs %}
+  <ul id="gate-{{ gate.id }}-signoffs">
+    {% for entry in row.signoffs %}
+    <li>{{ entry.decision }}, signed by {{ entry.signed_by }} ({{ entry.signed_at }})</li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p>No sign-off recorded yet for this gate.</p>
+  {% endif %}
+  <form class="inline" method="post" action="/sign-off">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="subject_kind" value="gate">
+    <input type="hidden" name="subject_ref" value="{{ gate.id }}">
+    <input type="hidden" name="project_id" value="{{ project.id }}">
+    <input type="hidden" name="as_of" value="{{ as_of }}">
+    {{ signoff.decision("Decision for gate " ~ gate.name) }}
+    <button type="submit" class="btn btn-secondary">Record decision</button>
+  </form>
+</section>
+{% endfor %}
+{% else %}
+{% call empty.state("No gates defined", id="gates-empty") %}
+This project has no gates yet; create one with <code>POST /gates</code>.
+{% endcall %}
+{% endif %}
+{% endblock %}

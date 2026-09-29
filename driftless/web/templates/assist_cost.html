@@ -1,0 +1,399 @@
+{# The cost workbench: aggregation, reserves, funding limits, financing, the
+   cash-flow S-curve, run rate, cost of quality, historical reference figures
+   and the four estimating techniques — every section a no-write what-if over
+   driftless.calc.cost / calc.estimating / calc.quality, read off this
+   project's own BudgetLine and CostEntry rows. Nothing here writes; an
+   approved change to the budget still goes through the change boundary. #}
+{% extends "base.html" %}
+{% block title %}Cost workbench — {{ project.name }}{% endblock %}
+{% block content %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{% import "_chart.html" as chart %}
+{% import "_scroll.html" as scroll %}
+{% import "_empty.html" as empty %}
+{% import "_assist.html" as assist %}
+{{ breadcrumbs.trail(project, "Cost workbench", as_of) }}
+<h1>Cost workbench — {{ project.name }}</h1>
+<p><em>As of {{ as_of }}</em> ·
+   <a href="/projects/{{ project.id }}/hub?as_of={{ as_of }}">Project hub</a> ·
+   <a href="/projects/{{ project.id }}/assist/earned-value?as_of={{ as_of }}">Earned value calculator</a></p>
+
+{{ assist.summary_strip([
+  {"label": "Project total", "value": ("{:,.2f}".format(aggregation.project_total) if aggregation else "no data yet")},
+  {"label": "Cost baseline", "value": ("{:,.2f}".format(reserve.result.cost_baseline) if reserve.result else "no what-if run yet")},
+  {"label": "Run rate/mo", "value": ("{:,.2f}".format(run_rate) if actual_periods else "no data yet")},
+  {"label": "Estimates filed", "value": stored_estimates|length},
+]) }}
+
+{% call assist.section("Cost aggregation", chip_href=provenance.cost_aggregation.reference_href) %}
+<p>Planned amounts rolled up: each budget category as its own work package, this
+   project as the one control account every line rolls into —
+   <a href="{{ provenance.cost_aggregation.reference_href }}">read about this technique</a>.</p>
+{% if aggregation %}
+{% call scroll.wide(project.name ~ " cost aggregation") %}
+<table>
+<caption class="sr-only">Cost aggregation for {{ project.name }}</caption>
+<tr><th scope="col">Category</th><th scope="col">Planned amount</th></tr>
+{% for category, amount in aggregation.by_work_package.items() %}
+<tr><th scope="row">{{ category }}</th><td>{{ "{:,.2f}".format(amount) }}</td></tr>
+{% endfor %}
+<tr><th scope="row">Project total</th><td>{{ "{:,.2f}".format(aggregation.project_total) }}</td></tr>
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No budget lines yet — nothing to aggregate", id="aggregation-empty") %}
+File a budget line (<code>POST /budget-lines</code>) for this project first.
+{% endcall %}
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Reserve analysis", chip_href=provenance.reserve_analysis.reference_href) %}
+<p>Cost baseline (work packages plus a contingency reserve) versus the total project
+   budget (baseline plus a management reserve) —
+   <a href="{{ provenance.reserve_analysis.reference_href }}">read about this technique</a>.
+   Work packages' own cost, excluding any stored <code>contingency</code> line:
+   <strong>{{ "{:,.2f}".format(reserve.works_base) }}</strong>{% if reserve.stored_contingency is not none %}
+   (a contingency line of {{ "{:,.2f}".format(reserve.stored_contingency) }} is already stored, for reference
+   — this what-if always recomputes from the fields below){% endif %}.</p>
+<form method="get" action="/projects/{{ project.id }}/assist/cost">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label for="contingency-pct">Contingency reserve, as a rate of work-package cost</label>
+  <input type="number" step="0.01" id="contingency-pct" name="contingency_pct"
+    value="{{ reserve.contingency_pct if reserve.contingency_pct is not none else '' }}">
+  <label for="risk-exposure">— or, a stated contingency reserve amount</label>
+  <input type="number" step="0.01" id="risk-exposure" name="risk_exposure"
+    value="{{ reserve.risk_exposure if reserve.risk_exposure is not none else '' }}">
+  <label for="management-pct">Management reserve, as a rate of the cost baseline</label>
+  <input type="number" step="0.01" id="management-pct" name="management_pct"
+    value="{{ reserve.management_pct if reserve.management_pct is not none else '' }}">
+  <button type="submit" class="btn btn-primary">Compute reserves</button>
+</form>
+{% if reserve.result %}
+<dl class="kv">
+<div><dt>Contingency reserve</dt><dd>{{ "{:,.2f}".format(reserve.result.contingency_reserve) }}</dd></div>
+<div><dt>Cost baseline</dt><dd>{{ "{:,.2f}".format(reserve.result.cost_baseline) }}</dd></div>
+<div><dt>Management reserve</dt><dd>{{ "{:,.2f}".format(reserve.result.management_reserve) }}</dd></div>
+<div><dt>Total project budget</dt><dd>{{ "{:,.2f}".format(reserve.result.total_budget) }}</dd></div>
+</dl>
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Cash-flow S-curve") %}
+<p>Cumulative planned spend sampled off the approved plan's own accrual — the same
+   rule <a href="/projects/{{ project.id }}/assist/earned-value?as_of={{ as_of }}">the earned-value calculator's</a> planned value uses.</p>
+<form method="get" action="/projects/{{ project.id }}/assist/cost">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label for="samples">Sampled points</label>
+  <input type="number" step="1" min="1" id="samples" name="samples" value="{{ samples }}">
+  <button type="submit" class="btn btn-secondary">Resample</button>
+</form>
+{% if curve %}
+{% set dates = curve | map(attribute='as_of') | map('string') | list %}
+{% set planned = curve | map(attribute='cumulative_planned') | list %}
+<figure>
+  <figcaption>Cumulative planned spend, earliest planned start through the as-of date.</figcaption>
+  {{ chart.s_curve(dates, [("Planned", planned, False)], "Cumulative planned spend S-curve, ending at " ~ "{:,.0f}".format(planned[-1])) }}
+  {% call chart.figures(project.name ~ " cash-flow S-curve as text") %}
+  {% call scroll.wide(project.name ~ " cash-flow S-curve as text") %}
+  <table>
+  <caption class="sr-only">Cash-flow S-curve for {{ project.name }}: cumulative planned spend at each sampled date</caption>
+  <tr><th scope="col">Date</th><th scope="col">Cumulative planned</th></tr>
+  {% for p in curve %}
+  <tr><th scope="row">{{ p.as_of.isoformat() }}</th><td>{{ "{:,.2f}".format(p.cumulative_planned) }}</td></tr>
+  {% endfor %}
+  </table>
+  {% endcall %}
+  {% endcall %}
+</figure>
+{% else %}
+{% call empty.state("No approved baseline yet — there is no planned curve to draw", id="curve-empty") %}
+Approve a baseline for this project first; the S-curve appears once it has lines.
+{% endcall %}
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Funding limit reconciliation", chip_href=provenance.funding_limit_reconciliation.reference_href) %}
+<p>Whether the S-curve's own sampled periods, above, would outrun a stated funding
+   limit — <a href="{{ provenance.funding_limit_reconciliation.reference_href }}">read about this technique</a>.
+   Give one or more limits as <code>period:amount</code>, one period per line, using the
+   dates the curve above prints.</p>
+<form method="get" action="/projects/{{ project.id }}/assist/cost">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label for="limits">Funding limits</label>
+  <textarea id="limits" name="limit">{% for value in limit_inputs %}{{ value }}
+{% endfor %}</textarea>
+  <button type="submit" class="btn btn-primary">Reconcile</button>
+</form>
+{% if breaches %}
+{% call scroll.wide(project.name ~ " funding limit breaches") %}
+<table>
+<caption class="sr-only">Funding limit breaches for {{ project.name }}</caption>
+<tr><th scope="col">Period</th><th scope="col">Cumulative planned</th><th scope="col">Limit</th><th scope="col">Excess</th></tr>
+{% for b in breaches %}
+<tr><th scope="row">{{ b.period }}</th><td>{{ "{:,.2f}".format(b.cumulative_planned) }}</td>
+  <td>{{ "{:,.2f}".format(b.limit) }}</td><td>{{ "{:,.2f}".format(b.excess) }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% elif limit_inputs %}
+<p id="funding-limit-clear">No period breaches the limits given.</p>
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Financing", chip_href=provenance.financing.reference_href) %}
+<p>Cost of financing a stated principal — simple or compounding —
+   <a href="{{ provenance.financing.reference_href }}">read about this technique</a>.</p>
+<form method="get" action="/projects/{{ project.id }}/assist/cost">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label for="financing-principal">Principal</label>
+  <input type="number" step="0.01" id="financing-principal" name="financing_principal"
+    value="{{ financing.principal if financing.principal is not none else '' }}">
+  <label for="financing-rate">Rate, per period</label>
+  <input type="number" step="0.0001" id="financing-rate" name="financing_rate"
+    value="{{ financing.rate if financing.rate is not none else '' }}">
+  <label for="financing-periods">Periods</label>
+  <input type="number" step="0.01" id="financing-periods" name="financing_periods"
+    value="{{ financing.periods if financing.periods is not none else '' }}">
+  <label for="financing-method">Method</label>
+  <select id="financing-method" name="financing_method">
+    <option value="simple" {{ "selected" if financing.method == "simple" }}>Simple</option>
+    <option value="compound" {{ "selected" if financing.method == "compound" }}>Compound</option>
+  </select>
+  <button type="submit" class="btn btn-primary">Compute</button>
+</form>
+{% if financing.result is not none %}
+<p id="financing-result">Cost of financing: <strong>{{ "{:,.2f}".format(financing.result) }}</strong>.</p>
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Run rate") %}
+<p>Trailing average of actual spend per month — the steady-state figure an ongoing
+   budget view reads, as opposed to a one-off snapshot.</p>
+<form method="get" action="/projects/{{ project.id }}/assist/cost">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label for="window">Trailing months</label>
+  <input type="number" step="1" min="1" id="window" name="window" value="{{ window }}">
+  <button type="submit" class="btn btn-secondary">Recompute</button>
+</form>
+{% if actual_periods %}
+<p id="run-rate-result">Run rate over the last {{ window }} month{{ window | s }}:
+  <strong>{{ "{:,.2f}".format(run_rate) }}</strong> per month.</p>
+{% call scroll.wide(project.name ~ " actual spend by month") %}
+<table>
+<caption class="sr-only">Actual spend by month for {{ project.name }}</caption>
+<tr><th scope="col">Month</th><th scope="col">Actual spend</th></tr>
+{% for p in actual_periods %}
+<tr><th scope="row">{{ p.period }}</th><td>{{ "{:,.2f}".format(p.amount) }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No recorded spend yet — there is no run rate to compute", id="run-rate-empty") %}
+Record a cost entry (<code>POST /cost-entries</code>) for this project first.
+{% endcall %}
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Cost of quality", chip_href=provenance.cost_of_quality.reference_href) %}
+<p>Conformance spend (prevention plus appraisal) against non-conformance spend
+   (internal plus external failure) —
+   <a href="{{ provenance.cost_of_quality.reference_href }}">read about this technique</a>.</p>
+<form method="get" action="/projects/{{ project.id }}/assist/cost">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label for="prevention">Prevention</label>
+  <input type="number" step="0.01" id="prevention" name="prevention"
+    value="{{ cost_of_quality.prevention if cost_of_quality.prevention is not none else '' }}">
+  <label for="appraisal">Appraisal</label>
+  <input type="number" step="0.01" id="appraisal" name="appraisal"
+    value="{{ cost_of_quality.appraisal if cost_of_quality.appraisal is not none else '' }}">
+  <label for="internal-failure">Internal failure</label>
+  <input type="number" step="0.01" id="internal-failure" name="internal_failure"
+    value="{{ cost_of_quality.internal_failure if cost_of_quality.internal_failure is not none else '' }}">
+  <label for="external-failure">External failure</label>
+  <input type="number" step="0.01" id="external-failure" name="external_failure"
+    value="{{ cost_of_quality.external_failure if cost_of_quality.external_failure is not none else '' }}">
+  <button type="submit" class="btn btn-primary">Split</button>
+</form>
+{% if cost_of_quality.result %}
+<p id="cost-of-quality-result">Conformance {{ "{:,.2f}".format(cost_of_quality.result.conformance) }} ·
+   Non-conformance {{ "{:,.2f}".format(cost_of_quality.result.nonconformance) }}.
+   {{ cost_of_quality.result.interpretation }}</p>
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Historical information review", chip_href=provenance.historical_information_review.reference_href) %}
+<p>Other projects' actual spend as of the same as-of date — a real reference figure
+   for the analogous estimate below, not a placeholder —
+   <a href="{{ provenance.historical_information_review.reference_href }}">read about this technique</a>.</p>
+{% if historical %}
+{% call scroll.wide("Other projects' actual spend") %}
+<table>
+<caption class="sr-only">Other projects' actual spend as of {{ as_of }}</caption>
+<tr><th scope="col">Project</th><th scope="col">Actual spend</th></tr>
+{% for row in historical %}
+<tr><th scope="row">{{ row.name }}</th><td>{{ "{:,.2f}".format(row.actual_cost) }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No other projects yet — there is nothing to compare against", id="historical-empty") %}
+Historical figures appear here once the store holds more than one project.
+{% endcall %}
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Estimating techniques") %}
+<p>Four PMBOK Estimate Costs techniques, each a pure calculator returning its own
+   plain-words basis.</p>
+
+<h3>Analogous estimating</h3>
+<p><a href="{{ provenance.analogous_estimating.reference_href }}">read about this technique</a></p>
+<form method="get" action="/projects/{{ project.id }}/assist/cost">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label for="analogous-reference-value">Reference value</label>
+  <input type="number" step="0.01" id="analogous-reference-value" name="analogous_reference_value"
+    value="{{ analogous.reference_value if analogous.reference_value is not none else '' }}">
+  <label for="analogous-reference-size">Reference size</label>
+  <input type="number" step="0.01" id="analogous-reference-size" name="analogous_reference_size"
+    value="{{ analogous.reference_size if analogous.reference_size is not none else '' }}">
+  <label for="analogous-target-size">Target size</label>
+  <input type="number" step="0.01" id="analogous-target-size" name="analogous_target_size"
+    value="{{ analogous.target_size if analogous.target_size is not none else '' }}">
+  <label for="analogous-adjustment">Adjustment</label>
+  <input type="number" step="0.01" id="analogous-adjustment" name="analogous_adjustment"
+    value="{{ analogous.adjustment }}">
+  <button type="submit" class="btn btn-primary">Estimate</button>
+</form>
+{% if analogous.result %}
+<p id="analogous-result">Estimate: <strong>{{ "{:,.2f}".format(analogous.result.value) }}</strong>. {{ analogous.result.basis }}</p>
+{% endif %}
+
+<h3>Parametric estimating</h3>
+<p><a href="{{ provenance.parametric_estimating.reference_href }}">read about this technique</a></p>
+<form method="get" action="/projects/{{ project.id }}/assist/cost">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label for="parametric-rate">Rate</label>
+  <input type="number" step="0.01" id="parametric-rate" name="parametric_rate"
+    value="{{ parametric.rate if parametric.rate is not none else '' }}">
+  <label for="parametric-quantity">Quantity</label>
+  <input type="number" step="0.01" id="parametric-quantity" name="parametric_quantity"
+    value="{{ parametric.quantity if parametric.quantity is not none else '' }}">
+  <button type="submit" class="btn btn-primary">Estimate</button>
+</form>
+{% if parametric.result %}
+<p id="parametric-result">Estimate: <strong>{{ "{:,.2f}".format(parametric.result.value) }}</strong>. {{ parametric.result.basis }}</p>
+{% endif %}
+
+<h3>Three-point estimating</h3>
+<p><a href="{{ provenance.three_point_estimating.reference_href }}">read about this technique</a></p>
+<form method="get" action="/projects/{{ project.id }}/assist/cost">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label for="three-point-optimistic">Optimistic</label>
+  <input type="number" step="0.01" id="three-point-optimistic" name="three_point_optimistic"
+    value="{{ three_point.optimistic if three_point.optimistic is not none else '' }}">
+  <label for="three-point-most-likely">Most likely</label>
+  <input type="number" step="0.01" id="three-point-most-likely" name="three_point_most_likely"
+    value="{{ three_point.most_likely if three_point.most_likely is not none else '' }}">
+  <label for="three-point-pessimistic">Pessimistic</label>
+  <input type="number" step="0.01" id="three-point-pessimistic" name="three_point_pessimistic"
+    value="{{ three_point.pessimistic if three_point.pessimistic is not none else '' }}">
+  <label for="three-point-method">Weighting</label>
+  <select id="three-point-method" name="three_point_method">
+    <option value="triangular" {{ "selected" if three_point.method == "triangular" }}>Triangular</option>
+    <option value="beta" {{ "selected" if three_point.method == "beta" }}>Beta/PERT</option>
+  </select>
+  <label for="three-point-sigma">Confidence range, in std deviations (beta/PERT only)</label>
+  <input type="number" step="0.1" id="three-point-sigma" name="three_point_sigma" value="{{ three_point.sigma }}">
+  <button type="submit" class="btn btn-primary">Estimate</button>
+</form>
+{% if three_point.result %}
+<p id="three-point-result">Estimate: <strong>{{ "{:,.2f}".format(three_point.result.value) }}</strong>
+   (range {{ "{:,.2f}".format(three_point.result.low) }} to {{ "{:,.2f}".format(three_point.result.high) }}).
+   {{ three_point.result.basis }}</p>
+{% endif %}
+
+<h3>Bottom-up estimating</h3>
+<p><a href="{{ provenance.bottom_up_estimating.reference_href }}">read about this technique</a></p>
+<form method="get" action="/projects/{{ project.id }}/assist/cost">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label for="bottom-up-1">Component 1</label>
+  <input type="number" step="0.01" id="bottom-up-1" name="bottom_up_component_1"
+    value="{{ bottom_up.component_1 if bottom_up.component_1 is not none else '' }}">
+  <label for="bottom-up-2">Component 2</label>
+  <input type="number" step="0.01" id="bottom-up-2" name="bottom_up_component_2"
+    value="{{ bottom_up.component_2 if bottom_up.component_2 is not none else '' }}">
+  <label for="bottom-up-3">Component 3</label>
+  <input type="number" step="0.01" id="bottom-up-3" name="bottom_up_component_3"
+    value="{{ bottom_up.component_3 if bottom_up.component_3 is not none else '' }}">
+  <button type="submit" class="btn btn-primary">Sum</button>
+</form>
+{% if bottom_up.result %}
+<p id="bottom-up-result">Estimate: <strong>{{ "{:,.2f}".format(bottom_up.result.value) }}</strong>
+   (range {{ "{:,.2f}".format(bottom_up.result.low) }} to {{ "{:,.2f}".format(bottom_up.result.high) }}).</p>
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Stored estimate scenarios") %}
+<p>Estimates filed for this project as of {{ as_of }} — <code>EstimateScenario</code> rows,
+   target <code>cost</code>, each with the technique that produced it and its basis. Filing
+   one is the one write this page allows; the budget itself still only changes through the
+   change boundary below.</p>
+{% if stored_estimates %}
+{% call scroll.wide("Stored cost estimate scenarios") %}
+<table id="stored-estimates">
+<caption class="sr-only">Cost estimate scenarios filed for {{ project.name }}</caption>
+<tr><th scope="col">As of</th><th scope="col">Technique</th><th scope="col">Value</th><th scope="col">Range</th><th scope="col">Basis</th><th scope="col">Filed by</th></tr>
+{% for e in stored_estimates %}
+<tr><td>{{ e.as_of }}</td><td>{{ e.kind|humanize }}</td><td>{{ "{:,.2f}".format(e.value) }}</td>
+    <td>{% if e.low is not none and e.high is not none %}{{ "{:,.2f}".format(e.low) }} to {{ "{:,.2f}".format(e.high) }}{% else %}—{% endif %}</td>
+    <td>{{ e.basis }}</td><td>{{ e.actor }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No estimate scenario filed yet", id="stored-estimates-empty") %}
+File the last what-if computed above with the form below, or <code>POST /estimate-scenarios</code> with <code>{"project_id": {{ project.id }}, "target": "cost"}</code>.
+{% endcall %}
+{% endif %}
+
+<form method="post" action="/projects/{{ project.id }}/assist/cost/estimate" id="estimate-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label for="estimate-kind">Technique</label>
+  <select id="estimate-kind" name="kind">
+    {% for k in estimate_kinds %}<option value="{{ k }}"{% if k == estimate_form.kind %} selected{% endif %}>{{ k|humanize }}</option>
+    {% endfor %}
+  </select>
+  <label for="estimate-value">Value</label>
+  <input type="number" step="0.01" id="estimate-value" name="value" value="{{ estimate_form.value }}" required>
+  <label for="estimate-low">Low</label>
+  <input type="number" step="0.01" id="estimate-low" name="low" value="{{ estimate_form.low }}">
+  <label for="estimate-high">High</label>
+  <input type="number" step="0.01" id="estimate-high" name="high" value="{{ estimate_form.high }}">
+  <label for="estimate-basis">Basis</label>
+  <input type="text" id="estimate-basis" name="basis" maxlength="2000" value="{{ estimate_form.basis }}">
+  <label for="estimate-actor">Filed by</label>
+  <input type="text" id="estimate-actor" name="actor" maxlength="200" value="web" required>
+  <button type="submit" class="btn btn-primary">File this estimate</button>
+</form>
+
+<p>If a figure above should become the real budget, it still only changes one
+   way: <a href="{{ change_boundary.href }}">{{ change_boundary.label }}</a> against
+   process {{ change_boundary.origin_process_id }} — <code>{{ change_boundary.instruction }}</code></p>
+{% endcall %}
+
+{% call assist.section("Where this comes from", collapsed=True) %}
+{% call scroll.wide("Cost workbench provenance") %}
+<table>
+<caption class="sr-only">Technique provenance for the cost workbench</caption>
+<tr><th scope="col">Technique</th><th scope="col">PMBOK-6 process</th><th scope="col">Source</th></tr>
+{% for key, p in provenance.items() %}
+<tr><th scope="row">{{ p.technique }}</th><td>{{ p.process }}</td><td>{{ p.source }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+<p>As of <strong>{{ as_of }}</strong>.</p>
+{% endcall %}
+
+<p><a href="/projects/{{ project.id }}/hub?as_of={{ as_of }}">&larr; Back to {{ project.name }} hub</a></p>
+{% endblock %}

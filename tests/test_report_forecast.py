@@ -9,8 +9,8 @@ from sqlalchemy.orm import Session
 from driftless import models as m
 from driftless.assess.exposure import contingency_assessment
 from driftless.calc import forecast as fc
+from driftless.pmbok import flow_facts
 from driftless.report import gather, render_document
-from driftless.report.documents import forecast as forecast_doc
 
 AS_OF = date(2026, 3, 31)
 SPRINT_LENGTH_DAYS = 15  # 01-01..01-15 is fifteen days: both endpoints are worked
@@ -141,7 +141,7 @@ def test_sprint_length_counts_both_its_endpoints(db: Session, project: m.Project
     )
     db.commit()
 
-    (sprint,) = forecast_doc._sprint_history(project, AS_OF)
+    (sprint,) = flow_facts.sprint_history(project, AS_OF)
     assert sprint.length_days == 14
 
 
@@ -182,6 +182,35 @@ def test_agile_forecast_regenerates_byte_identically(db: Session) -> None:
     assert render_document("forecast", db, project, AS_OF) == render_document(
         "forecast", db, project, AS_OF
     )
+
+
+def test_agile_forecast_shows_the_seeded_simulation(db: Session) -> None:
+    """The Monte Carlo runs alongside the velocity band, labelled as schedule
+    forecasting rather than risk analysis, and equals what calc computes for the
+    same history, remaining points and project-id seed."""
+    project = _agile_project(db, "agile")
+    history = flow_facts.sprint_history(project, AS_OF)
+    remaining = flow_facts.remaining_points(project)
+    simulation = fc.monte_carlo_completion(history, remaining, AS_OF, seed=project.id)
+    doc = render_document("forecast", db, project, AS_OF)
+
+    assert "Simulated completion" in doc
+    assert "schedule forecasting, not risk analysis" in doc
+    assert f"{simulation.trials} trials, seed {simulation.seed}" in doc
+    for finish in (simulation.p50, simulation.p80, simulation.p90):
+        assert finish is not None
+        assert finish.isoformat() in doc
+
+
+def test_agile_forecast_simulation_regenerates_byte_identically(db: Session) -> None:
+    """Same project, same as-of: the seeded simulation must never introduce drift
+    across two renders — it is derived from the project id, not a wall clock or
+    unseeded random draw."""
+    project = _agile_project(db, "agile")
+    first = render_document("forecast", db, project, AS_OF)
+    second = render_document("forecast", db, project, AS_OF)
+    assert first == second
+    assert "Simulated completion" in first
 
 
 def test_forecast_skips_a_legacy_same_day_sprint_row(db: Session) -> None:

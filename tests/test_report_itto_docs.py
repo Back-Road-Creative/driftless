@@ -86,7 +86,8 @@ def test_assessment_report_covers_every_knowledge_area(db: Session, project: m.P
     assert "Assessment Report — GMS" in text
     for kind in ("cost", "schedule", "integration", "risk"):
         assert kind in text
-    assert "cost" in text.lower() and "[" in text  # an action's [technique]
+    assert "cost" in text.lower()
+    assert "reference only" in text  # no technique has a launchable assistant yet
     assert assessment.render(db, project, AS_OF) == text  # byte-identical
 
 

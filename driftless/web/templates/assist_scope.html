@@ -1,0 +1,140 @@
+{# The scope worksheet: one section per Scope-family technique with no
+   calculable output. Every figure is read straight off the project's own
+   rows — narrative prose, stakeholders, milestones — nothing is computed and
+   nothing is written; filling in a blank narrative body goes through the
+   wizard's own producer, linked at the foot of the page. #}
+{% extends "base.html" %}
+{% block title %}Scope worksheet — {{ project.name }}{% endblock %}
+{% block content %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{% import "_scroll.html" as scroll %}
+{% import "_empty.html" as empty %}
+{% import "_assist.html" as assist %}
+{{ breadcrumbs.trail(project, "Scope worksheet", as_of) }}
+<h1>Scope worksheet — {{ project.name }}</h1>
+<p><em>As of {{ as_of }}</em> ·
+   <a href="/projects/{{ project.id }}/hub?as_of={{ as_of }}">Project hub</a> ·
+   <a href="/projects/{{ project.id }}/wizard?as_of={{ as_of }}">Fill in a blank answer</a></p>
+
+{{ assist.summary_strip([
+  {"label": "Prompts answered", "value": (product_analysis|selectattr("answer")|list|length) ~ " of " ~ (product_analysis|length)},
+  {"label": "Stakeholders mapped", "value": diagram.actors|length},
+  {"label": "Milestones met", "value": (milestone_result.done ~ " of " ~ milestone_result.total if milestones else "no data yet")},
+]) }}
+
+{% call assist.section("Product analysis", chip_href=provenance.product_analysis.reference_href) %}
+<p>Four plain-words lenses on the same answer: what the project's scope statement says the
+   product is. Technique: <strong>{{ provenance.product_analysis.technique }}</strong> ·
+   PMBOK-6 process <strong>{{ provenance.product_analysis.process }}</strong> ·
+   <a href="{{ provenance.product_analysis.reference_href }}">read about this technique</a>.</p>
+{% call scroll.wide(project.name ~ " product analysis prompts") %}
+<table>
+<caption class="sr-only">Product analysis prompts for {{ project.name }}</caption>
+<tr><th scope="col">Lens</th><th scope="col">Question</th><th scope="col">Current answer</th></tr>
+{% for prompt in product_analysis %}
+<tr><th scope="row">{{ prompt.label }}</th><td>{{ prompt.question }}</td>
+  <td>{{ prompt.answer if prompt.answer else "Nothing filed yet." }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% endcall %}
+
+{% call assist.section("Context diagram", chip_href=provenance.context_diagram.reference_href) %}
+<p>The project as the system, its stakeholders as the actors around it. Technique:
+   <strong>{{ provenance.context_diagram.technique }}</strong> · PMBOK-6 process
+   <strong>{{ provenance.context_diagram.process }}</strong> ·
+   <a href="{{ provenance.context_diagram.reference_href }}">read about this technique</a>.</p>
+{% if diagram.actors %}
+<svg viewBox="0 0 300 300" width="300" height="300" role="img"
+     aria-label="Context diagram: {{ project.name }} and its {{ diagram.actors | length }} stakeholders">
+  <circle cx="{{ diagram.cx }}" cy="{{ diagram.cy }}" r="34" fill="none" stroke="currentColor" stroke-width="2"/>
+  <text x="{{ diagram.cx }}" y="{{ diagram.cy }}" text-anchor="middle" dominant-baseline="central"
+        font-size="10" fill="currentColor">{{ diagram.system }}</text>
+  {% for actor in diagram.actors %}
+  <line x1="{{ diagram.cx }}" y1="{{ diagram.cy }}" x2="{{ actor.x }}" y2="{{ actor.y }}"
+        stroke="currentColor" stroke-opacity="0.4"/>
+  <circle cx="{{ actor.x }}" cy="{{ actor.y }}" r="20" fill="none" stroke="currentColor" stroke-width="2"/>
+  <text x="{{ actor.x }}" y="{{ actor.y }}" text-anchor="middle" dominant-baseline="central"
+        font-size="7" fill="currentColor">{{ actor.name }}</text>
+  {% endfor %}
+</svg>
+{% call scroll.wide(project.name ~ " actors") %}
+<table>
+<caption class="sr-only">Actors for {{ project.name }}</caption>
+<tr><th scope="col">Actor</th><th scope="col">Interest</th><th scope="col">Influence</th></tr>
+{% for actor in diagram.actors %}
+<tr><th scope="row">{{ actor.name }}</th><td>{{ actor.interest }}</td><td>{{ actor.influence }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No stakeholders filed yet") %}
+Add one through the project's stakeholder register before this diagram has actors to draw.
+{% endcall %}
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Prototypes", chip_href=provenance.prototypes.reference_href) %}
+<p>What a prototype must show before it earns the time to build it. Technique:
+   <strong>{{ provenance.prototypes.technique }}</strong> · PMBOK-6 process
+   <strong>{{ provenance.prototypes.process }}</strong> ·
+   <a href="{{ provenance.prototypes.reference_href }}">read about this technique</a>.</p>
+<ul>
+{% for check in prototype_checklist %}
+<li>{{ check.item }}</li>
+{% endfor %}
+</ul>
+{% if requirements_present %}
+<p>Requirements documentation is filed — there is something written down to build a prototype against.</p>
+{% else %}
+<p>No requirements documentation is filed yet — a prototype built now has nothing written to check itself against.</p>
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Benchmarking", chip_href=provenance.benchmarking.reference_href) %}
+<p>Fill this table from your own comparison points — add
+   <code>?against=Name</code> to the address, once per project or organisation you want a
+   column for. Nothing here is saved. Technique:
+   <strong>{{ provenance.benchmarking.technique }}</strong> · PMBOK-6 process
+   <strong>{{ provenance.benchmarking.process }}</strong> ·
+   <a href="{{ provenance.benchmarking.reference_href }}">read about this technique</a>.</p>
+{% call scroll.wide(project.name ~ " benchmarking comparison") %}
+<table>
+<caption class="sr-only">Benchmarking comparison for {{ project.name }}</caption>
+<tr><th scope="col">Criterion</th><th scope="col">{{ project.name }}</th>
+  {% for column in benchmark_columns %}<th scope="col">{{ column }}</th>{% endfor %}</tr>
+{% for row in benchmark_rows %}
+<tr><th scope="row">{{ row }}</th><td></td>
+  {% for column in benchmark_columns %}<td></td>{% endfor %}</tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% endcall %}
+
+{% call assist.section("Inspection", chip_href=provenance.inspection.reference_href) %}
+<p>A walkthrough of this project's deliverables — its milestones, each with its own status.
+   Technique: <strong>{{ provenance.inspection.technique }}</strong> · PMBOK-6 process
+   <strong>{{ provenance.inspection.process }}</strong> ·
+   <a href="{{ provenance.inspection.reference_href }}">read about this technique</a>.</p>
+{% if milestones %}
+<p>{{ milestone_result.done }} of {{ milestone_result.total }} milestones met
+   ({{ milestone_result.percent }}%).</p>
+{% call scroll.wide(project.name ~ " milestone inspection") %}
+<table>
+<caption class="sr-only">Milestone inspection for {{ project.name }}</caption>
+<tr><th scope="col">Milestone</th><th scope="col">Target date</th><th scope="col">Status</th></tr>
+{% for milestone in milestones %}
+<tr><th scope="row">{{ milestone.name }}</th><td>{{ milestone.target_date }}</td>
+  <td>{{ milestone.status }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No milestones filed yet") %}
+Add one through the project's schedule before there is anything here to inspect.
+{% endcall %}
+{% endif %}
+{% endcall %}
+
+<p><a href="/projects/{{ project.id }}/hub?as_of={{ as_of }}">&larr; Back to {{ project.name }} hub</a></p>
+{% endblock %}

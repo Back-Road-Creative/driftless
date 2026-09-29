@@ -1,0 +1,32 @@
+{# The ONE breadcrumb trail a project sub-page renders, so a hand-copied nav cannot
+   drift from its siblings the way five did before this existed: tests/test_web_a11y.py
+   fails any template that writes <nav class="breadcrumbs"> itself rather than importing
+   this. ``page`` names the current page — the trail's last, unlinked crumb; ``as_of``
+   is carried onto the project-hub link only when the caller has one to carry, so a
+   page with no as_of in scope links the hub bare rather than raising on an undefined
+   name. #}
+{% macro trail(project, page, as_of=None) %}
+<nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/">Dashboard</a> &gt; <a href="/projects/{{ project.id }}/hub{% if as_of %}?as_of={{ as_of }}{% endif %}">{{ project.name }}</a> &gt; <span aria-current="page">{{ page }}</span></nav>
+{% endmacro %}
+
+{# The two-crumb trail, for a page that hangs off the dashboard directly rather than
+   off a project — a business surface has no project to sit under. Separate from
+   ``trail`` rather than a ``project=None`` branch inside it: the middle crumb is the
+   only difference, and a macro that renders two shapes depending on a null argument
+   is the drift this file exists to prevent, reintroduced one level down. #}
+{% macro top(name) %}
+<nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/">Dashboard</a> &gt; <span aria-current="page">{{ name }}</span></nav>
+{% endmacro %}
+
+{# The Method cluster's trail — theory reference pages (PMBOK, techniques, methods,
+   artifacts, glossary, the two maps) hang off "Method" rather than off a project or the
+   dashboard directly. "Method" is ``/method``, the section's own landing page and what
+   this crumb links: before that route existed it was the one crumb going nowhere.
+   ``section`` is the reference index the page sits under (its own href when the page
+   IS that index, so ``section`` is passed ``None`` and skipped); an optional
+   ``family`` inserts one more crumb below it, for a page grouped a level finer than
+   its index (a technique's or artifact's family). ``page`` is always last and always
+   unlinked, matching ``trail``/``top``. #}
+{% macro theory(section, section_href, page, family=None, family_href=None) %}
+<nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/">Dashboard</a> &gt; <a href="/method">Method</a>{% if section %} &gt; {% if section_href %}<a href="{{ section_href }}">{{ section }}</a>{% else %}<span>{{ section }}</span>{% endif %}{% endif %}{% if family %} &gt; {% if family_href %}<a href="{{ family_href }}">{{ family }}</a>{% else %}<span>{{ family }}</span>{% endif %}{% endif %} &gt; <span aria-current="page">{{ page }}</span></nav>
+{% endmacro %}

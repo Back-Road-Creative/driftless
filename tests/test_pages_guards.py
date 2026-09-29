@@ -108,9 +108,9 @@ def test_a_refused_apply_rerenders_the_form_with_the_typed_prose(
 ) -> None:
     """An oversize body is refused 422 — handing the prose back in a textarea, not
     destroying it behind an error shell with no form at all."""
-    from driftless.web.pages import _BODY_MAX
+    from driftless.web.wizard_form import BODY_MAX
 
-    oversize = PROSE + "x" * _BODY_MAX
+    oversize = PROSE + "x" * BODY_MAX
     client.get(f"/projects/1/wizard{Q}")  # mints the CSRF pair
     resp = client.post(
         f"/projects/1/wizard/apply{Q}",

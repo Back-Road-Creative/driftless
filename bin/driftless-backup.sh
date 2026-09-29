@@ -8,11 +8,12 @@
 # the run reproducible.
 #
 # A restore needs THREE things (OPERATIONS.md, Restoring): this dump, the encrypted
-# overlay, and the age private key that decrypts it. Both files are written here. The
-# key never is — a copy beside the dump makes one stolen archive open every secret in
-# it — so it is proved instead: each run decrypts the overlay with it before dumping
-# anything, and DRIFTLESS_KEY_ESCROW records where the off-host copy lives. The day
-# the key goes missing is then a failed backup, not a failed disaster.
+# overlay, and the age private key that decrypts BOTH. The two files are written here.
+# The key never is — a copy beside them makes one stolen archive open every secret and
+# the whole database — so it is proved instead: each run decrypts the overlay with it
+# before dumping anything and restores through it afterwards, and DRIFTLESS_KEY_ESCROW
+# records where the off-host copy lives. The day the key goes missing is then a failed
+# backup, not a failed disaster.
 #
 # Usage: PGPASSWORD=... bin/driftless-backup.sh 2026-07-22T09-00-00
 set -eu
@@ -42,12 +43,31 @@ sops -d "$SECRETS" >/dev/null || {
     exit 1
 }
 
-# The dump is the whole database in the clear and the manifest names where the key is escrowed.
-# A scheduler hands the script a 022 umask, which would leave both readable by every account on
-# the host; set it here rather than trusting the caller (deploy/entrypoint.sh does the same).
+# The manifest names where the key is escrowed, and file modes are the only thing standing
+# between the rest of the host and the set. A scheduler hands the script a 022 umask, which
+# would leave them readable by every account; set it here rather than trusting the caller
+# (deploy/entrypoint.sh does the same). Modes protect the set only while the host is still
+# yours, which is why the dump itself is encrypted below.
 umask 077
 mkdir -p "$BACKUP_DIR"
-DUMP="$BACKUP_DIR/driftless-$STAMP.dump"
+DUMP="$BACKUP_DIR/driftless-$STAMP.dump.age"
+
+# The dump is encrypted to the age key that already has to exist and already has to be
+# escrowed — the one the overlay is proved against above. Deriving the recipient from it
+# rather than taking a second setting means there is no way to encrypt a backup to a key
+# nobody kept: if this key is lost the overlay was unrecoverable anyway, so the dump adds
+# no new way to lose everything.
+RECIPIENT=$(age-keygen -y "$SOPS_AGE_KEY_FILE") || {
+    echo "driftless-backup: cannot derive an age recipient from $SOPS_AGE_KEY_FILE" >&2
+    exit 1
+}
+# An identity file holding several keys yields several recipients, and `age -r` takes one — so
+# say which is meant rather than letting age fail on a multi-line argument, or worse, encrypting
+# to whichever line happened to survive quoting.
+if [ "$(printf '%s\n' "$RECIPIENT" | wc -l)" -ne 1 ]; then
+    echo "driftless-backup: $SOPS_AGE_KEY_FILE holds more than one age key. Point DRIFTLESS_AGE_KEY at the single escrowed identity this backup should be recoverable with." >&2
+    exit 1
+fi
 
 pg() { psql -h "$DRIFTLESS_DB_HOST" -p "$DRIFTLESS_DB_PORT" -U "$DRIFTLESS_DB_USER" "$@"; }
 # Tables prove nothing: a --schema-only dump restores every table and not one row, and a count
@@ -64,13 +84,27 @@ rows_per_table() {
 }
 
 echo "Dumping $DRIFTLESS_DB_NAME -> $DUMP"
-pg_dump -h "$DRIFTLESS_DB_HOST" -p "$DRIFTLESS_DB_PORT" -U "$DRIFTLESS_DB_USER" -Fc "$DRIFTLESS_DB_NAME" >"$DUMP"
+# Piped, not written-then-encrypted: staging the cleartext and encrypting it afterwards leaves
+# the whole database readable on disk for as long as that takes, and permanently if the run
+# dies in between. `sh` has no pipefail, so a pg_dump that fails here would be hidden behind a
+# successful `age`; the emptiness check below and the restore-verify further down are what
+# actually decide whether this file is a backup.
+pg_dump -h "$DRIFTLESS_DB_HOST" -p "$DRIFTLESS_DB_PORT" -U "$DRIFTLESS_DB_USER" -Fc "$DRIFTLESS_DB_NAME" \
+    | age -r "$RECIPIENT" >"$DUMP"
+[ -s "$DUMP" ] || {
+    echo "driftless-backup: $DUMP is empty — pg_dump wrote nothing" >&2
+    exit 1
+}
 
 VERIFY_DB="driftless_verify_$(echo "$STAMP" | tr -c 'a-zA-Z0-9' '_')"
 echo "Restore-verify into $VERIFY_DB"
 createdb -h "$DRIFTLESS_DB_HOST" -p "$DRIFTLESS_DB_PORT" -U "$DRIFTLESS_DB_USER" "$VERIFY_DB"
 trap 'dropdb -h "$DRIFTLESS_DB_HOST" -p "$DRIFTLESS_DB_PORT" -U "$DRIFTLESS_DB_USER" "$VERIFY_DB" 2>/dev/null || true' EXIT
-pg_restore -h "$DRIFTLESS_DB_HOST" -p "$DRIFTLESS_DB_PORT" -U "$DRIFTLESS_DB_USER" -d "$VERIFY_DB" "$DUMP"
+# Decrypted into the restore, never onto disk — the verify would otherwise undo the encryption
+# it is meant to certify. This also proves the escrowed key opens the file, so "the dump is
+# unreadable" and "the dump is restorable" are established by the same run.
+age -d -i "$SOPS_AGE_KEY_FILE" <"$DUMP" \
+    | pg_restore -h "$DRIFTLESS_DB_HOST" -p "$DRIFTLESS_DB_PORT" -U "$DRIFTLESS_DB_USER" -d "$VERIFY_DB"
 
 SRC=$(rows_per_table "$DRIFTLESS_DB_NAME")
 DST=$(rows_per_table "$VERIFY_DB")
@@ -96,7 +130,8 @@ cat >"$BACKUP_DIR/driftless-$STAMP.manifest" <<MANIFEST
 driftless backup $STAMP — restore with OPERATIONS.md, Restoring
 code:     $(git -C "$REPO" describe --tags --always --dirty 2>/dev/null || echo unknown)
 revision: $(pg -d "$DRIFTLESS_DB_NAME" -tAc 'select version_num from alembic_version' 2>/dev/null || echo unstamped)
-dump:     driftless-$STAMP.dump ($TABLES tables / $ROWS rows, restore-verified)
+dump:     driftless-$STAMP.dump.age ($TABLES tables / $ROWS rows, restore-verified;
+          age-encrypted to the same key as the overlay — decrypt with \`age -d -i <key>\`)
 overlay:  driftless-$STAMP.secrets.enc.env (encrypted; the checkout's may have rotated)
 key:      NOT here and never will be — the age private key is escrowed by hand at:
           $DRIFTLESS_KEY_ESCROW

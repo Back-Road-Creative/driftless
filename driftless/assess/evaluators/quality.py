@@ -1,8 +1,9 @@
-"""Quality knowledge-area evaluator: latest metric readings against target and freshness.
+"""Quality knowledge-area evaluator: latest readings against direction-aware thresholds.
 
 Signal: the latest ``QualityMeasurement`` per metric, its actual value against
-its target, and how fresh the newest reading is. Red when any metric's latest
-reading is out of tolerance (actual past target); amber when every metric is
+its linked ``QualityMetric`` direction and bounds (or its legacy target), and
+how fresh the newest reading is. Red when any metric's latest reading is out of
+tolerance; amber when every metric is
 in tolerance but the evidence is more than 30 days old, and also when there
 are no measurements at all — an unmeasured project is a gap, not a clean bill
 of health, so it never reads green by default. Green only when there is
@@ -18,7 +19,7 @@ from datetime import date, timedelta
 from sqlalchemy.orm import Session
 
 from driftless.assess import adapters
-from driftless.assess.model import Action, Assessment, RagStatus, Threat
+from driftless.assess.model import Action, Assessment, Coverage, RagStatus, Threat
 from driftless.models import Project, QualityMeasurement
 from driftless.pmbok import mapping
 from driftless.pmbok.state import threat_subject_ref
@@ -56,7 +57,9 @@ def evaluate(session: Session, project: Project, as_of: date) -> Assessment:
             "Quality is unmeasured: no quality measurements are recorded for this project.",
             ref,
         )
-        return Assessment(KIND, as_of, score, "amber", (threat,), _actions(project.id, ref))
+        return Assessment(
+            KIND, as_of, score, "amber", (threat,), _actions(project.id, ref), "missing"
+        )
 
     # Rows are ordered measured_on desc, id desc, so the first occurrence of
     # each metric is deterministically its latest reading.
@@ -64,7 +67,7 @@ def evaluate(session: Session, project: Project, as_of: date) -> Assessment:
     for row in rows:
         latest_by_metric.setdefault(row.metric, row)
 
-    out_of_tolerance = [m for m in latest_by_metric.values() if m.actual_value > m.target_value]
+    out_of_tolerance = [m for m in latest_by_metric.values() if _outside_tolerance(m)]
     # Freshness is per metric: a metric whose *own* latest reading is old is stale
     # evidence, even if another metric was measured recently. Green needs fresh,
     # in-tolerance evidence for every metric.
@@ -81,7 +84,7 @@ def evaluate(session: Session, project: Project, as_of: date) -> Assessment:
     if red:
         count = len(out_of_tolerance)
         plural = "metric" if count == 1 else "metrics"
-        description = f"{count} quality {plural} out of tolerance (latest actual exceeds target)."
+        description = f"{count} quality {plural} outside their configured tolerance."
     else:
         oldest = min(stale_metrics, key=lambda m: m.measured_on)
         description = (
@@ -90,7 +93,23 @@ def evaluate(session: Session, project: Project, as_of: date) -> Assessment:
         )
 
     threat = Threat(tid, KIND, severity, score, description, ref)
-    return Assessment(KIND, as_of, score, severity, (threat,), _actions(project.id, ref))
+    coverage: Coverage = "measured" if red or not stale_metrics else "stale"
+    return Assessment(KIND, as_of, score, severity, (threat,), _actions(project.id, ref), coverage)
+
+
+def _outside_tolerance(measurement: QualityMeasurement) -> bool:
+    """Apply a metric definition when one exists; legacy readings stay lower-is-better."""
+    metric = measurement.quality_metric
+    if metric is None:
+        return measurement.actual_value > measurement.target_value
+    if metric.direction == "lower_is_better":
+        assert metric.upper_bound is not None
+        return measurement.actual_value > metric.upper_bound
+    if metric.direction == "higher_is_better":
+        assert metric.lower_bound is not None
+        return measurement.actual_value < metric.lower_bound
+    assert metric.lower_bound is not None and metric.upper_bound is not None
+    return not metric.lower_bound <= measurement.actual_value <= metric.upper_bound
 
 
 def _actions(project_id: int, ref: str) -> tuple[Action, ...]:

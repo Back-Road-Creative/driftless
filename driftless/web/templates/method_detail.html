@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}{{ method.display_name }}{% endblock %}
+{# One method's practices in full, grouped by kind. Each practice's crosswalk
+   names the PMBOK-6 process ids or TT_CATALOG keys it most nearly resembles,
+   or — when there is nothing to point at — the one sentence saying why. #}
+{% block content %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{% import "_related.html" as related_block %}
+{{ breadcrumbs.theory("Methods", "/methods", method.display_name) }}
+<h1>{{ method.display_name }}</h1>
+<p>{{ method.plain_summary | gloss }}</p>
+<p class="provenance">Source: {{ method.source_version }}.</p>
+{% if project_href %}
+<p><a href="{{ project_href }}">This project's board</a></p>
+{% endif %}
+{% for kind in ["role", "event", "artifact", "policy", "metric"] %}
+{% set practices = method.practices | selectattr("kind.value", "equalto", kind) | list %}
+{% if practices %}
+<h2>{{ kind | humanize }}</h2>
+<dl class="technique-index">
+  {% for practice in practices %}
+  <dt id="{{ practice.key }}">{{ practice.display_name }}</dt>
+  <dd>{{ practice.plain_summary | gloss }}
+    {% if practice.crosswalk %}
+    <br><small>Crosswalk: {{ practice.crosswalk | map("humanize") | join(", ") }}</small>
+    {% else %}
+    <br><small>Crosswalk: none — {{ practice.crosswalk_reason }}</small>
+    {% endif %}
+    {{ related_block.related(related[practice.key], "related-" ~ practice.key) }}
+    {% set detail = practice_content.get(practice.key) %}
+    {% if detail %}
+    <div class="practice-content" id="{{ practice.key }}-running-it">
+      <p><small><strong>Running it well:</strong></small></p>
+      <ul>{% for item in detail.running_it %}<li>{{ item }}</li>{% endfor %}</ul>
+      <p><small><strong>Going wrong looks like:</strong></small></p>
+      <ul>{% for item in detail.going_wrong %}<li>{{ item }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+  </dd>
+  {% endfor %}
+</dl>
+{% endif %}
+{% endfor %}
+{% for block in content %}
+<h2>{{ block.heading }}</h2>
+<ol>{% for item in block.items %}<li>{{ item }}</li>{% endfor %}</ol>
+{% endfor %}
+{% endblock %}

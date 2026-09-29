@@ -8,6 +8,7 @@ connection sees the same seeded database.
 """
 
 from collections.abc import Iterator
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 
@@ -18,25 +19,92 @@ from sqlalchemy.orm import Session
 
 from driftless.api.app import app as real_app
 from driftless.api.app import get_session
+from driftless.assess.evaluators import cost as cost_evaluator
+from driftless.assess.model import ASSISTANT_ROUTES, Action, Assessment
 from driftless.db import Base, new_engine, new_session_factory
 from driftless.db.changelog import register_changelog
 from driftless.models import (
     Baseline,
     BaselineLine,
     Business,
+    ConflictRecord,
     CostEntry,
+    Deliverable,
+    Person,
     Portfolio,
     Project,
+    Requirement,
+    Risk,
     SignOff,
     StatusSnapshot,
     Task,
     Workstream,
 )
+from driftless.pmbok import catalog
+from driftless.pmbok.definitions import TECHNIQUES
+from driftless.naming import technique_slug
+from driftless.pmbok.tt import TT_CATALOG
+from driftless.naming import humanize
 from driftless.web import csrf
-from driftless.web.pages import evm_curve
+from driftless.web import views
+from driftless.web.views import evm_curve
 
 JAN, AS_OF = date(2026, 1, 1), date(2026, 3, 31)
 Q = f"?as_of={AS_OF.isoformat()}"
+
+#: Which techniques a catalog process names, the (possibly empty) remainder, and what
+#: to say when that remainder is empty. **This module is the one home for all three**;
+#: tests/test_web_pmbok_drill.py, tests/test_web_technique_names.py and
+#: tests/test_action_launch_or_reference.py all reach them here rather than repeating
+#: the derivation. They were written out twice, identically down to the reason string,
+#: which is the same defect as any other twice-derived fact: two copies that agree by
+#: argument until one of them stops.
+#:
+#: Never a pinned key. Which techniques a process names is exactly the fact a
+#: concurrent PR is entitled to change (PR #273 attached the last few orphans to their
+#: PMBOK-6 processes and added a new Driftless extension), so it is computed off the
+#: live catalog and a technique moving between the two groups never has to be chased.
+_NAMED_BY_A_PROCESS = {tt for p in catalog.PROCESSES for tt in p.tools_techniques}
+_UNNAMED = sorted(TT_CATALOG - _NAMED_BY_A_PROCESS)
+_NO_PROCESS_REASON = (
+    "every technique in the closed catalog is named by at least one process — "
+    "the no-linked-process branch has nothing left to exercise"
+)
+#: The narrower case several tests below actually need: a technique with no linked
+#: process AND no assistant, so its ``Action`` is reference-only — the "reads exactly
+#: like any other recommendation, just linked instead of launched" case. Once
+#: ``assist/schedule`` routed ``critical_chain_method``, the only member ``_UNNAMED``
+#: had left was also routed, so this can legitimately be empty even while ``_UNNAMED``
+#: is not; the skip reason says so rather than reusing ``_NO_PROCESS_REASON``, which
+#: would claim something false (that no unnamed technique exists at all).
+_UNNAMED_UNROUTED = [tt for tt in _UNNAMED if tt not in ASSISTANT_ROUTES]
+_NO_UNROUTED_REASON = (
+    "every technique with no linked process now has an assistant routed to it too — "
+    "the reference-only, no-linked-process branch has nothing left to exercise"
+)
+
+
+def _inject_unlinked_action(monkeypatch: pytest.MonkeyPatch, technique: str) -> None:
+    """Wrap the cost evaluator so its assessment also recommends ``technique`` —
+    the real pipeline recommends no technique a process fails to name (that gap
+    is what PR #273 closed), so this is the only way left to give the
+    no-linked-process branch something real to render."""
+    original = cost_evaluator.evaluate
+
+    def wrapped(session: Session, project: Project, as_of: date) -> Assessment:
+        assessment = original(session, project, as_of)
+        if not assessment.actions:
+            return assessment
+        extra = Action(
+            "probe:unlinked",
+            "Apply an unmapped technique",
+            technique,
+            "Exercises the no-linked-process branch.",
+            f"project:{project.id}",
+        )
+        return replace(assessment, actions=(*assessment.actions, extra))
+
+    monkeypatch.setattr(cost_evaluator, "evaluate", wrapped)
 
 
 @pytest.fixture
@@ -66,6 +134,29 @@ def _seed(session: Session) -> None:
     )
     session.add(line)
     session.add(CostEntry(project=project, category="labour", incurred_on=JAN, amount=800.0))
+    # An open, unanswered risk and one Person — so the risk-response planner's
+    # filing form (test_web_csrf's protected POST) has a target and an owner to
+    # render, the same way every other per-project page here needs a row to draw.
+    session.add(
+        Risk(
+            project=project,
+            description="Vendor delay",
+            probability=0.5,
+            impact=100.0,
+            status="open",
+            kind="threat",
+        )
+    )
+    session.add(Person(name="Ada"))
+    # A filed requirement and a WBS node — so the requirements/WBS worksheet's
+    # filing forms (test_web_csrf's protected POSTs) have a requirement and a
+    # deliverable to render, the same reason the risk above is here.
+    session.add(Requirement(project=project, code="REQ-1", statement="Grade the cut", actor="qa"))
+    session.add(Deliverable(project=project, name="Cut", wbs_code="1"))
+    # An open conflict — so the team assist page's "log an action" filing form
+    # (test_web_csrf's protected POST) has a conflict to render, the same
+    # reason the risk and the requirement above are here.
+    session.add(ConflictRecord(project=project, raised_on=JAN, parties="Ada, Editor", actor="qa"))
     session.commit()
 
 
@@ -147,9 +238,9 @@ def test_the_threat_board_paginates_when_long(
 ) -> None:
     # The single seed makes 5 ranked threats; a page size of 2 forces 3 pages, so the
     # pager and cross-page slicing are exercised without seeding a huge board.
-    from driftless.web import pages
+    from driftless.web import threat_board
 
-    monkeypatch.setattr(pages, "THREATS_PER_PAGE", 2)
+    monkeypatch.setattr(threat_board, "THREATS_PER_PAGE", 2)
     first = client.get(f"/threats{Q}").text
     # Page 1 carries the pager: a "page 1 of 3" indicator and a link to page 2.
     assert "page 1 of 3" in first
@@ -256,7 +347,6 @@ def test_the_threat_board_shows_a_trend_delta(client: TestClient, db: Session) -
 
 
 def test_a_brand_new_threat_is_marked_new(client: TestClient, db: Session) -> None:
-    from driftless.web import pages
 
     # A project whose overspend only begins inside the last week: at as_of it has a cost
     # threat, but a week earlier AC was 0 (CPI undefined) so no cost threat existed — the
@@ -272,7 +362,7 @@ def test_a_brand_new_threat_is_marked_new(client: TestClient, db: Session) -> No
     db.add(CostEntry(project=fresh, category="labour", incurred_on=date(2026, 3, 28), amount=800.0))
     db.commit()
 
-    cards = pages.threat_cards(db, AS_OF)
+    cards = views.threat_cards(db, AS_OF)
     fresh_cost = next(c for c in cards if c["id"] == f"cost:project:{fresh.id}")
     assert fresh_cost["delta"]["dir"] == "new"
     assert fresh_cost["delta"]["amount"] is None
@@ -281,18 +371,47 @@ def test_a_brand_new_threat_is_marked_new(client: TestClient, db: Session) -> No
 
 
 def test_trend_delta_is_the_shared_feed_function() -> None:
-    """No drift pair: ``pages._trend_delta`` IS ``feed.trend_delta`` — one body,
+    """No drift pair: ``views._trend_delta`` IS ``feed.trend_delta`` — one body,
     not two identical ones kept in sync by comment."""
     from driftless.assess import feed
-    from driftless.web import pages
 
-    assert pages._trend_delta is feed.trend_delta
+    assert views._trend_delta is feed.trend_delta
 
 
 def test_the_process_map_grid_lists_processes(client: TestClient) -> None:
     body = client.get(f"/projects/1/process-map{Q}").text
     assert "4.1" in body and "completeness" in body.lower()
     assert "Develop Project Charter" in body
+
+
+def test_the_process_map_links_the_washed_method_map(client: TestClient) -> None:
+    body = client.get(f"/projects/1/process-map{Q}").text
+    assert f'href="/map?project=1&amp;as_of={AS_OF.isoformat()}"' in body
+
+
+def test_the_process_map_links_the_sign_off_form(client: TestClient) -> None:
+    body = client.get(f"/projects/1/process-map{Q}").text
+    assert 'href="#signoff"' in body
+    assert 'id="signoff"' in body
+
+
+def test_the_process_map_ring_caption_names_what_the_rings_measure(client: TestClient) -> None:
+    body = client.get(f"/projects/1/process-map{Q}").text
+    assert "produced or signed off" in body
+
+
+def test_the_process_map_legend_names_not_tracked(client: TestClient) -> None:
+    body = client.get(f"/projects/1/process-map{Q}").text
+    assert "Not tracked" in body
+
+
+def test_the_process_map_grid_carries_its_own_sticky_rule_and_frozen_column(
+    client: TestClient,
+) -> None:
+    body = client.get(f"/projects/1/process-map{Q}").text
+    assert '<table class="process-grid">' in body
+    assert "<thead>" in body and "<tbody>" in body
+    assert 'class="pg-area"' in body
 
 
 def test_the_wizard_page_and_apply_advance_onboarding(client: TestClient, db: Session) -> None:
@@ -309,6 +428,14 @@ def test_the_wizard_page_and_apply_advance_onboarding(client: TestClient, db: Se
 
     # The posted name, not a placeholder: the producer refuses rather than inventing one.
     assert db.scalars(select(Stakeholder)).one().name == "Ada Lovelace"
+
+
+def test_the_wizard_shows_its_tools_and_techniques_as_language(client: TestClient) -> None:
+    """The seeded project's first step is 4.1 Develop Project Charter, whose
+    tools_techniques the catalog names in snake_case — humanized here, not printed raw."""
+    body = client.get(f"/projects/1/wizard{Q}").text
+    assert "Expert Judgment" in body
+    assert "expert_judgment" not in body
 
 
 PROSE = "Vendor lead times hold at six weeks; the drone crew is weather-bound in March."
@@ -353,6 +480,24 @@ def test_the_wizard_refuses_a_narrative_kind_with_no_prose(client: TestClient, d
     assert not db.scalars(select(NarrativeArtifact)).all(), "a blank body still wrote a row"
 
 
+def test_a_blank_body_refusal_links_the_summary_to_the_body_field(
+    client: TestClient, db: Session
+) -> None:
+    """The wizard's ``error`` used to be one free-text string with nowhere for a
+    keyboard user to land — a refused body left them to find the textarea by hand.
+    This is the ONE refusal ``wizard_apply`` itself authors with a known field (the
+    other page-authored one, an oversize body, shares it); everything ``produce``
+    raises stays general, since that prose is not parsed for a field name it does
+    not structurally carry. The link's target is ``#body``, the textarea's real id."""
+    client.get(f"/projects/1/wizard{Q}")  # mints the pair
+    resp = client.post(
+        f"/projects/1/wizard/apply{Q}",
+        data={"kind": "assumption_log", "as_of": AS_OF.isoformat(), "body": "   "} | _pair(client),
+    )
+    assert resp.status_code == 422
+    assert '<li><a href="#body">' in resp.text
+
+
 def test_the_wizard_refuses_a_kind_it_cannot_produce(client: TestClient, db: Session) -> None:
     """The posted ``kind`` is client-controlled bytes like any other:
     ``wizard_cli.produce`` raises ``KeyError`` for one it has no producer for,
@@ -383,7 +528,11 @@ def test_the_body_field_is_derived_from_the_narrative_vocabulary() -> None:
     commit, with no template edit to forget. The stored vocabulary may run ahead
     of the producer table (a kind is storable before its resolver wave makes it
     producible), but never the reverse: every producer's stored target must be a
-    kind the CHECK accepts, and the four founding kinds must never stop asking."""
+    kind the CHECK accepts, and the three still-prose founding kinds must never
+    stop asking. ``lessons_learned_register`` was the fourth founding kind until
+    it moved off prose onto ``LessonLearned`` rows (see ``_make_lesson_learned``)
+    — it still asks for fields, just not a ``body``, so it stays out of
+    ``body_kinds()`` on purpose now."""
     from driftless.models import NARRATIVE_KINDS
     from driftless.wizard import cli as wizard_cli
 
@@ -393,11 +542,13 @@ def test_the_body_field_is_derived_from_the_narrative_vocabulary() -> None:
     assert asks <= set(wizard_cli.producible_kinds()), "a body kind the wizard cannot produce"
     founding = {
         "assumption_log",
-        "lessons_learned_register",
         "enterprise_environmental_factors",
         "organizational_process_assets",
     }
     assert founding <= asks, "a founding narrative kind stopped asking for its prose"
+    assert "lessons_learned_register" not in asks, (
+        "lessons_learned_register produces a LessonLearned row now, not prose"
+    )
 
 
 def test_the_weekly_status_form_stamps_the_percent(client: TestClient, db: Session) -> None:
@@ -415,25 +566,26 @@ def test_the_weekly_status_form_stamps_the_percent(client: TestClient, db: Sessi
 
 
 def test_the_rag_palette_is_single_sourced(client: TestClient) -> None:
-    body = client.get("/").text
-    # The canonical RAG token is DEFINED once, in base.html's :root block...
-    assert "--rag-red: #b3261e" in body
+    css = client.get("/static/driftless.css").text
+    # The canonical RAG token is DEFINED once, in driftless.css's :root block...
+    assert "--rag-red: #b3261e" in css
     # ...and REFERENCED through var(), never re-hardcoded per page.
-    assert "var(--rag-red)" in body
-    # The home page no longer carries its own raw RAG hex: its .red class now
-    # points at the token, so #b3261e survives only as the single :root definition.
-    assert body.count("#b3261e") == 1
-    assert ".red { color: var(--rag-red)" in body
+    assert "var(--rag-red)" in css
+    # The raw hex survives only as that single :root definition, and no rendered
+    # page carries one at all now the palette is its own cacheable asset.
+    assert css.count("#b3261e") == 1
+    assert "#b3261e" not in client.get("/").text
+    assert ".red { color: var(--rag-red)" in css
 
 
 def test_the_base_layout_ships_a_dark_mode_theme(client: TestClient) -> None:
-    body = client.get("/").text
+    css = client.get("/static/driftless.css").text
     # The app themes itself via a single prefers-color-scheme media query...
-    assert "@media (prefers-color-scheme: dark)" in body
+    assert "@media (prefers-color-scheme: dark)" in css
     # ...which re-points the single-sourced RAG tokens to dark-legible variants...
-    assert "--rag-red: #f2665a" in body
+    assert "--rag-red: #f2665a" in css
     # ...and overrides the base surface with a dark body background + light text.
-    assert "background: #151515" in body
+    assert "background: #151515" in css
 
 
 def test_the_threat_card_shows_a_readable_severity_word(client: TestClient) -> None:
@@ -590,18 +742,37 @@ def test_the_pmbok_reference_grid_lists_all_processes(client: TestClient) -> Non
     # A known process shows by id and name, straight from the frozen catalog.
     assert "4.1" in body and "Develop Project Charter" in body
     # Group/area headers read as words, not raw enum values.
-    assert "Monitoring Controlling" in body
+    assert "Monitoring and Controlling" in body
     assert "monitoring_controlling" not in body
 
 
 def test_the_pmbok_detail_shows_itto(client: TestClient) -> None:
+    """Display names, not raw keys. The absence half of this used to be pinned here
+    too — one process, one key each way — and now lives as a property over the whole
+    catalog: ``tests/test_web_techniques.py``'s
+    ``test_no_page_prints_a_raw_artifact_identifier_anywhere_a_reader_reads`` and
+    ``test_no_library_page_prints_a_raw_technique_identifier_anywhere_a_reader_reads``.
+    """
     resp = client.get("/pmbok/4.1")
     assert resp.status_code == 200
     body = resp.text
-    # The ITTO the catalog carries for 4.1 — a real input and a real output.
-    assert "business_case" in body  # an input
-    assert "project_charter" in body  # an output
-    assert "expert_judgment" in body  # a tool/technique
+    assert "Business Case" in body  # an input
+    assert "Project Charter" in body  # an output
+    assert "Expert Judgment" in body  # a tool/technique
+
+
+def test_the_pmbok_detail_still_resolves_a_technique_s_status_badge(
+    client: TestClient, db: Session
+) -> None:
+    """Humanizing the display must not touch the artifact lookup key: the ``itto``
+    macro looks ``live.artifacts`` up by the RAW kind, so a badge would silently
+    stop resolving if the humanized text were used as the key instead of the label.
+    """
+    resp = client.get(f"/pmbok/4.1?project=1&as_of={AS_OF.isoformat()}")
+    assert resp.status_code == 200
+    body = resp.text
+    assert "Project Charter" in body
+    assert 'class="badge st-' in body, "no artifact status badge rendered at all"
 
 
 def test_an_unknown_pmbok_id_is_404(client: TestClient) -> None:
@@ -621,41 +792,44 @@ def test_pmbok_is_in_the_nav(client: TestClient) -> None:
 
 
 def test_signed_off_has_its_own_process_map_class(client: TestClient) -> None:
-    from driftless.web import pages
 
     # signed_off no longer shares produced's "ok" class — it maps to its own
     # "signed" wash — and a not-yet-started process reads neutral, not alarming
     # red (findings #12 / #18).
-    assert pages.STATE_RANK["produced"] == "ok"
-    assert pages.STATE_RANK["signed_off"] == "signed"
-    assert pages.STATE_RANK["not_started"] == "muted"
-    # The base layout defines that .st-signed wash, so signed_off is visually
+    assert views.STATE_RANK["produced"] == "ok"
+    assert views.STATE_RANK["signed_off"] == "signed"
+    assert views.STATE_RANK["not_started"] == "muted"
+    # The stylesheet defines that .st-signed wash, so signed_off is visually
     # distinct from produced on every rendered page.
-    assert ".st-signed" in client.get("/").text
+    assert ".st-signed" in client.get("/static/driftless.css").text
 
 
 def test_the_process_map_has_a_state_legend(client: TestClient) -> None:
     import re
 
     from driftless.pmbok.state import ProcessState
-    from driftless.web import pages
 
     # Derived, not hardcoded: the expected set comes from ProcessState — the same
     # enum the state engine computes against — so a state added there and forgotten
-    # in pages._LEGEND fails HERE instead of shipping a legend that silently omits
+    # in views.LEGEND fails HERE instead of shipping a legend that silently omits
     # a state the grid can render (finding KA-F4: completeness held by inspection,
     # not by construction).
-    assert {st for st, _rank, _mark in pages._LEGEND} == {m.value for m in ProcessState}
+    assert {st for st, _rank, _mark in views.LEGEND} == {m.value for m in ProcessState}
 
     body = client.get(f"/projects/1/process-map{Q}").text
     match = re.search(r'class="legend".*?</dl>', body, re.S)
     assert match, 'the process map carries a <dl class="legend"> region'
     legend = match.group(0)
     # Every state is named, humanized, inside the legend, each with a swatch that
-    # reuses the grid's live st- class — walking pages._LEGEND itself rather than a
+    # reuses the grid's live st- class — walking views.LEGEND itself rather than a
     # hand-typed list, so a rendering gap can't hide behind a stale expectation.
-    for state, rank, _mark in pages._LEGEND:
-        label = state.replace("_", " ").title()
+    for state, rank, _mark in views.LEGEND:
+        # Calls the one word-shaping rule the template renders with (the ``humanize``
+        # Jinja filter is this same function object), rather than restating its body:
+        # a restated copy agrees with a broken product for as long as both are broken
+        # the same way, so rewriting the rule would move every legend label and leave
+        # this assertion green.
+        label = humanize(state)
         assert label in legend, f"legend names {label}"
         assert f"st-{rank}" in legend, f"legend swatch uses st-{rank}"
 
@@ -665,16 +839,16 @@ def test_the_process_map_shows_per_area_completion_rings(client: TestClient, db:
 
     from driftless.pmbok import state
     from driftless.pmbok.model import KnowledgeArea
-    from driftless.web import pages
+    from driftless.web.templating import TEMPLATES
 
     project = db.get(Project, 1)
     assert project is not None
     # Independently compute the expected per-area completion (raw fractions), then
     # confirm the page renders each area's ring from THAT, not a hard-coded value.
-    rings = pages.area_completeness(state.project_process_states(project, db, AS_OF))
+    rings = views.area_completeness(state.project_process_states(project, db, AS_OF))
 
     body = client.get(f"/projects/1/process-map{Q}").text
-    humanize = pages.TEMPLATES.env.filters["humanize"]
+    humanize = TEMPLATES.env.filters["humanize"]
     # One inline-SVG completion ring per knowledge area.
     assert body.count('<svg class="ring"') == len(list(KnowledgeArea))
     # Each ring's label equals pct of the computed fraction for its area, so the
@@ -683,10 +857,15 @@ def test_the_process_map_shows_per_area_completion_rings(client: TestClient, db:
     for area, frac in rings.items():
         match = re.search(rf'aria-label="{humanize(area)} completion ([^"]+)"', body)
         assert match, f"a ring is labelled for {area}"
-        assert match.group(1) == pages.pct(frac)
+        assert match.group(1) == views.pct(frac)
     # Concrete, non-uniform spot-checks that pin the values are computed per area.
-    assert pages.pct(rings["scope"]) == "50%"
-    assert pages.pct(rings["schedule"]) == "33%"
+    assert views.pct(rings["scope"]) == "50%"
+    # Schedule fell from 33% (2/6) to 17% (1/6): project_schedule_network_diagram
+    # gained a resolver, so Sequence Activities' required outputs grew from just
+    # ``activity_attributes`` (already satisfied by the seed's one task, reading
+    # PRODUCED) to also needing a dependency edge nothing in the seed files —
+    # demoting 6.3 to IN_PROGRESS. Only Control Schedule (6.6) still reads PRODUCED.
+    assert views.pct(rings["schedule"]) == "17%"
     # Every area holds an assessable process, so no ring reads n/a for a real
     # project. Communications fell to a third (50% before): project_communications
     # gained a resolver, so Manage Communications entered the denominator, and the
@@ -708,11 +887,10 @@ def test_a_zero_percent_ring_draws_no_progress_arc(client: TestClient, db: Sessi
     while keeping it for the latter.
     """
     from driftless.pmbok import state
-    from driftless.web import pages
 
     project = db.get(Project, 1)
     assert project is not None
-    rings = pages.area_completeness(state.project_process_states(project, db, AS_OF))
+    rings = views.area_completeness(state.project_process_states(project, db, AS_OF))
     assert any(frac == 0.0 for frac in rings.values()), "fixture must exercise a 0% area"
 
     body = client.get(f"/projects/1/process-map{Q}").text
@@ -725,11 +903,10 @@ def test_a_zero_percent_ring_draws_no_progress_arc(client: TestClient, db: Sessi
 def test_area_completeness_mirrors_the_completeness_rule_per_area(db: Session) -> None:
     from driftless.pmbok import state
     from driftless.pmbok.model import KnowledgeArea
-    from driftless.web import pages
 
     project = db.get(Project, 1)
     assert project is not None
-    rings = pages.area_completeness(state.project_process_states(project, db, AS_OF))
+    rings = views.area_completeness(state.project_process_states(project, db, AS_OF))
 
     # Keyed by every knowledge area; each value a fraction in [0, 1] or None.
     assert set(rings) == {a.value for a in KnowledgeArea}
@@ -756,3 +933,51 @@ def _threat_ids(html: str) -> list[str]:
     import re
 
     return re.findall(r'name="subject_ref" value="([^"]+)"', html)
+
+
+def test_threat_board_links_each_recommended_technique_to_its_explanation(
+    client: TestClient,
+) -> None:
+    """The board names each action's technique in humanized form and links its
+    written explanation for a technique with no assistant — change_control_tools, the
+    same exemplar the CLI and report tests use (schedule_compression and its schedule
+    siblings are all routed now, to the schedule-network calculator), since
+    earned_value_analysis now routes to a calculator instead (the case the next test
+    covers).
+
+    The address moved here on purpose: it used to be ``/pmbok/7.4#tt-…``, an anchor
+    on the ITTO list of a process that names the technique, which shows the reader
+    its *name* — one hop short of the page that explains it.
+    """
+    body = client.get(f"/threats{Q}").text
+    assert '<a href="/techniques/change-control-tools">Change Control Tools</a>' in body
+    assert "reference only" in body
+    assert "change_control_tools" not in body  # humanized, never the raw key
+
+
+def test_threat_board_launches_a_routed_technique_instead_of_linking_its_explanation(
+    client: TestClient,
+) -> None:
+    """The mirror case: earned_value_analysis carries a route now, so the board
+    offers "apply", never "reference only", for this one action."""
+    body = client.get(f"/threats{Q}").text
+    assert '<a href="/projects/1/assist/earned-value">apply Earned Value Analysis</a>' in body
+
+
+def test_threat_board_links_a_technique_no_process_names_the_same_way(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The case that was broken: a technique no process names used to get no link and
+    the label "no linked process yet either" — while its explanation was already
+    being served. There is no third branch now, and that copy appears nowhere.
+    Injected (see ``_inject_unlinked_action``) because the real pipeline recommends
+    no such technique on its own — that gap is exactly what PR #273 closed."""
+    if not _UNNAMED_UNROUTED:
+        pytest.skip(_NO_UNROUTED_REASON)
+    key = _UNNAMED_UNROUTED[0]
+    _inject_unlinked_action(monkeypatch, key)
+    body = client.get(f"/threats{Q}").text
+    name = TECHNIQUES[key].display_name
+    assert f'<a href="/techniques/{technique_slug(key)}">{name}</a>' in body
+    assert key not in body  # humanized, never the raw key
+    assert "no linked process yet either" not in body

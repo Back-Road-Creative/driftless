@@ -25,6 +25,8 @@ _ROW_LABELS = (
     "Estimate at completion (EAC)",
     "Estimate to complete (ETC)",
     "Variance at completion (VAC)",
+    "Cost variance (CV)",
+    "Schedule variance (SV)",
 )
 
 
@@ -56,12 +58,14 @@ def test_every_rendered_figure_sits_in_its_own_labelled_row(db: Session) -> None
     for ratio in (snap.cpi, snap.spi, snap.eac, snap.etc, snap.vac):
         assert ratio is not None  # this seed defines every ratio
         values.append(ratio)
+    values.extend([snap.cv, snap.sv])
     figures = [f"{value:.2f}" for value in values]
     assert len(set(figures)) == len(figures), (
-        "the seed must keep all nine figures pairwise distinct — equal figures let "
+        "the seed must keep all eleven figures pairwise distinct — equal figures let "
         "swapped table rows pass"
     )
     assert "GMS" in doc
     assert AS_OF.isoformat() in doc
     for label, figure in zip(_ROW_LABELS, figures, strict=True):
         assert f"| {label} | {figure} |" in doc, f"the {label} row must carry its own figure"
+    assert "EAC method: cost-performance-index" in doc

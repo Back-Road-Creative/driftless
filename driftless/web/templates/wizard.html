@@ -1,55 +1,109 @@
 {% extends "base.html" %}
 {% block title %}Wizard — {{ project.name }}{% endblock %}
 {% block content %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{% import "_alert.html" as alert %}
+{{ breadcrumbs.trail(project, "Wizard", as_of | default(None)) }}
 <h1>Onboarding — {{ project.name }}</h1>
 <p><em>As of {{ as_of }}</em> ·
-   <a href="/projects/{{ project.id }}/process-map">Process map</a></p>
-{% if error %}<p class="card sev-red" role="alert">{{ error }}</p>{% endif %}
+   <a href="/projects/{{ project.id }}/process-map?as_of={{ as_of }}">Process map</a></p>
+{% if error or field_errors %}{{ alert.error(error, field_errors) }}{% endif %}
 {% if done %}
   <p>Onboarding complete: every process the store can help with is produced, signed off or waived.</p>
 {% else %}
   <div class="card">
     <h2>Next: {{ step.process_id }} {{ step.name }}</h2>
-    <p><strong>{{ step.group }}</strong> / {{ step.area }} — currently <em>{{ step.state }}</em>.</p>
-    <h3>Inputs</h3>
+    <p><strong>{{ step.group | humanize }}</strong> / {{ step.area | humanize }} — currently <em>{{ step.state | humanize }}</em>.</p>
+    {% if process_definition and process_definition.plain_summary %}<p>{{ process_definition.plain_summary }}</p>{% endif %}
+
+    <h3>What you need</h3>
     <ul>
-      {% for i in step.inputs %}
-      <li>{{ i.kind }} — {% if i.present %}present{% else %}missing{% endif %}</li>
+      {% for row in input_rows %}
+      <li><a href="{{ row.href }}">{{ row.name }}</a> —
+        {% if row.present %}present{% else %}missing
+          {%- if row.producers %} (produced by
+          {%- for pid, pname in row.producers %} <a href="/pmbok/{{ pid }}">{{ pid }} {{ pname }}</a>{% if not loop.last %},{% endif %}{% endfor -%}
+          ){% endif %}
+        {% endif %}</li>
       {% endfor %}
     </ul>
-    <h3>Tools &amp; techniques</h3>
-    <p>{{ step.tools_techniques | join(", ") }}</p>
+
+    <h3>How you do it</h3>
+    <ul>
+      {% for row in technique_rows %}
+      <li><a href="{{ row.href }}">{{ row.name }}</a> — {{ row.tier }}</li>
+      {% endfor %}
+    </ul>
+
+    <h3>What you get</h3>
+    <ul>
+      {% for row in output_rows %}
+      <li><a href="{{ row.href }}">{{ row.name }}</a> — {{ row.explanation }}</li>
+      {% endfor %}
+    </ul>
+
+    <h3>In your method</h3>
+    {% if method %}
+      {% if method_practices %}
+      <p>{{ method | humanize }} practices that cross-walk to this step:</p>
+      <ul>
+        {% for practice in method_practices %}
+        <li>{{ practice.display_name }} — {{ practice.plain_summary }}</li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p>No {{ method | humanize }} practice cross-walks to this step.</p>
+      {% endif %}
+    {% else %}
+      <p>No method is set for this reading. See it crosswalked for
+         <a href="{{ method_links.scrum }}">Scrum</a> · <a href="{{ method_links.kanban }}">Kanban</a>.</p>
+    {% endif %}
+
+    <p><a href="{{ map_href }}">See it on the map</a></p>
+
+    {% if step.kind == "derived" %}
+    <h3>Computed, not typed in</h3>
+    <p>This step's output ({{ step.outputs | join(", ") }}) is worked out from data
+       already in the store rather than produced here — once its inputs above are all
+       present it advances on its own.</p>
+    {% elif step.kind == "reference" %}
+    <h3>Not tracked yet</h3>
+    <p>This step ({{ step.outputs | join(", ") }}) is not something the wizard can
+       produce or read back — see "How you do it" above for how it is normally done.</p>
+    {% else %}
     <h3>Produce an output</h3>
     <form method="post" action="/projects/{{ project.id }}/wizard/apply" data-swap>
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="as_of" value="{{ as_of }}">
       <input type="hidden" name="origin_process_id" value="{{ step.process_id }}">
-      <select name="kind" aria-label="Output to produce for {{ step.process_id }} {{ step.name }}">
+      <p><label for="kind-select">Output to produce for {{ step.process_id }} {{ step.name }}</label><br>
+      <select id="kind-select" name="kind" required>
         {% for kind in step.producible %}
-        <option value="{{ kind }}">{{ kind }}</option>
+        <option value="{{ kind }}">{{ kind | artifact_name }}</option>
         {% endfor %}
-      </select>
+      </select></p>
       {% for f in field_asks %}
-      <p><label>{{ f.name | humanize }}:<br>
+      <p><label for="field-{{ f.name }}">{{ f.name | humanize }}:</label><br>
         {% if f.choices %}
-        <select name="{{ f.name }}"{% if f.required %} required{% endif %}>
+        <select id="field-{{ f.name }}" name="{{ f.name }}"{% if f.required %} required{% endif %}{% if ("field-" ~ f.name) in field_errors %} aria-describedby="field-{{ f.name }}-error"{% endif %}>
           {% for choice in f.choices %}
           <option{% if choice == f.value %} selected{% endif %}>{{ choice }}</option>
           {% endfor %}
         </select>
         {% else %}
-        <input type="{{ f.type }}" name="{{ f.name }}" value="{{ f.value }}"
-          {% if f.type == "number" %}step="any" {% endif %}{% if f.required %}required{% endif %}>
+        <input id="field-{{ f.name }}" type="{{ f.type }}" name="{{ f.name }}" value="{{ f.value }}"
+          {% if f.type == "number" %}step="any" {% endif %}{% if f.required %}required{% endif %}{% if ("field-" ~ f.name) in field_errors %} aria-describedby="field-{{ f.name }}-error"{% endif %}>
         {% endif %}
-      </label></p>
+      </p>
       {% endfor %}
       {% if body_kinds %}
-      <p><label>Prose for {{ body_kinds | map("humanize") | join(", ") }}:<br>
-        <textarea name="body" rows="6" cols="50" maxlength="{{ body_max }}"
-          {% if body_required %}required{% endif %}>{{ body }}</textarea></label></p>
+      <p><label for="body">Prose for {{ body_kinds | map("artifact_name") | join(", ") }}:</label><br>
+        <textarea id="body" name="body" rows="6" cols="50" maxlength="{{ body_max }}"
+          {% if body_required %}required{% endif %}{% if "body" in field_errors %} aria-describedby="body-error"{% endif %}>{{ body }}</textarea></p>
       {% endif %}
-      <button type="submit">Produce &amp; advance</button>
+      <button type="submit" class="btn btn-primary">Produce &amp; advance</button>
     </form>
+    {% endif %}
   </div>
 {% endif %}
 {% endblock %}

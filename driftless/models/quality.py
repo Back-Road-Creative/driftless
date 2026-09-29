@@ -1,25 +1,46 @@
-"""Quality measurements: a metric's target versus what was actually measured.
+"""Quality definitions and dated observations with explicit threshold direction.
 
-This is what makes the Quality knowledge area real rather than aspirational. A
-``QualityMeasurement`` is one dated reading of one metric — its target, its
-actual, and the unit both are in — so the Quality evaluator can say whether a
-project is inside tolerance and how fresh the evidence is. Nothing is computed
-and stored here; the assessment engine reads these rows and derives status.
-
-A metric can be read many times over a project's life (the series is the trend),
-so there is deliberately no uniqueness on ``(project, metric)`` — ``measured_on``
-distinguishes readings. Direction of "good" is not modelled: a tolerance is a
-band around target, and the evaluator judges distance from target, which reads
-correctly whether higher or lower is better.
+``QualityMetric`` is the durable project contract; its nullable measurement link
+adds direction-aware policy without rewriting legacy evidence.
 """
 
 from datetime import date
 
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import CheckConstraint, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from driftless.db import Base
-from driftless.models.hierarchy import Project
+from driftless.models.hierarchy import Project, one_of
+
+QUALITY_DIRECTIONS = ("lower_is_better", "higher_is_better", "target_band")
+
+
+class QualityMetric(Base):
+    __tablename__ = "quality_metric"
+    __table_args__ = (
+        one_of("direction", QUALITY_DIRECTIONS),
+        CheckConstraint(
+            "(direction = 'lower_is_better' AND lower_bound IS NULL AND upper_bound IS NOT NULL) "
+            "OR (direction = 'higher_is_better' AND lower_bound IS NOT NULL "
+            "AND upper_bound IS NULL) "
+            "OR (direction = 'target_band' AND lower_bound IS NOT NULL AND upper_bound IS NOT NULL "
+            "AND lower_bound <= upper_bound)",
+            name="ck_quality_metric_directional_bounds",
+        ),
+        UniqueConstraint("project_id", "name", name="uq_quality_metric_project_name"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("project.id"), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    direction: Mapped[str] = mapped_column(String(20))
+    lower_bound: Mapped[float | None] = mapped_column(default=None)
+    upper_bound: Mapped[float | None] = mapped_column(default=None)
+    unit: Mapped[str | None] = mapped_column(String(50), default=None)
+    row_revision: Mapped[int] = mapped_column(nullable=False, default=1, server_default="1")
+
+    project: Mapped[Project] = relationship()
+    measurements: Mapped[list["QualityMeasurement"]] = relationship(viewonly=True)
 
 
 class QualityMeasurement(Base):
@@ -29,6 +50,9 @@ class QualityMeasurement(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("project.id"), index=True)
+    quality_metric_id: Mapped[int | None] = mapped_column(
+        ForeignKey("quality_metric.id"), index=True, default=None
+    )
     metric: Mapped[str] = mapped_column(String(200))
     target_value: Mapped[float]
     actual_value: Mapped[float]
@@ -36,3 +60,4 @@ class QualityMeasurement(Base):
     measured_on: Mapped[date]
 
     project: Mapped[Project] = relationship()
+    quality_metric: Mapped[QualityMetric | None] = relationship()

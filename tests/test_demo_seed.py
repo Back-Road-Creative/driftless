@@ -32,6 +32,10 @@ def test_seed_creates_parents_before_children_and_carries_their_ids() -> None:
     assert order.index("/programs") < order.index("/projects") < order.index("/workstreams")
     assert order.index("/workstreams") < order.index("/tasks")
     assert order.index("/projects") < order.index("/risks") < order.index("/milestones")
+    assert order.index("/projects") < order.index("/strategic-objectives")
+    assert order.index("/strategic-objectives") < order.index("/metric-definitions")
+    assert order.index("/metric-definitions") < order.index("/metric-observations")
+    assert order.index("/strategic-objectives") < order.index("/scorecard-contributions")
 
     departments = [body for path, body in calls if path == "/departments"]
     assert departments[0]["business_id"] == 1  # first business created is id 1
@@ -95,3 +99,30 @@ def test_seed_is_deterministic_across_two_runs() -> None:
     calls_b, counts_b = _run()
     assert calls_a == calls_b
     assert counts_a == counts_b
+
+
+def test_seed_posts_dependencies_after_their_tasks_resolved_to_the_posted_ids() -> None:
+    """Edges are named by task NAME in the payload and land as the ids the
+    ``/tasks`` posts actually got back -- the same resolve-by-name the baseline
+    lines use, so a renamed task fails loudly instead of pointing somewhere else."""
+    calls, counts = _run()
+    order = [path for path, _ in calls]
+    assert order.index("/tasks") < order.index("/task-dependencies")
+    task_id_by_name = {
+        body["name"]: i + 1 for i, (path, body) in enumerate(calls) if path == "/tasks"
+    }
+    payload = demo_payload(ANCHOR)
+    expected = [
+        (task_id_by_name[dep["predecessor"]], task_id_by_name[dep["successor"]])
+        for b in payload["businesses"]
+        for pf in b["portfolios"]
+        for p in pf["projects"]
+        for dep in p.get("dependencies", ())
+    ]
+    actual = [
+        (body["predecessor_task_id"], body["successor_task_id"])
+        for path, body in calls
+        if path == "/task-dependencies"
+    ]
+    assert actual == expected
+    assert counts["task_dependencies"] == len(expected) > 0

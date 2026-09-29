@@ -1,0 +1,173 @@
+{# The schedule-network calculator: the network diagram (inline SVG plus its text
+   twin — a reader gets nothing from a <rect>), critical path and float per activity,
+   crash/fast-track/levelling previews (GET only, never a write), the critical-chain
+   extension clearly labelled as one, and the single write this page offers: proposing
+   the active preview as a draft baseline change. #}
+{% extends "base.html" %}
+{% block title %}Schedule network — {{ project.name }}{% endblock %}
+{% block content %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{% import "_empty.html" as empty %}
+{% import "_scroll.html" as scroll %}
+{% import "_assist.html" as assist %}
+{{ breadcrumbs.trail(project, "Schedule network", as_of) }}
+<h1>Schedule network — {{ project.name }}</h1>
+<p><em>As of {{ as_of }}</em> ·
+   <a href="/projects/{{ project.id }}/gantt?as_of={{ as_of }}">Schedule</a> ·
+   <a href="/projects/{{ project.id }}/hub?as_of={{ as_of }}">Project hub</a></p>
+
+{% if not facts %}
+{% call empty.state("No approved baseline yet — there is no schedule network to analyze", id="assist-schedule-empty") %}
+Approve a baseline with lines first (the <a href="/projects/{{ project.id }}/wizard?as_of={{ as_of }}">wizard</a>
+can produce one); the network appears here as soon as the approved plan has lines.
+{% endcall %}
+{% else %}
+
+{{ assist.summary_strip([
+  {"label": "Tasks in network", "value": view.activities|length},
+  {"label": "Critical path" ~ ("s" if view.critical_paths|length != 1 else ""), "value": view.critical_paths|length},
+  {"label": "Project buffer", "value": (view.critical_chain.project_buffer_days ~ "d")},
+]) }}
+
+{% call assist.section("Network") %}
+<p>Baseline version <strong>{{ view.baseline_version }}</strong>{% if view.baseline_version > 1 %}
+   (<a href="/projects/{{ project.id }}/baselines/diff?versions={{ view.baseline_version - 1 }}...{{ view.baseline_version }}">diff against v{{ view.baseline_version - 1 }}</a>){% endif %}.
+   Each box is a task; a solid, thicker edge marks the critical path.
+   {% if view.scenario_kind == "crash" %}Showing a CRASH preview — nothing here is saved.
+   {% elif view.scenario_kind == "fast_track" %}Showing a FAST-TRACK preview — nothing here is saved.
+   {% endif %}</p>
+<figure>
+  <svg class="scurve" viewBox="0 0 {{ view.diagram.width }} {{ view.diagram.height }}" font-size="9" role="img"
+       aria-label="The schedule network as of {{ as_of }}: one box per task, one line per dependency, the critical path drawn in a thicker line. The table below carries the same nodes and edges as text.">
+    {% for edge in view.diagram.edges %}
+    <line data-dep="{{ edge.kind }}" x1="{{ edge.x1 }}" y1="{{ edge.y1 }}" x2="{{ edge.x2 }}" y2="{{ edge.y2 }}"
+          stroke="var(--ink)" stroke-width="{{ 1.6 if edge.critical else 0.8 }}"
+          stroke-dasharray="{{ '' if edge.critical else '2 2' }}"/>
+    {% endfor %}
+    {% for node in view.diagram.nodes %}
+    <rect data-task="{{ node.id }}" x="{{ node.x }}" y="{{ node.y }}" width="62" height="16"
+          fill="{{ 'var(--muted-ink)' if node.critical else 'var(--muted-bg)' }}" stroke="var(--gridline)"/>
+    <text x="{{ node.x + 2 }}" y="{{ node.y + 11 }}" fill="{{ 'var(--background)' if node.critical else 'var(--ink)' }}">{{ node.label | truncate(24, true, "…") }}</text>
+    {% endfor %}
+  </svg>
+</figure>
+
+{% call scroll.wide("Schedule network as text") %}
+<table>
+<caption class="sr-only">Every task in the network and its dependencies</caption>
+<tr><th scope="col">Task</th><th scope="col">Duration</th><th scope="col">On critical path</th><th scope="col">Depends on</th></tr>
+{% for row in view.activities %}
+<tr><td>{{ row.name }}</td><td>{{ row.duration }}d</td><td>{{ "Yes" if row.critical else "No" }}</td>
+  <td>{{ row.depends_on | join(", ") if row.depends_on else "—" }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% endcall %}
+
+{% call assist.section("Critical path" ~ ("s" if view.critical_paths | length != 1 else "") ~ " and float") %}
+{% if view.critical_paths %}
+<ul>
+{% for path in view.critical_paths %}
+<li>{{ path | join(" → ") }}</li>
+{% endfor %}
+</ul>
+{% endif %}
+{% call scroll.wide("Float per task") %}
+<table>
+<caption class="sr-only">Earliest/latest start and finish, and float, per task</caption>
+<tr><th scope="col">Task</th><th scope="col">ES</th><th scope="col">EF</th><th scope="col">LS</th><th scope="col">LF</th><th scope="col">Total float</th><th scope="col">Free float</th><th scope="col">Critical</th></tr>
+{% for row in view.activities %}
+<tr><td>{{ row.name }}</td><td>{{ row.early_start }}</td><td>{{ row.early_finish }}</td>
+  <td>{{ row.late_start }}</td><td>{{ row.late_finish }}</td><td>{{ row.total_float }}d</td>
+  <td>{{ row.free_float }}d</td><td>{{ "Yes" if row.critical else "No" }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% endcall %}
+
+{% call assist.section("Preview a scenario") %}
+<p>A preview is read-only — nothing here changes the stored plan. Try a crash (shorten one
+   critical task, at its cost per day) or a fast-track (overlap one critical finish-to-start
+   pair) and see how the network's dates and float would move.</p>
+<form method="get" action="/projects/{{ project.id }}/assist/schedule">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label for="crash-input">Crash — task id : days</label>
+  <input type="text" id="crash-input" name="crash" placeholder="42:3" value="{{ crash }}">
+  <label for="fast-track-input">Fast-track — predecessor id : successor id</label>
+  <input type="text" id="fast-track-input" name="fast_track" placeholder="42:43" value="{{ fast_track }}">
+  <button type="submit" class="btn btn-secondary">Preview</button>
+</form>
+{% if view.crash_candidates %}
+<p>Crash candidates on the critical path, cheapest first:
+{% for c in view.crash_candidates %}{{ c.task }} (${{ c.cost_per_day }}/day){{ ", " if not loop.last else "" }}{% endfor %}.</p>
+{% endif %}
+{% if view.fast_track_candidates %}
+<p>Fast-track candidates on the critical path:
+{% for c in view.fast_track_candidates %}{{ c.predecessor }} → {{ c.successor }}{{ ", " if not loop.last else "" }}{% endfor %}.</p>
+{% endif %}
+<p>Resource levelling preview (every non-critical task shifted to its latest start):
+   peak demand {{ view.peak_demand_before }} → {{ view.peak_demand_after }}.</p>
+{% call scroll.wide("Current plan vs previewed scenario") %}
+<table>
+<caption class="sr-only">Project finish, critical path and cost: current plan beside the previewed scenario</caption>
+<tr><th scope="col"></th><th scope="col">Current</th><th scope="col">Scenario</th></tr>
+<tr><td>Finish</td><td>{{ comparison.current.finish }}</td><td>{{ comparison.scenario.finish }}</td></tr>
+<tr><td>Critical path</td>
+  <td>{{ comparison.current.critical_paths | map("join", " → ") | join("; ") }}</td>
+  <td>{{ comparison.scenario.critical_paths | map("join", " → ") | join("; ") }}</td></tr>
+<tr><td>Total planned cost</td><td>${{ comparison.current.total_cost }}</td><td>${{ comparison.scenario.total_cost }}</td></tr>
+<tr><td>EAC (today's cost efficiency)</td>
+  <td>{{ "$" ~ comparison.current.eac if comparison.current.eac is not none else "—" }}</td>
+  <td>{{ "$" ~ comparison.scenario.eac if comparison.scenario.eac is not none else "—" }}</td></tr>
+</table>
+{% endcall %}
+{% endcall %}
+
+{% call assist.section("Critical chain (Driftless extension)") %}
+<p>Not a PMBOK-6 clause — no numbered process names this technique
+   (<code>tt.EXTENSIONS</code>). The project buffer is sized at half the safety recorded
+   on the critical chain's own three-point estimates; a feeding buffer, also half its
+   task's own safety, sits wherever a non-critical task merges directly into the chain.
+   A task with no three-point estimate on record contributes zero safety here — never an
+   invented figure.</p>
+<p>Critical-chain safety: {{ view.critical_chain.chain_safety_days }}d ·
+   project buffer: <strong>{{ view.critical_chain.project_buffer_days }}d</strong>.</p>
+{% if view.critical_chain.feeding_buffers %}
+{% call scroll.wide("Feeding buffers") %}
+<table>
+<caption class="sr-only">One feeding buffer per non-critical task merging into the critical chain</caption>
+<tr><th scope="col">Task</th><th scope="col">Feeds into</th><th scope="col">Buffer</th></tr>
+{% for feed in view.critical_chain.feeding_buffers %}
+<tr><td>{{ feed.task }}</td><td>{{ feed.feeds_into }}</td><td>{{ feed.buffer_days }}d</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Propose this as a baseline change") %}
+<p>This writes nothing to the plan itself: it files a draft baseline carrying the preview
+   above and a change request describing it. Approving the change and promoting the draft
+   to the live plan is a separate, existing step (<code>PATCH /baselines/&lt;id&gt;</code>,
+   then <code>PATCH /change-requests/&lt;id&gt;</code>) — never done here.</p>
+<form method="post" action="/projects/{{ project.id }}/assist/schedule/propose">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <input type="hidden" name="crash" value="{{ crash }}">
+  <input type="hidden" name="fast_track" value="{{ fast_track }}">
+  <input type="hidden" name="origin_process_id" value="{{ change_process_id }}">
+  <label for="change-description">Why this change</label>
+  <textarea id="change-description" name="description" required></textarea>
+  <button type="submit" class="btn btn-primary">Propose as a baseline change</button>
+</form>
+{% endcall %}
+
+{% call assist.section("Where this comes from", collapsed=True) %}
+<p>PMBOK-6 process <strong>{{ provenance.process }}</strong> (Develop Schedule) · as of
+   <strong>{{ provenance.as_of }}</strong> · source <strong>{{ provenance.source }}</strong>.
+   Critical chain method is a Driftless extension, cited to none of the above.</p>
+{% endcall %}
+
+<p><a href="/projects/{{ project.id }}/hub?as_of={{ as_of }}">&larr; Back to {{ project.name }} hub</a></p>
+{% endif %}
+{% endblock %}

@@ -42,5 +42,6 @@ class ProcurementAgreement(Base):
     status: Mapped[str] = mapped_column(String(20), default="draft")
     start_date: Mapped[date]
     end_date: Mapped[date | None] = mapped_column(default=None)
+    row_revision: Mapped[int] = mapped_column(nullable=False, default=1, server_default="1")
 
     project: Mapped[Project] = relationship()

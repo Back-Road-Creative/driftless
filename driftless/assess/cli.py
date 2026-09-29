@@ -28,7 +28,12 @@ def _format(assessment: Assessment) -> str:
         lines.append(f"    ! {threat.description}")
         lines.append(f"      score {threat.score}  ref {threat.source_ref}")
     for action in assessment.actions:
-        lines.append(f"    -> {action.label}  [{action.pmbok_tt}]")
+        name = action.technique.display_name
+        if action.launch_href:
+            where = f"apply {name} at {action.launch_href}"
+        else:
+            where = f"{name} — reference only, no assistant yet ({action.reference_href})"
+        lines.append(f"    -> {action.label}  [{where}]")
     return "\n".join(lines)
 
 

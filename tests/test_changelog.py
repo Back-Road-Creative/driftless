@@ -8,6 +8,7 @@ that they are not vacuous.
 
 import json
 from collections.abc import Iterator
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -17,8 +18,14 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from driftless.db import Base, new_engine, new_session_factory
 from driftless.db import changelog as changelog_module
-from driftless.db.changelog import ChangeLog, register_changelog, set_actor
-from driftless.models import Business
+from driftless.db.changelog import (
+    CHANGE_CHANNELS,
+    ChangeLog,
+    register_changelog,
+    set_actor,
+    set_via,
+)
+from driftless.models import ArtifactLink, Business
 
 
 def _factory(*, activated: bool) -> sessionmaker[Session]:
@@ -93,12 +100,60 @@ def test_actor_is_none_by_default_and_settable_per_session(session: Session) -> 
     assert [row.actor for row in _rows(session)] == [None, "jp"]
 
 
+def test_via_is_none_by_default_and_settable_per_session(session: Session) -> None:
+    _business(session, "Unattributed channel")
+    set_via(session, "cli")
+    _business(session, "CLI channel")
+
+    assert [row.via for row in _rows(session)] == [None, "cli"]
+
+
+def test_set_via_refuses_a_channel_outside_the_vocabulary(session: Session) -> None:
+    with pytest.raises(ValueError, match="via"):
+        set_via(session, "carrier-pigeon")
+
+
+@pytest.mark.parametrize("channel", CHANGE_CHANNELS)
+def test_set_via_accepts_every_vocabulary_member(session: Session, channel: str) -> None:
+    set_via(session, channel)
+    _business(session, f"{channel} channel")
+
+    assert _rows(session)[-1].via == channel
+
+
+def test_an_artifact_link_is_logged_like_any_other_row(session: Session) -> None:
+    link = ArtifactLink(
+        record_kind="department",
+        record_id="1",
+        uri="https://example.test/handbook.pdf",
+        title="Handbook",
+        actor="sam",
+        as_of=date(2026, 3, 31),
+    )
+    session.add(link)
+    session.commit()
+
+    (row,) = _rows(session)
+    assert (row.table_name, row.operation, row.row_id) == ("artifact_link", "insert", str(link.id))
+
+
 def test_the_log_never_logs_itself(session: Session) -> None:
     session.add(ChangeLog(table_name="business", row_id="1", operation="insert", detail="{}"))
     session.commit()
 
     rows = _rows(session)
     assert len(rows) == 1 and rows[0].table_name == "business"
+
+
+def test_the_log_never_logs_deleting_itself(session: Session) -> None:
+    entry = ChangeLog(table_name="business", row_id="1", operation="insert", detail="{}")
+    session.add(entry)
+    session.commit()
+
+    session.delete(entry)
+    session.commit()
+
+    assert _rows(session) == []  # the delete of a log row produced no new log row
 
 
 def test_the_log_is_append_only(session: Session) -> None:

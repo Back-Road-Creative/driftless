@@ -4,14 +4,14 @@ page can quietly zero.
 The hub computes its figures inside a ``state.prefetched`` scope. That scope is a
 cache, and its whole promise is that it answers identically to an uncached walk.
 Narrowing it to the wrong project set — ``state.prefetched(db, [])`` — is not a
-slowdown: ``mapping._rows`` then hands EVERY resolver an empty row list, so overall
+slowdown: ``mapping.rows_for`` then hands EVERY resolver an empty row list, so overall
 completeness and all ten area rings drop to 0% while the page still returns 200 with
 every ring in place. The whole suite passed with that mutation applied; only the
 per-request query guard moved, and it moved DOWN (an empty parent set skips
 ``selectinload``), so the regression read as an improvement.
 
 So the guard is an equality, not a threshold or a smoke test: what the page prints
-must equal what ``state.completeness`` and ``pages.area_completeness`` answer for the
+must equal what ``state.completeness`` and ``views.area_completeness`` answer for the
 same store and as-of, walked OUTSIDE any prefetch scope. That is the invariant the
 scope actually promises, asserted where it can be broken. Both tests first assert the
 seed is non-degenerate — part-done overall, and areas that disagree with each other —
@@ -49,7 +49,7 @@ from driftless.models import (
     Workstream,
 )
 from driftless.pmbok import state
-from driftless.web.pages import area_completeness, pct
+from driftless.web.views import area_completeness, pct
 
 JAN, AS_OF = date(2026, 1, 1), date(2026, 3, 31)
 URL = f"/projects/1/hub?as_of={AS_OF.isoformat()}"

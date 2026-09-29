@@ -3,10 +3,14 @@
 {% block content %}
 {% import "_scroll.html" as scroll %}
 {% import "_signoff.html" as signoff %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{{ breadcrumbs.trail(project, "Process map", as_of) }}
 <h1>Process map — {{ project.name }}</h1>
 <p><em>As of {{ as_of }}</em> — completeness <strong>{{ completeness }}</strong> over {{ count }} processes.
-   <a href="/projects/{{ project.id }}/wizard">Onboarding wizard</a> ·
-   <a href="/projects/{{ project.id }}/status">Weekly status</a></p>
+   <a href="/projects/{{ project.id }}/wizard?as_of={{ as_of }}">Onboarding wizard</a> ·
+   <a href="/projects/{{ project.id }}/status?as_of={{ as_of }}">Weekly status</a> ·
+   <a href="/map?project={{ project.id }}&amp;as_of={{ as_of }}">This project on the method map</a> ·
+   <a href="#signoff">Sign off or waive a process</a></p>
 <dl class="legend">
   {% for st, rank, mark in legend %}
   {# the chip is the <dd> beside it drawn in colour AND in the mark its cells print,
@@ -17,16 +21,27 @@
   <dd>{{ st | humanize }}</dd>
   {% endfor %}
 </dl>
+{# The sixth word the grid can print, never a sixth ProcessState (views.UNTRACKED):
+   a process the store holds no output resolver for at all prints its cell as the
+   plain word "Not tracked", not a mark — so it takes no chip here either. A chip
+   with no mark would be a blank swatch, indistinguishable from Waived's or Not
+   Started's, which is exactly the failure the five distinguishable chips above
+   exist to rule out; a word needs no chip to decode it in any of those readings. #}
+<p>A cell with no mark reads <strong>Not tracked</strong> — the store holds no output of that process.</p>
+<p>Each ring is this area's share of assessable, non-waived processes produced or signed off.</p>
 {% call scroll.wide(project.name ~ " process grid") %}
-<table>
+<table class="process-grid">
   <caption class="sr-only">{{ project.name }}'s processes as of {{ as_of }}, knowledge area by row and process group by column</caption>
+  <thead>
   <tr>
-    <th scope="col">Knowledge area</th>
+    <th scope="col" class="pg-area">Knowledge area</th>
     {% for g in groups %}<th scope="col">{{ g | humanize }}</th>{% endfor %}
   </tr>
+  </thead>
+  <tbody>
   {% for area in areas %}
   <tr>
-    <th scope="row">
+    <th scope="row" class="pg-area">
       {% set frac = rings[area] %}
       {# Completion ring: same rule as state.completeness, per area (drift-free).
          A circumference-100 circle (r=15.9155) makes the arc length the percent
@@ -38,7 +53,7 @@
          The same ink the percentage below prints in, over the 15%-opacity track. #}
       <svg class="ring" viewBox="0 0 36 36" width="34" height="34" role="img"
            aria-label="{{ area | humanize }} completion {{ ring_labels[area] }}"
-           style="vertical-align:middle;margin-right:.35em">
+      >
         <circle cx="18" cy="18" r="15.9155" fill="none" stroke="currentColor"
                 stroke-opacity="0.15" stroke-width="3.5"/>
         {% if frac is not none %}
@@ -71,15 +86,25 @@
     {% endfor %}
   </tr>
   {% endfor %}
+  </tbody>
 </table>
 {% endcall %}
+{# Hybrid tailoring: which of THIS project's Monitoring & Controlling processes run
+   on a fixed baseline versus the team's own current commitment, and why —
+   driftless.pmbok.tailoring, one profile per delivery_mode, never restated here. #}
+<h2>Tailoring — {{ tailoring_profile }}</h2>
+<ul>
+  {% for t in tailoring %}
+  <li><strong>{{ t.id }} {{ t.name }}</strong> — Runs on: {{ t.mode_word }} — {{ t.reason }}</li>
+  {% endfor %}
+</ul>
 {# The control the legend above has always needed. It sits BELOW the grid, as one
    picker, rather than a form in each of the 49 cells: the grid is already the widest
    table in the product and sideways-scrolling, and 49 selects plus 49 buttons inside it
    would double its width and put ~98 tab stops inside a scroll region. Each option
    carries its process's current state, so the picker says the same thing the cell does.
-   ``ref`` is built in pages.py by state.process_subject_ref — never here. #}
-<h2>Sign off or waive a process</h2>
+   ``ref`` is built in ``web/process_map.py`` by state.process_subject_ref — never here. #}
+<h2 id="signoff">Sign off or waive a process</h2>
 <p>Signing off records the process as approved-done; waiving tailors it out, dropping it
    from every completeness figure above. Both are ledger entries, signed by whoever is
    signed in — a reversal is a new decision, never an edit.</p>
@@ -89,10 +114,10 @@
   <input type="hidden" name="project_id" value="{{ project.id }}">
   <input type="hidden" name="as_of" value="{{ as_of }}">
   <label for="process-subject">Process</label>
-  <select id="process-subject" name="subject_ref">
+  <select id="process-subject" name="subject_ref" required>
     {% for p in processes %}<option value="{{ p.ref }}">{{ p.id }} {{ p.name }} — {{ p.state | humanize }}</option>{% endfor %}
   </select>
   {{ signoff.decision("Decision for the selected process") }}
-  <button type="submit">Record decision</button>
+  <button type="submit" class="btn btn-secondary">Record decision</button>
 </form>
 {% endblock %}

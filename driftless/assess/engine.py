@@ -33,7 +33,7 @@ from driftless.assess.evaluators import (
     scope,
     stakeholder,
 )
-from driftless.assess.model import SEVERITY_WEIGHT, Action, Assessment, Threat
+from driftless.assess.model import Coverage, SEVERITY_WEIGHT, Action, Assessment, Threat
 from driftless.calc.rollup import RagStatus
 from driftless.models import Project, SignOff
 from driftless.models.governance import SUPPRESSING_DECISIONS
@@ -89,18 +89,32 @@ def _integration(nine: tuple[Assessment, ...], project: Project, as_of: date) ->
     """Integration = worst-of the other knowledge areas, with escalation actions."""
     worst = _worst(tuple(a.status for a in nine))
     score = round(max((a.risk_score for a in nine), default=0.0), 4)
+    coverage: Coverage
+    if any(a.coverage == "missing" for a in nine):
+        coverage = "missing"
+    elif any(a.coverage == "stale" for a in nine):
+        coverage = "stale"
+    elif any(a.coverage == "measured" for a in nine):
+        coverage = "measured"
+    else:
+        coverage = "not_applicable"
     if worst == "green":
-        return Assessment("integration", as_of, 0.0, "green")
+        return Assessment("integration", as_of, 0.0, "green", coverage=coverage)
 
     ref = f"project:{project.id}"
-    reds = [a.kind for a in nine if a.status == "red"] or ["—"]
-    ambers = [a.kind for a in nine if a.status == "amber"] or ["—"]
+    # Only the clauses with something in them: "amber in —" is not a sentence a
+    # reader can act on, and the threat board and hub rail print this verbatim.
+    clauses = [
+        f"{status} in {', '.join(a.kind for a in nine if a.status == status)}"
+        for status in ("red", "amber")
+        if any(a.status == status for a in nine)
+    ]
     threat = Threat(
         state.threat_subject_ref("integration", project.id),
         "integration",
         worst,
         score,
-        f"Overall health is {worst}: red in {', '.join(reds)}; amber in {', '.join(ambers)}.",
+        f"Overall health is {worst}: {'; '.join(clauses)}.",
         ref,
     )
     actions = (
@@ -119,7 +133,7 @@ def _integration(nine: tuple[Assessment, ...], project: Project, as_of: date) ->
             ref,
         ),
     )
-    return Assessment("integration", as_of, score, worst, (threat,), actions)
+    return Assessment("integration", as_of, score, worst, (threat,), actions, coverage)
 
 
 def assess_project(session: Session, project: Project, as_of: date) -> tuple[Assessment, ...]:
@@ -153,9 +167,19 @@ def _threats_of(assessments: tuple[Assessment, ...]) -> tuple[Threat, ...]:
     return tuple(threat for assessment in assessments for threat in assessment.threats)
 
 
-def _rank_key(threat: Threat) -> tuple[float, float, str]:
-    """Rank by severity, then score, then id — so ties are byte-stable."""
-    return (SEVERITY_WEIGHT[threat.severity], threat.score, threat.id)
+def _rank_key(threat: Threat) -> tuple[float, float, float, str]:
+    """Rank by severity, then score, then the no-response tie-break, then id.
+
+    ``open_no_response`` only decides a tie between two threats already equal on
+    severity and score — an open risk with no filed response outranks an
+    equal-severity, equal-score threat whose worst risks all carry one, without
+    moving either one's own score."""
+    return (
+        SEVERITY_WEIGHT[threat.severity],
+        threat.score,
+        float(threat.open_no_response),
+        threat.id,
+    )
 
 
 def live_threats(session: Session, project: Project, as_of: date) -> tuple[Threat, ...]:

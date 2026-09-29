@@ -14,3 +14,7 @@ _As of {{ as_of }}_
 | Estimate at completion (EAC) | {{ n(s.eac) }} |
 | Estimate to complete (ETC) | {{ n(s.etc) }} |
 | Variance at completion (VAC) | {{ n(s.vac) }} |
+| Cost variance (CV) | {{ n(s.cv) }} |
+| Schedule variance (SV) | {{ n(s.sv) }} |
+
+_EAC method: cost-performance-index (BAC ÷ CPI) — today's efficiency holds throughout._

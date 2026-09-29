@@ -20,8 +20,9 @@ quietly stop being true; a step no unit test can run is marked `manual` with why
 - The API container is `read_only` with `tmpfs` for `/run/secrets` and `/tmp`,
   so a decrypted secret never lands on a writable layer.
 - Every request must carry a credential except on the four public paths below
-  (`driftless/api/secure.py`). With `DRIFTLESS_API_TOKEN` unset the gate runs open and
-  warns once — that is development mode, not a deployment.
+  (`driftless/api/secure.py`). With `DRIFTLESS_API_TOKEN` unset the server refuses
+  to start at all, unless `DRIFTLESS_ALLOW_UNAUTHENTICATED=1` opts in explicitly —
+  that is development mode, and it warns once so open is never quiet.
 
 ### Public paths, and what counts as a credential
 
@@ -66,9 +67,9 @@ A request presenting both a cookie and a bearer is answered as its **cookie**: a
 a header can never drop a browser's identity.
 
 `DRIFTLESS_SESSION_SECRET` **must** be set, or no cookie ever authorizes and a browser
-is refused even after the right password: the cookie half fails **closed**, the
-deliberate opposite of the bearer half running **open** when its token is unset. A gate
-that only withholds access may default to off; an identity that grants it may not. The
+is refused even after the right password: the cookie half fails **closed**, and so
+now does the bearer half — a forgotten token stops the process rather than opening the
+API, and running open takes a second variable set on purpose. The
 whole walk — refused, sign in, admitted by the cookie alone, sign out, refused again —
 is asserted end to end by `tests/test_auth_end_to_end.py`, because each half of it
 passed its own tests while the pair was broken.
@@ -100,6 +101,30 @@ is what lets `bin/driftless-import.py` load data before anyone has an account. H
 out accordingly; anything that should be read-only gets a per-user token (below) or a
 `viewer` login, not the shared token.
 
+### Retiring the shared credential
+
+Once every client holds a per-user token, set `DRIFTLESS_REQUIRE_USER_AUTH=1` and remove
+`DRIFTLESS_API_TOKEN` from the SOPS overlay. The gate then admits **only** a cookie or a
+`dfl_…` token, so there is no longer any credential whose writes land `actor=None` — every
+row names who wrote it. Mint a service account for whatever held the shared one:
+
+```sh
+echo "$A_LONG_PASSWORD" | driftless user add --username importer --role contributor \
+  --db-url "$DRIFTLESS_DATABASE_URL"
+driftless token add --username importer --label nightly-import \
+  --db-url "$DRIFTLESS_DATABASE_URL"
+```
+
+Setting both `DRIFTLESS_REQUIRE_USER_AUTH=1` and `DRIFTLESS_API_TOKEN` is **refused** at
+startup, by the entrypoint and again by the app: the two say different things about what
+authorizes, and quietly honouring one would leave you wrong about which.
+
+**One behaviour changes with it.** `POST /sign-offs` lets the shared credential supply
+`signed_by` itself, because it resolves nobody — that is how a decision a named human made
+offline gets recorded. A service account *does* resolve, so its `signed_by` is overwritten
+with the account's own name, exactly as it is for any other identity. If you need
+on-behalf-of sign-offs, keep the shared credential rather than retiring it.
+
 ## Per-user API tokens
 
 For anything that is not bootstrapping — an agent, a cron job, a colleague's script —
@@ -108,7 +133,9 @@ then gets that account's role, and every row they write says who wrote it:
 
 ```sh
 driftless token add --username jp --label ci --db-url "$DRIFTLESS_DATABASE_URL"
-driftless token list --db-url "$DRIFTLESS_DATABASE_URL"        # id, user, label, state
+driftless token add --username jp --label laptop --expires-in-days 90 \
+  --db-url "$DRIFTLESS_DATABASE_URL"                            # optional: dies on its own
+driftless token list --db-url "$DRIFTLESS_DATABASE_URL"        # id, user, label, state, expiry
 driftless token revoke 3 --db-url "$DRIFTLESS_DATABASE_URL"    # by the id `list` prints
 ```
 
@@ -127,10 +154,45 @@ curl -fsS -H "Authorization: Bearer dfl_…" http://127.0.0.1:8000/projects
 What the holder then does with it is walked end to end in `docs/agent-guide.md`, whose every
 command and payload is executed by `tests/test_docs_agent_guide.py`, not trusted to stay true.
 
-Three things stop a token dead, all immediate — no expiry to wait out: `token revoke`
-on that id, `driftless user disable` on its owner (which kills **every** token they
-hold, as it does every cookie), or setting the owner's role to `viewer`, which leaves
-reads working and refuses writes.
+Four things stop a token dead: `token revoke` on that id (immediate); its own
+`--expires-in-days` deadline, if it was minted with one, lapsing on its own; `driftless user
+disable` on its owner (immediate, and kills **every** token they hold, as it does every
+cookie); or setting the owner's role to `viewer` (immediate), which leaves reads working and
+refuses writes. A caller cannot tell revocation from expiry apart — both answer the same
+`401` — but `token list` shows an operator which one a given token is in.
+
+## Email digest (SMTP)
+
+`driftless notify digest --as-of D` emails the same attention list `/` renders
+to every `EmailSubscription` due a send, as text and HTML, over stdlib
+`smtplib` — no paid mail service is required or assumed. The recipient is
+`User.email` when set (`driftless user email <username> --address …`); a user
+with no email but an `@`-shaped username falls back to that, and a user with
+neither is skipped and named in the command's output rather than silently
+dropped. The relay is an operator choice, read from environment variables:
+
+- `DRIFTLESS_SMTP_HOST` — **required**; with it unset the command refuses
+  rather than silently skipping every subscriber.
+- `DRIFTLESS_SMTP_PORT` — default `25`.
+- `DRIFTLESS_SMTP_FROM` — default `driftless@localhost`.
+- `DRIFTLESS_SMTP_STARTTLS` — `1` to upgrade the connection before sending;
+  default off, which is fine for a relay on `localhost` or a private network.
+- `DRIFTLESS_SMTP_USER` / `DRIFTLESS_SMTP_PASSWORD` — optional; supplied
+  together, the command authenticates before sending.
+
+The free default is a relay already on the host — local Postfix or Exim
+listening on `127.0.0.1:25` — which needs none of the optional variables set.
+
+```sh
+DRIFTLESS_SMTP_HOST=127.0.0.1 driftless notify digest --as-of 2026-03-31 \
+  --db-url "$DRIFTLESS_DATABASE_URL"                             # sends, advances each cursor
+DRIFTLESS_SMTP_HOST=127.0.0.1 driftless notify digest --as-of 2026-03-31 \
+  --dry-run --db-url "$DRIFTLESS_DATABASE_URL"                   # prints the digest, sends nothing
+```
+
+A subscription's `last_sent_as_of` cursor only advances once `smtplib` reports
+the message accepted, so a failed send resends the same as-of on the next run
+rather than skipping it. `--dry-run` never sends and never advances a cursor.
 
 ## Revoking a session
 
@@ -140,13 +202,17 @@ on the row (`app_user.session_epoch`) that every cookie carries a copy of:
 ```sh
 driftless user disable jp --db-url "$DRIFTLESS_DATABASE_URL"   # revokes immediately
 driftless user enable  jp --db-url "$DRIFTLESS_DATABASE_URL"   # they sign in again
+echo "$NEW_PW" | driftless user passwd jp --db-url "$DRIFTLESS_DATABASE_URL"   # revokes AND rotates
 ```
 
 `disable` clears `is_active` **and** increments the counter, so every session
 already issued to that user stops resolving — no waiting for the cookie to
 expire. It is **irreversible for those cookies**: `enable` restores the login but
-never lowers the counter, so the holder must sign in again. Both writes are
-audited through the ChangeLog like any other.
+never lowers the counter, so the holder must sign in again. `passwd` increments
+the same counter for the same reason: a suspected-leaked password is not fully
+handled until the sessions it could still authenticate are dead too, so rotating
+it is a revocation, not just a write. All three writes are audited through the
+ChangeLog like any other.
 
 `POST /logout` bumps the same counter, so a user can revoke themselves without an
 operator: signing out on one device ends the session on **all** of them. Expect
@@ -345,10 +411,94 @@ export PGPASSWORD="$(sops -d --extract '["POSTGRES_PASSWORD"]' deploy/secrets.en
 bin/driftless-backup.sh "$(date +%FT%H-%M-%S)"        # writes ./backups/driftless-<stamp>.*
 ```
 
-Schedule it from cron or a systemd timer; a non-zero exit means the backup did
-not verify and must be investigated. Before dumping anything it decrypts the
-overlay with `$DRIFTLESS_AGE_KEY`, so no run certifies a database whose secrets
-nobody can open any more — see *Restoring*, the only reason to keep the dump.
+A non-zero exit means the backup did not verify and must be investigated. Before
+dumping anything it decrypts the overlay with `$DRIFTLESS_AGE_KEY`, so no run
+certifies a database whose secrets nobody can open any more — see *Restoring*,
+the only reason to keep the dump.
+
+### Scheduling the backup
+
+`deploy/driftless-backup.{service,timer}` run it daily; `bin/driftless-backup-run.sh`
+is what the unit executes, because a unit-file one-liner cannot be tested and this
+one decrypts a password, picks the stamp and decides the exit code. Both unit files
+assume the checkout is at `/opt/driftless` — a checkout elsewhere edits
+`WorkingDirectory=` and `ExecStart=`, and nothing else.
+
+`/etc/driftless/backup.env` holds the same settings the manual run exports above —
+it names where the age key *is* and never contains the key:
+
+```sh
+sudo install -d -m 0755 /etc/driftless
+sudo tee /etc/driftless/backup.env >/dev/null <<'ENV'
+DRIFTLESS_AGE_KEY=/root/.config/driftless/age-key.txt
+DRIFTLESS_KEY_ESCROW=<your password-manager entry for the age private key>
+DRIFTLESS_BACKUP_DIR=/opt/driftless/backups
+DRIFTLESS_BACKUP_LOG=/opt/driftless/backups/backup.log
+ENV
+sudo chmod 0600 /etc/driftless/backup.env
+sudo cp deploy/driftless-backup.{service,timer} /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now driftless-backup.timer
+systemctl list-timers driftless-backup.timer    # NEXT/LEFT — prove it is armed
+sudo systemctl start driftless-backup.service   # run once by hand: blocks for minutes,
+tail -3 /opt/driftless/backups/backup.log       # and is where a bad path shows up
+```
+
+**Failure is visible twice, on purpose.** The runner re-raises the script's exit
+code, so a bad backup marks the unit failed instead of logging a problem and
+reporting success; it also appends `<timestamp> driftless-backup stamp=<stamp>
+exit=<rc>` to `$DRIFTLESS_BACKUP_LOG` for a watcher to scan. Anything but `exit=0`
+is a backup that did not happen. **Nothing here reads that log** — wiring it to a
+watcher is a step outside this service.
+
+### Recovery objectives (RPO/RTO)
+
+**RPO — acceptable data loss: 24 hours, once the timer is installed.**
+`deploy/driftless-backup.timer` runs the backup daily at 03:00 local time with
+up to 15 minutes of jitter, so the most that can be lost is a day's edits.
+`Persistent=true` is what makes that a period rather than a hope: a host asleep
+or powered off at 03:00 catches the run up on its next boot instead of skipping
+the day in silence. **The units ship here; installing them is a step an
+operator takes** (*Scheduling the backup*, below) — until then RPO is still the
+gap since whoever last ran the script by hand.
+
+**RTO — time from "database gone" to "serving again": untimed.** The steps
+live in *Restoring → From a bare host*, below, but nobody has run that walk
+end to end with a stopwatch. `docs/admin-guide.md`'s doc-runner excuses every
+restore command as `manual` (`tests/test_docs_admin_guide.py`, its
+`MANUAL_BLOCKS`) because it needs a live Postgres and Docker that CI does not
+have — the only automated proof is that the *dump* restores clean, not that a
+human can execute the *procedure*. Until someone runs and clocks a bare-host
+drill, budget for "however long a paged operator takes to type *Restoring*
+correctly, on the first try."
+
+**Frequency: daily at 03:00, from `deploy/driftless-backup.timer`.** Change the
+timer's `OnCalendar=` and this paragraph together — a schedule the documentation
+disagrees with is how an operator ends up believing in backups that are not
+being taken.
+
+**Retention: none enforced.** The script never deletes an old set —
+`$BACKUP_DIR` (default `./backups`) grows by three files every run, forever.
+Pruning, and how many sets to keep, is a manual call this repo does not
+automate.
+
+**Storage: `$DRIFTLESS_BACKUP_DIR`, on whatever host ran the backup — no
+offsite copy ships here.** Same host as the database means losing the host
+loses the backups with it, the opposite of the "shelf of verified dumps"
+*Secrets*, above, assumes a lost host still leaves; copying the set to a
+second host or off-host storage, by hand, is what makes that assumption true.
+The dump is age-encrypted to the escrowed key, so that copy can go somewhere
+you do not fully control without handing the database over with it — the
+remaining exposure is the key, which has never been in the set. Encryption
+does not make an off-host copy exist; it only removes the reason not to make
+one.
+
+**"Restore-verified" certifies the dump, not the procedure.** Every run
+restores its own dump into a throwaway database and keeps nothing unless
+every table's row count matches the source
+(`tests/test_backup_script_drill.py` proves this against a stubbed Postgres)
+— that is a statement about the *file*. The bare-host walk that turns a
+certified file into a running service has never been run as a drill;
+recording one, timed, is what would give RTO a number instead of a guess.
 
 ## Restoring
 
@@ -357,9 +507,9 @@ A restore needs **three** artefacts, and the backup job writes only two of them:
 | artefact | written by | holds |
 |---|---|---|
 | `backups/driftless-<stamp>.manifest` | `bin/driftless-backup.sh` | the code tag, the stamped revision, where the key is |
-| `backups/driftless-<stamp>.dump` | `bin/driftless-backup.sh` | the database, restore-verified |
+| `backups/driftless-<stamp>.dump.age` | `bin/driftless-backup.sh` | the database, encrypted and restore-verified |
 | `backups/driftless-<stamp>.secrets.enc.env` | `bin/driftless-backup.sh` | the overlay **as it stood at the dump** |
-| the age **private** key | **you, by hand, once** | everything above the second row decrypts with it |
+| the age **private** key | **you, by hand, once** | both files above decrypt with it — without it the set is noise |
 
 **The rule for the key: two copies, neither of them here.** One live at
 `~/.config/driftless/age-key.txt` (`chmod 0600`), one escrowed off this host — a
@@ -389,9 +539,14 @@ export POSTGRES_PASSWORD="$(sops -d --extract '["POSTGRES_PASSWORD"]' deploy/sec
 export DRIFTLESS_API_TOKEN="$(sops -d --extract '["DRIFTLESS_API_TOKEN"]' deploy/secrets.enc.env)"
 docker compose up -d driftless-db              # creates the `driftless` database, nothing else
 export PGPASSWORD="$POSTGRES_PASSWORD"
-pg_restore -h 127.0.0.1 -p 55432 -U driftless -d driftless --clean --if-exists \
-  backups/driftless-<stamp>.dump
+age -d -i "$DRIFTLESS_AGE_KEY" <backups/driftless-<stamp>.dump.age \
+  | pg_restore -h 127.0.0.1 -p 55432 -U driftless -d driftless --clean --if-exists
 ```
+
+The dump is decrypted **into** `pg_restore` rather than onto disk: a cleartext copy
+written here to be restored a moment later is one more file to remember to delete,
+on the one host you least want it left on. The key is the same one the overlay
+needed two commands ago — if that worked, this will.
 
 Then prove it, because `pg_restore` exiting 0 says the file parsed, not that the
 rows arrived:
@@ -420,8 +575,8 @@ one dump older, and the app stopped so nothing writes during it:
 docker compose stop driftless-app
 export PGPASSWORD="$(sops -d --extract '["POSTGRES_PASSWORD"]' deploy/secrets.enc.env)"
 bin/driftless-backup.sh "$(date +%FT%H-%M-%S)"   # step 1: bank what pg_restore is about to drop
-pg_restore -h 127.0.0.1 -p 55432 -U driftless -d driftless --clean --if-exists \
-  backups/driftless-<stamp>.dump
+age -d -i "$DRIFTLESS_AGE_KEY" <backups/driftless-<stamp>.dump.age \
+  | pg_restore -h 127.0.0.1 -p 55432 -U driftless -d driftless --clean --if-exists
 psql -h 127.0.0.1 -p 55432 -U driftless -d driftless -tAc \
   'select version_num from alembic_version'    # must be one the old image knows
 git checkout <previous-tag> && docker compose up -d --build
@@ -429,8 +584,23 @@ git checkout <previous-tag> && docker compose up -d --build
 
 ## Request log
 
-`driftless/api/logging.py` emits one JSON line per request — `ts`, `method`,
-`path`, `status`, `duration_ms`, `client` — on the `driftless.request` logger.
+`driftless/api/logging.py` emits one JSON line per request — `ts`, `request_id`,
+`method`, `path`, `status`, `duration_ms`, `client` — on the `driftless.request`
+logger.
+
+`request_id` is the token that ties a line to the response the caller held: it is
+read off an inbound `X-Request-ID` header when the caller sends one, generated
+otherwise, and echoed back on the response, so a user reporting a failure can
+quote the id an operator greps for. An inbound header is untrusted, so one
+outside a bounded alphanumeric shape is **replaced** rather than escaped and
+logged — a newline or a quote in an echoed id would forge a second log record.
+A route that raises is answered by the error handler *above* this middleware
+(`driftless/web/errors.py`), not by this module directly — but that handler reads
+the same id off `request.state`, stashed there before the route ran, so the 500 it
+answers carries the id on the response header exactly as the log line does. Only a
+request that never reached this middleware at all has no id to stamp, and the
+handler omits the header rather than raise trying to read one.
+
 The module only emits — it never calls `basicConfig` and never sets a level — so
 it stays **silent until the process's logging configuration raises that one
 logger**, and raising it makes nothing else noisier:
@@ -453,6 +623,21 @@ absent from the line by construction — a log is copied to places the database
 is not, so there is nothing in it to redact. It is an operational stream, not
 an audit trail: who changed what stays the ChangeLog's job.
 
+## Metrics
+
+`GET /metrics` (`driftless/api/metrics.py`) answers Prometheus text-exposition:
+`driftless_http_requests_total` and `driftless_http_request_duration_seconds_sum`,
+each labelled `method`, `status` and a low-cardinality route *template*
+(`/projects/{project_id}`, never the raw path with an id in it), plus
+`driftless_process_uptime_seconds`.
+
+**Deliberately NOT one of the public paths above.** A scraper endpoint is
+conventionally left uncredentialed; here that would disclose portfolio scale —
+the same class of leak the Request log section refuses to carry, so `/metrics`
+is held to that same rule and takes an ordinary authenticated `GET` — a
+scraper points its `bearer_token_file` at a per-user or the shared token, the
+same as any other script.
+
 ## Upgrading
 
 A release is: back up, pull, rebuild. The migration ordering is not the
@@ -474,6 +659,30 @@ Verify before walking away:
 docker compose ps                                # driftless-app reports healthy
 curl -fsS http://127.0.0.1:8000/health           # {"status":"ok"}
 docker compose logs --tail 50 driftless-app      # `alembic upgrade head` ran clean
+```
+
+### The published image
+
+A tag pushed to the **public** repository publishes the image it was built
+from — `ghcr.io/back-road-creative/driftless:<version>`, and `:latest`, built
+from that tag's own tree by `.github/workflows/docker-publish.yml`
+(`docs/release-publishing.md`). Until that tag exists there, there is nothing
+to pull: as of this writing `Back-Road-Creative/driftless` has no tags, no
+releases and no such package. What exists today is GitHub Releases for v0.4.0,
+v0.2.0 and v0.1.0 on the private archive — notes only, no image, and not the
+public repository this section is about.
+
+The procedure above still rebuilds, and will until `docker-compose.yml` gives
+`driftless-app` an `image:` — it has a `build:` and no `image:`, so
+`docker compose up -d --build` builds from the checkout whatever the registry
+holds. Which versions are in the registry is the `Back-Road-Creative` Packages
+tab and the Releases page of `Back-Road-Creative/driftless`; read those rather
+than this paragraph, which any new tag would silently outdate.
+
+Once a public tag exists:
+
+```sh
+docker pull ghcr.io/back-road-creative/driftless:<version>   # a version those pages list
 ```
 
 ### Rolling back

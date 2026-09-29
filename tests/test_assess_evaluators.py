@@ -36,6 +36,7 @@ from driftless.models import (
     ProcurementAgreement,
     Project,
     QualityMeasurement,
+    QualityMetric,
     Risk,
     Stakeholder,
     StatusSnapshot,
@@ -105,7 +106,19 @@ def test_schedule_names_the_slipped_milestone_in_the_threat(
     session.add(Milestone(project=project, name="Cut locked", target_date=AS_OF, status="missed"))
     session.commit()
     assessment = schedule.evaluate(session, project, AS_OF)
-    assert "Cut locked" in assessment.threats[0].description
+    description = assessment.threats[0].description
+    assert "Cut locked" in description
+    assert "1 milestone slipped" in description and "(s)" not in description, (
+        "a real singular, never the milestone(s) shorthand"
+    )
+    assert "n/a" not in description and "SPI no data yet" in description, (
+        "an undefined SPI reads as words, not database jargon"
+    )
+    session.add(Milestone(project=project, name="Colour", target_date=AS_OF, status="missed"))
+    session.commit()
+    assert (
+        "2 milestones slipped" in schedule.evaluate(session, project, AS_OF).threats[0].description
+    )
 
 
 def test_scope_amber_on_an_approved_change_not_rebaselined(
@@ -175,6 +188,62 @@ def test_resource_red_on_over_allocation(session: Session, project: Project) -> 
     _assert_threat(resource.evaluate(session, project, AS_OF), "resource", "red")
 
 
+def test_resource_amber_on_tight_but_not_over_allocation(
+    session: Session, project: Project
+) -> None:
+    """Between the amber and red ratios (0.8 < ratio <= 1.0): allocation is
+    getting tight, but no one is actually over-committed yet — the ``who_text``
+    branch ``test_resource_red_on_over_allocation`` never reaches."""
+    person = Person(name="Sam", capacity_hours=40.0)
+    stream = Workstream(name="Post", project=project)
+    session.add(
+        Task(
+            name="Grade",
+            workstream=stream,
+            estimate_unit="hours",
+            estimate=36.0,  # 36 / 40 = 0.9: over the 0.8 amber line, under the 1.0 red one
+            status="in_progress",
+            assignee=person,
+        )
+    )
+    session.commit()
+    assessment = resource.evaluate(session, project, AS_OF)
+    _assert_threat(assessment, "resource", "amber")
+    assert "allocation getting tight" in assessment.threats[0].description
+
+
+def test_person_task_load_counts_one_persons_open_hour_tasks(
+    session: Session, project: Project
+) -> None:
+    """The single-person read ``person_task_loads`` batches: same
+    ``_OPEN_HOUR_TASK`` filter, one person's count and remaining hours."""
+    person = Person(name="Sam", capacity_hours=40.0)
+    stream = Workstream(name="Post", project=project)
+    session.add(
+        Task(
+            name="Grade",
+            workstream=stream,
+            estimate_unit="hours",
+            estimate=6.0,
+            status="in_progress",
+            assignee=person,
+        )
+    )
+    session.add(
+        Task(
+            name="Deliver",
+            workstream=stream,
+            estimate_unit="hours",
+            estimate=2.0,
+            status="done",  # closed work does not count against open load
+            assignee=person,
+        )
+    )
+    session.commit()
+    count, hours = resource.person_task_load(session, person.id)
+    assert (count, hours) == (1, 6.0)
+
+
 def test_quality_red_out_of_tolerance_amber_when_unmeasured(
     session: Session, project: Project
 ) -> None:
@@ -182,6 +251,45 @@ def test_quality_red_out_of_tolerance_amber_when_unmeasured(
     session.add(
         QualityMeasurement(
             project=project, metric="defects", target_value=1.0, actual_value=3.0, measured_on=AS_OF
+        )
+    )
+    session.commit()
+    _assert_threat(quality.evaluate(session, project, AS_OF), "quality", "red")
+
+
+@pytest.mark.parametrize(
+    ("direction", "lower", "upper", "actual"),
+    [
+        ("lower_is_better", None, 2.0, 3.0),
+        ("higher_is_better", 99.9, None, 99.0),
+        ("target_band", 18.0, 24.0, 25.0),
+    ],
+)
+def test_quality_red_uses_a_linked_metric_direction(
+    session: Session,
+    project: Project,
+    direction: str,
+    lower: float | None,
+    upper: float | None,
+    actual: float,
+) -> None:
+    metric = QualityMetric(
+        project=project,
+        name="service_level",
+        direction=direction,
+        lower_bound=lower,
+        upper_bound=upper,
+    )
+    session.add(metric)
+    session.flush()
+    session.add(
+        QualityMeasurement(
+            project=project,
+            quality_metric=metric,
+            metric="service_level",
+            target_value=upper if upper is not None else lower,
+            actual_value=actual,
+            measured_on=AS_OF,
         )
     )
     session.commit()
@@ -300,6 +408,35 @@ def test_procurement_amber_on_a_lapsed_active_agreement(session: Session, projec
     )
     session.commit()
     assert procurement.evaluate(session, project, AS_OF).status == "amber"
+
+
+def test_procurement_red_on_contracted_spend_over_budget(
+    session: Session, project: Project
+) -> None:
+    session.add(
+        ProcurementAgreement(
+            project=project, vendor="BigCo", status="active", amount=2_000.0, start_date=JAN
+        )
+    )
+    session.add(BudgetLine(project=project, category="services", planned_amount=1_000.0))
+    session.commit()
+    result = procurement.evaluate(session, project, AS_OF)
+    assert result.status == "red"
+    assert "exceeds budget" in result.threats[0].description
+
+
+def test_procurement_is_green_with_a_healthy_agreement_on_record(
+    session: Session, project: Project
+) -> None:
+    """Agreements exist but none is disputed, lapsed or over budget — green, not
+    the ``not_applicable`` coverage a project with no agreements at all reads."""
+    session.add(
+        ProcurementAgreement(project=project, vendor="GoodCo", status="closed", start_date=JAN)
+    )
+    session.commit()
+    result = procurement.evaluate(session, project, AS_OF)
+    assert result.status == "green"
+    assert result.coverage == "measured"
 
 
 def test_a_healthy_project_is_green_across_the_board(session: Session, project: Project) -> None:

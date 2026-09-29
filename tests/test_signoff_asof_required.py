@@ -10,7 +10,7 @@ shut at the write boundary, where no row can land without one.
 
 Threat sign-offs keep the optional field on purpose: a threat decision suppresses
 only while its stamped ``signal`` holds (``engine.is_suppressed``), and
-``app.stamped_signal`` records ``None`` when there is no as-of to score at — so a
+``sign_offs.stamped_signal`` records ``None`` when there is no as-of to score at — so a
 dateless threat sign-off never suppresses anything and needs no date to be safe.
 """
 

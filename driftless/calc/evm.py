@@ -22,7 +22,8 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
+from enum import Enum
 
 
 @dataclass(frozen=True)
@@ -76,6 +77,10 @@ class EarnedValueSnapshot:
     eac: float | None
     etc: float | None
     vac: float | None
+    cv: float
+    sv: float
+    cv_pct: float | None
+    sv_pct: float | None
 
 
 def budget_at_completion(baseline: Sequence[BaselineTask]) -> float:
@@ -136,11 +141,79 @@ def schedule_performance_index(earned: float, planned: float) -> float | None:
     return earned / planned
 
 
-def estimate_at_completion(bac: float, cpi: float | None) -> float | None:
-    """EAC = BAC/CPI, or ``None`` while CPI is undefined or still zero."""
-    if cpi is None or cpi == 0:
+def cost_variance(ev: float, ac: float) -> float:
+    """CV = EV - AC. Positive is under budget, negative is over budget."""
+    return ev - ac
+
+
+def schedule_variance(ev: float, pv: float) -> float:
+    """SV = EV - PV. Positive is ahead of plan, negative is behind plan."""
+    return ev - pv
+
+
+def cost_variance_pct(cv: float, ev: float) -> float | None:
+    """CV% = CV/EV, or ``None`` while EV is zero — nothing earned yet to divide by."""
+    if ev == 0:
         return None
-    return bac / cpi
+    return cv / ev
+
+
+def schedule_variance_pct(sv: float, pv: float) -> float | None:
+    """SV% = SV/PV, or ``None`` before the baseline starts accruing."""
+    if pv == 0:
+        return None
+    return sv / pv
+
+
+class EacMethod(Enum):
+    """The standard EAC formulas PMBOK names, one per read of what today's
+    variance says about the work still to come.
+
+    ``CPI`` = BAC/CPI: today's cost efficiency holds for the rest of the
+    project (the default; the original single-formula behaviour).
+    ``REMAINING_AT_PLAN`` = AC + (BAC - EV): today's variance is a one-off, the
+    rest runs at the ORIGINAL planned rate. ``REMAINING_AT_CURRENT`` =
+    AC + (BAC - EV)/(CPI x SPI): BOTH cost and schedule keep shaping what's
+    left. ``BOTTOM_UP`` = AC + a caller-supplied ETC: the team re-estimated the
+    remaining work directly and that number is trusted over any formula here.
+    """
+
+    CPI = "cpi"
+    REMAINING_AT_PLAN = "remaining_at_plan"
+    REMAINING_AT_CURRENT = "remaining_at_current"
+    BOTTOM_UP = "bottom_up"
+
+
+def estimate_at_completion(
+    bac: float,
+    cpi: float | None,
+    *,
+    method: EacMethod = EacMethod.CPI,
+    ev: float | None = None,
+    ac: float | None = None,
+    spi: float | None = None,
+    etc: float | None = None,
+) -> float | None:
+    """EAC under ``method`` (default :attr:`EacMethod.CPI`, byte-identical to the
+    original single-formula ``BAC/CPI``, or ``None`` while CPI is undefined).
+    Any other method returns ``None`` — never raises — when the inputs it needs
+    are missing, the same policy every ratio here follows.
+    """
+    if method is EacMethod.CPI:
+        if cpi is None or cpi == 0:
+            return None
+        return bac / cpi
+    if method is EacMethod.REMAINING_AT_PLAN:
+        if ev is None or ac is None:
+            return None
+        return ac + (bac - ev)
+    if method is EacMethod.REMAINING_AT_CURRENT:
+        if ev is None or ac is None or cpi is None or spi is None or cpi == 0 or spi == 0:
+            return None
+        return ac + (bac - ev) / (cpi * spi)
+    if ac is None or etc is None:  # EacMethod.BOTTOM_UP
+        return None
+    return ac + etc
 
 
 def estimate_to_complete(eac: float | None, actual: float) -> float | None:
@@ -157,6 +230,32 @@ def variance_at_completion(bac: float, eac: float | None) -> float | None:
     return bac - eac
 
 
+@dataclass(frozen=True)
+class TcpiResult:
+    """TCPI in its two PMBOK forms: the efficiency the remaining work must run at."""
+
+    to_bac: float | None
+    to_eac: float | None
+
+
+def to_complete_performance_index(
+    bac: float, ev: float, ac: float, eac: float | None
+) -> TcpiResult:
+    """TCPI — the cost efficiency the REMAINING work must hit to land on target.
+
+    ``to_bac`` = (BAC - EV) / (BAC - AC): efficiency needed to still finish at the
+    original budget. ``to_eac`` is the same ratio against the CURRENT forecast
+    instead — (BAC - EV) / (EAC - AC) — which is always achievable by definition
+    (EAC already assumes today's efficiency continues), while ``to_bac`` climbing
+    far above 1.0 is the signal the original budget is no longer realistic. Each
+    is ``None`` on a zero or undefined denominator, the same policy every other
+    ratio here follows.
+    """
+    to_bac = None if bac == ac else (bac - ev) / (bac - ac)
+    to_eac = None if eac is None or eac == ac else (bac - ev) / (eac - ac)
+    return TcpiResult(to_bac, to_eac)
+
+
 def earned_value_snapshot(
     baseline: Sequence[BaselineTask],
     progress: Sequence[ProgressReport],
@@ -170,6 +269,8 @@ def earned_value_snapshot(
     ac = actual_cost(costs, as_of)
     cpi = cost_performance_index(ev, ac)
     eac = estimate_at_completion(bac, cpi)
+    cv = cost_variance(ev, ac)
+    sv = schedule_variance(ev, pv)
     return EarnedValueSnapshot(
         as_of=as_of,
         bac=bac,
@@ -181,6 +282,140 @@ def earned_value_snapshot(
         eac=eac,
         etc=estimate_to_complete(eac, ac),
         vac=variance_at_completion(bac, eac),
+        cv=cv,
+        sv=sv,
+        cv_pct=cost_variance_pct(cv, ev),
+        sv_pct=schedule_variance_pct(sv, pv),
+    )
+
+
+def _baseline_window(baseline: Sequence[BaselineTask]) -> tuple[date, date] | None:
+    """Earliest planned start and latest planned finish, or ``None`` if empty."""
+    if not baseline:
+        return None
+    return (
+        min(task.planned_start for task in baseline),
+        max(task.planned_finish for task in baseline),
+    )
+
+
+def planned_duration(baseline: Sequence[BaselineTask]) -> int | None:
+    """PD — elapsed days (the same end-of-day convention as ``_accrued_fraction``)
+    from the earliest planned start through the latest planned finish, both
+    counted. ``None`` for an empty baseline.
+    """
+    window = _baseline_window(baseline)
+    if window is None:
+        return None
+    start, finish = window
+    return (finish - start).days + 1
+
+
+def actual_time(baseline: Sequence[BaselineTask], as_of: date) -> int | None:
+    """AT — elapsed days from the baseline's earliest planned start through
+    ``as_of``, in the same convention as :func:`planned_duration`. Zero or
+    negative before the baseline starts. ``None`` for an empty baseline.
+    """
+    window = _baseline_window(baseline)
+    if window is None:
+        return None
+    start, _finish = window
+    return (as_of - start).days + 1
+
+
+def earned_schedule(
+    baseline: Sequence[BaselineTask], progress: Sequence[ProgressReport], as_of: date
+) -> float | None:
+    """ES (Lipke) — the elapsed-day point on the project's own PV curve at
+    which cumulative PV equals today's EV, in the same elapsed-day period
+    unit as :func:`planned_duration` and :func:`actual_time` (calendar days
+    from the baseline's earliest planned start; no separate period model).
+
+    ES = C + I: C is the count of whole elapsed-day periods whose cumulative
+    PV is <= EV; I is the fractional position EV reaches into the next
+    period, (EV - PV_C) / (PV_{C+1} - PV_C). ``None`` for an empty baseline.
+    """
+    window = _baseline_window(baseline)
+    if window is None:
+        return None
+    start, _finish = window
+    pd = planned_duration(baseline)
+    assert pd is not None  # baseline is non-empty, so window and pd both exist
+    ev = earned_value(baseline, progress, as_of)
+
+    def pv_at(elapsed_days: int) -> float:
+        if elapsed_days <= 0:
+            return 0.0
+        return planned_value(baseline, start + timedelta(days=elapsed_days - 1))
+
+    # Cumulative PV at completion always equals BAC: every task finishes by
+    # its own planned_finish, which is <= the baseline's overall finish.
+    if ev <= 0.0:
+        return 0.0
+    if ev >= pv_at(pd):
+        return float(pd)
+
+    period = 0
+    while pv_at(period + 1) <= ev:
+        period += 1
+    lower = pv_at(period)
+    upper = pv_at(period + 1)
+    fraction = 0.0 if upper == lower else (ev - lower) / (upper - lower)
+    return period + fraction
+
+
+def schedule_performance_index_time(es: float | None, at: int | None) -> float | None:
+    """SPI(t) = ES/AT, or ``None`` when either input is undefined or AT is zero."""
+    if es is None or at is None or at == 0:
+        return None
+    return es / at
+
+
+def schedule_variance_time(es: float | None, at: int | None) -> float | None:
+    """SV(t) = ES - AT, or ``None`` when either input is undefined."""
+    if es is None or at is None:
+        return None
+    return es - at
+
+
+def independent_eac_time(pd: int | None, spi_t: float | None) -> float | None:
+    """IEAC(t) = PD/SPI(t), or ``None`` when PD is undefined or SPI(t) is
+    undefined or zero (a stalled schedule has no finite time forecast).
+    """
+    if pd is None or spi_t is None or spi_t == 0:
+        return None
+    return pd / spi_t
+
+
+@dataclass(frozen=True)
+class EarnedScheduleSnapshot:
+    """Every earned-schedule figure for one as-of date, computed in one pass."""
+
+    as_of: date
+    es: float | None
+    at: int | None
+    pd: int | None
+    spi_t: float | None
+    sv_t: float | None
+    ieac_t: float | None
+
+
+def earned_schedule_snapshot(
+    baseline: Sequence[BaselineTask], progress: Sequence[ProgressReport], as_of: date
+) -> EarnedScheduleSnapshot:
+    """Compute the full earned-schedule set for ``as_of``. Same inputs, same output."""
+    pd = planned_duration(baseline)
+    at = actual_time(baseline, as_of)
+    es = earned_schedule(baseline, progress, as_of)
+    spi_t = schedule_performance_index_time(es, at)
+    return EarnedScheduleSnapshot(
+        as_of=as_of,
+        es=es,
+        at=at,
+        pd=pd,
+        spi_t=spi_t,
+        sv_t=schedule_variance_time(es, at),
+        ieac_t=independent_eac_time(pd, spi_t),
     )
 
 

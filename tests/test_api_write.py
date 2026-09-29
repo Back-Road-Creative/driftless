@@ -16,12 +16,14 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from httpx import Response
+from pydantic import BaseModel
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import Session, sessionmaker
 
 from driftless import models
 from driftless.api import schemas as s
-from driftless.api.app import _line_still_open_and_inside, app, get_session
+from driftless.api.app import app, get_session
+from driftless.api.rules import contribution_patch_stays_in_business, line_still_open_and_inside
 from driftless.db import Base, new_engine, new_session_factory
 from driftless.models import Baseline
 
@@ -82,6 +84,18 @@ def _risk(client: TestClient, project: int) -> int:
 
 _ISSUE = {"description": "The lead editor left", "raised_on": "2026-01-05"}
 _CHANGE = {"description": "Add a fourth episode", "raised_on": "2026-01-05", "status": "approved"}
+_RESPONSE = {
+    "strategy": "mitigate",
+    "trigger": "Vendor outage exceeds one day",
+    "planned_action": "Fail over to the secondary vendor",
+    "residual_probability": 0.1,
+    "residual_impact": 200.0,
+    "cost_of_response": 500.0,
+    "schedule_days": 3,
+    "status": "planned",
+    "actor": "pm",
+    "as_of": "2026-02-20",
+}
 
 
 def test_omitting_a_field_leaves_it_unchanged(client: TestClient) -> None:
@@ -104,6 +118,38 @@ def test_an_explicit_null_is_not_an_omission(client: TestClient) -> None:
     assert cleared.status_code == 200, cleared.text
     assert cleared.json()["estimate"] is None, "an explicit null must clear a nullable field"
     assert client.patch(f"/tasks/{task}", json={"name": None}).status_code == 422
+
+
+def test_a_task_carries_actual_and_forecast_finish_through_create_patch_and_get(
+    client: TestClient,
+) -> None:
+    workstream = _seed(client)
+    response = client.post(
+        "/tasks",
+        json={
+            "name": "Cut",
+            "workstream_id": workstream,
+            "actual_finish": "2026-06-15",
+            "forecast_finish": "2026-06-20",
+        },
+    )
+    assert response.status_code == 201, response.text
+    created = response.json()
+    assert created["actual_finish"] == "2026-06-15"
+    assert created["forecast_finish"] == "2026-06-20"
+    assert "row_revision" in created
+
+    task = created["id"]
+    fetched = client.get(f"/tasks/{task}").json()
+    assert fetched["actual_finish"] == "2026-06-15"
+    assert fetched["forecast_finish"] == "2026-06-20"
+
+    patched = client.patch(f"/tasks/{task}", json={"forecast_finish": "2026-07-01"})
+    assert patched.status_code == 200, patched.text
+    body = patched.json()
+    assert body["forecast_finish"] == "2026-07-01"
+    assert body["actual_finish"] == "2026-06-15", "an omitted field must not be blanked"
+    assert client.get(f"/tasks/{task}").json() == body
 
 
 @pytest.mark.parametrize(
@@ -430,7 +476,7 @@ def test_a_line_patch_naming_a_different_approved_baseline_refuses(
     """Defence in depth for the slide the patch twin already makes inert.
 
     ``BaselineLinePatch`` drops ``baseline_id`` by construction, so no HTTP
-    request reaches the destination check inside ``_line_still_open_and_inside``
+    request reaches the destination check inside ``line_still_open_and_inside``
     today — the test above proves the attempt is inert. The check is what stops
     a future twin, or a future write path that passes ``baseline_id`` through,
     sliding a draft's line into an approved plan; deleting it would ship
@@ -452,16 +498,61 @@ def test_a_line_patch_naming_a_different_approved_baseline_refuses(
         row = db.get(models.BaselineLine, line)
         assert row is not None
         with pytest.raises(HTTPException) as caught:
-            _line_still_open_and_inside(db, row, {"baseline_id": approved})
+            line_still_open_and_inside(db, row, {"baseline_id": approved})
         assert caught.value.status_code == 409
         assert f"Baseline {approved} is approved" in caught.value.detail
-        _line_still_open_and_inside(db, row, {"baseline_id": sibling})  # an open target passes
+        line_still_open_and_inside(db, row, {"baseline_id": sibling})  # an open target passes
+
+
+def test_a_contribution_patch_naming_a_cross_business_objective_refuses(
+    bound: tuple[TestClient, sessionmaker[Session]],
+) -> None:
+    """The same defence-in-depth as the baseline-line check above:
+    ``ScorecardContributionPatch`` drops ``project_id``/``objective_id`` by
+    construction, so no HTTP request reaches this check with either key today —
+    the create-time twin (``contribution_stays_in_business``) already proves the
+    boundary at the moment a contribution is filed. This is what stops a future
+    patch twin, or a future write path that passes either key through, from
+    quietly re-filing a contribution under an objective owned by a different
+    business than the project it names."""
+    client, factory = bound
+    business = _create(client, "/businesses", name="Northstar")
+    other_business = _create(client, "/businesses", name="Southstar")
+    portfolio = _create(client, "/portfolios", name="Delivery", business_id=business)
+    project = _create(client, "/projects", name="Rollout", portfolio_id=portfolio)
+    objective = _create(
+        client, "/strategic-objectives", business_id=business, perspective="financial", name="Own"
+    )
+    other_objective = _create(
+        client,
+        "/strategic-objectives",
+        business_id=other_business,
+        perspective="financial",
+        name="Other",
+    )
+    contribution = _create(
+        client,
+        "/scorecard-contributions",
+        project_id=project,
+        objective_id=objective,
+        contribution_type="direct",
+    )
+
+    with factory() as db:
+        row = db.get(models.ScorecardContribution, contribution)
+        assert row is not None
+        with pytest.raises(HTTPException) as caught:
+            contribution_patch_stays_in_business(db, row, {"objective_id": other_objective})
+        assert caught.value.status_code == 409
+        assert "belong to different businesses" in caught.value.detail
+        # the same objective passes -- the refusal is about the businesses disagreeing
+        contribution_patch_stays_in_business(db, row, {"objective_id": objective})
 
 
 def test_a_child_record_cannot_be_reparented_across_projects(client: TestClient) -> None:
     """The whole class of cross-project reparent holes: a partial update that
     moved ``project_id`` would silently lift a row out of one project's rollup and
-    drop it into another's — a $999999 cost entry, or a missed milestone injected
+    drop it into another's — a $999999 budget line, or a missed milestone injected
     into a foreign rollup. The FK is absent from the patch twin, so the attempt is
     inert: the row stays home while non-parent fields still update."""
     here = _seed(client, tag="here")
@@ -469,18 +560,19 @@ def test_a_child_record_cannot_be_reparented_across_projects(client: TestClient)
     here_project = client.get(f"/workstreams/{here}").json()["project_id"]
     there_project = client.get(f"/workstreams/{there}").json()["project_id"]
 
-    cost = _create(
+    budget_line = _create(
         client,
-        "/cost-entries",
+        "/budget-lines",
         project_id=here_project,
         category="labour",
-        incurred_on="2026-01-01",
-        amount=999999.0,
+        planned_amount=999999.0,
     )
-    moved = client.patch(f"/cost-entries/{cost}", json={"project_id": there_project, "amount": 5.0})
+    moved = client.patch(
+        f"/budget-lines/{budget_line}", json={"project_id": there_project, "planned_amount": 5.0}
+    )
     assert moved.status_code == 200, moved.text
-    assert moved.json()["project_id"] == here_project, "the cost entry cannot leave its project"
-    assert moved.json()["amount"] == 5.0, "a non-parent field still updates"
+    assert moved.json()["project_id"] == here_project, "the budget line cannot leave its project"
+    assert moved.json()["planned_amount"] == 5.0, "a non-parent field still updates"
 
     milestone = _create(
         client, "/milestones", project_id=here_project, name="Launch", target_date="2026-03-31"
@@ -537,7 +629,7 @@ def test_moving_a_staffed_department_to_another_business_is_refused(client: Test
 
 
 def test_a_programless_project_cannot_be_moved_across_businesses(client: TestClient) -> None:
-    """``_require_program_in_portfolio`` returns early when ``program_id`` is None,
+    """``require_program_in_portfolio`` returns early when ``program_id`` is None,
     and a program is optional by design — so the common programless project could
     be re-filed under any portfolio in any business, taking its cost entries and
     every record under it out of the business that owns the work."""
@@ -666,6 +758,174 @@ def _probe_change_request_baseline(client: TestClient) -> Response:
     return client.patch(f"/change-requests/{change}", json={"resulting_baseline_id": foreign})
 
 
+def _probe_requirement_stakeholder(client: TestClient) -> Response:
+    ours, theirs = _sibling_projects(client)
+    foreign = _create(client, "/stakeholders", project_id=theirs, name="Stray")
+    requirement = _create(
+        client, "/requirements", project_id=ours, code="REQ-1", statement="Ship it", actor="qa"
+    )
+    return client.patch(f"/requirements/{requirement}", json={"source_stakeholder_id": foreign})
+
+
+def _probe_deliverable_parent(client: TestClient) -> Response:
+    ours, theirs = _sibling_projects(client)
+    foreign = _create(client, "/deliverables", project_id=theirs, name="Foreign", wbs_code="1")
+    deliverable = _create(client, "/deliverables", project_id=ours, name="Cut", wbs_code="1")
+    return client.patch(f"/deliverables/{deliverable}", json={"parent_id": foreign})
+
+
+def _sibling_departments(client: TestClient) -> tuple[int, int]:
+    """Two departments in two businesses — ours, and one we must never write into."""
+    ours_business = _create(client, "/businesses", name="Back Road Creative")
+    theirs_business = _create(client, "/businesses", name="Other Co")
+    ours = _create(client, "/departments", name="Post", business_id=ours_business)
+    theirs = _create(client, "/departments", name="Post", business_id=theirs_business)
+    return ours, theirs
+
+
+def _probe_work_request_service(client: TestClient) -> Response:
+    ours, theirs = _sibling_departments(client)
+    foreign = _create(
+        client, "/department-services", department_id=theirs, name="Ops desk", owner="Sam"
+    )
+    request = _create(
+        client,
+        "/work-requests",
+        department_id=ours,
+        requester="Grace Hopper",
+        raised_on="2026-01-05",
+    )
+    return client.patch(f"/work-requests/{request}", json={"service_id": foreign})
+
+
+def _probe_service_level_service(client: TestClient) -> Response:
+    ours, theirs = _sibling_departments(client)
+    foreign = _create(
+        client, "/department-services", department_id=theirs, name="Ops desk", owner="Sam"
+    )
+    level = _create(
+        client, "/service-levels", department_id=ours, measure="turnaround_hours", target=48
+    )
+    return client.patch(f"/service-levels/{level}", json={"service_id": foreign})
+
+
+def _probe_estimate_scenario_subject_task(client: TestClient) -> Response:
+    ours, theirs = _sibling_projects(client)
+    foreign_task = _create(
+        client,
+        "/tasks",
+        name="Stray",
+        workstream_id=_create(client, "/workstreams", name="Away", project_id=theirs),
+    )
+    scenario = _create(
+        client,
+        "/estimate-scenarios",
+        project_id=ours,
+        target="duration",
+        kind="analogous",
+        value=5.0,
+        actor="Ada Lovelace",
+        as_of="2026-01-05",
+    )
+    return client.patch(f"/estimate-scenarios/{scenario}", json={"subject_task_id": foreign_task})
+
+
+def _probe_risk_response_risk(client: TestClient) -> Response:
+    ours, theirs = _sibling_projects(client)
+    owner = _create(client, "/people", name="Priya")
+    response = _create(
+        client,
+        "/risk-responses",
+        project_id=ours,
+        risk_id=_risk(client, ours),
+        owner_id=owner,
+        **_RESPONSE,
+    )
+    return client.patch(f"/risk-responses/{response}", json={"risk_id": _risk(client, theirs)})
+
+
+def _probe_risk_response_owner(client: TestClient) -> tuple[Response, str, int]:
+    ours, _theirs = _sibling_projects(client)
+    priya = _create(client, "/people", name="Priya")
+    sam = _create(client, "/people", name="Sam")
+    response = _create(
+        client,
+        "/risk-responses",
+        project_id=ours,
+        risk_id=_risk(client, ours),
+        owner_id=priya,
+        **_RESPONSE,
+    )
+    moved = client.patch(f"/risk-responses/{response}", json={"owner_id": sam})
+    return moved, f"/risk-responses/{response}", sam
+
+
+def _probe_incident_control(client: TestClient) -> Response:
+    ours, theirs = _sibling_departments(client)
+    foreign = _create(
+        client, "/operating-controls", department_id=theirs, name="Ops control", owner="Sam"
+    )
+    incident = _create(
+        client, "/incidents", department_id=ours, description="Late render", raised_on="2026-01-05"
+    )
+    return client.patch(f"/incidents/{incident}", json={"control_id": foreign})
+
+
+def _probe_resource_breakdown_parent(client: TestClient) -> Response:
+    ours, theirs = _sibling_projects(client)
+    our_type = _create(client, "/resource-types", project_id=ours, name="Editor", kind="people")
+    their_type = _create(client, "/resource-types", project_id=theirs, name="Editor", kind="people")
+    foreign = _create(
+        client, "/resource-breakdowns", project_id=theirs, resource_type_id=their_type
+    )
+    node = _create(client, "/resource-breakdowns", project_id=ours, resource_type_id=our_type)
+    return client.patch(f"/resource-breakdowns/{node}", json={"parent_id": foreign})
+
+
+def _probe_responsibility_assignment_person(client: TestClient) -> tuple[Response, str, int]:
+    ours, _theirs = _sibling_projects(client)
+    deliverable = _create(client, "/deliverables", project_id=ours, name="Cut", wbs_code="1")
+    priya = _create(client, "/people", name="Priya")
+    sam = _create(client, "/people", name="Sam")
+    assignment = _create(
+        client,
+        "/responsibility-assignments",
+        project_id=ours,
+        deliverable_id=deliverable,
+        person_id=priya,
+        role="responsible",
+    )
+    moved = client.patch(f"/responsibility-assignments/{assignment}", json={"person_id": sam})
+    return moved, f"/responsibility-assignments/{assignment}", sam
+
+
+def _probe_training_record_person(client: TestClient) -> tuple[Response, str, int]:
+    priya = _create(client, "/people", name="Priya")
+    sam = _create(client, "/people", name="Sam")
+    record = _create(
+        client, "/training-records", person_id=priya, topic="Safety", completed_on="2026-01-05"
+    )
+    moved = client.patch(f"/training-records/{record}", json={"person_id": sam})
+    return moved, f"/training-records/{record}", sam
+
+
+def _probe_conflict_action_owner(client: TestClient) -> tuple[Response, str, int]:
+    ours, _theirs = _sibling_projects(client)
+    priya = _create(client, "/people", name="Priya")
+    sam = _create(client, "/people", name="Sam")
+    conflict = _create(
+        client,
+        "/conflict-records",
+        project_id=ours,
+        raised_on="2026-01-05",
+        parties="Priya, Sam",
+        actor="qa",
+    )
+    action = _create(client, "/conflict-actions", conflict_id=conflict, owner_id=priya)
+    moved = client.patch(f"/conflict-actions/{action}", json={"owner_id": sam})
+    return moved, f"/conflict-actions/{action}", sam
+
+
 class MovesFreely(NamedTuple):
     """A link that genuinely points anywhere — proven, never merely asserted.
 
@@ -698,7 +958,21 @@ _CHECKED_MOVABLE_FK: dict[str, dict[str, Probe | MovesFreely]] = {
         "workstream_id": _probe_task_workstream,
     },
     "Issue": {"risk_id": _probe_issue_risk},
+    "RiskResponse": {
+        "risk_id": _probe_risk_response_risk,
+        "owner_id": MovesFreely(_probe_risk_response_owner),
+    },
     "ChangeRequest": {"resulting_baseline_id": _probe_change_request_baseline},
+    "WorkRequest": {"service_id": _probe_work_request_service},
+    "ServiceLevel": {"service_id": _probe_service_level_service},
+    "Incident": {"control_id": _probe_incident_control},
+    "EstimateScenario": {"subject_task_id": _probe_estimate_scenario_subject_task},
+    "Requirement": {"source_stakeholder_id": _probe_requirement_stakeholder},
+    "Deliverable": {"parent_id": _probe_deliverable_parent},
+    "ResourceBreakdown": {"parent_id": _probe_resource_breakdown_parent},
+    "ResponsibilityAssignment": {"person_id": MovesFreely(_probe_responsibility_assignment_person)},
+    "TrainingRecord": {"person_id": MovesFreely(_probe_training_record_person)},
+    "ConflictAction": {"owner_id": MovesFreely(_probe_conflict_action_owner)},
 }
 
 
@@ -854,3 +1128,134 @@ def test_an_open_baseline_still_takes_lines_and_still_deletes(client: TestClient
 
     assert client.delete(f"/baseline-lines/{line}").status_code == 204
     assert client.delete(f"/baselines/{baseline}").status_code == 204
+
+
+# ---- stale-write precondition (If-Match / row_revision) -------------------------
+
+
+def test_a_patch_with_no_if_match_still_succeeds_unconditionally(client: TestClient) -> None:
+    """The omitted header is a deliberate choice (crud._apply), not an oversight: a
+    caller that has never adopted the precondition keeps writing exactly as before."""
+    task = _create(client, "/tasks", name="Cut", workstream_id=_seed(client))
+    patched = client.patch(f"/tasks/{task}", json={"status": "in_progress"})
+    assert patched.status_code == 200, patched.text
+
+
+def test_a_stale_if_match_is_refused_with_409_and_the_current_revision(
+    client: TestClient,
+) -> None:
+    task = _create(client, "/tasks", name="Cut", workstream_id=_seed(client))
+    first = client.patch(
+        f"/tasks/{task}", json={"status": "in_progress"}, headers={"If-Match": "1"}
+    )
+    assert first.status_code == 200, first.text
+
+    stale = client.patch(f"/tasks/{task}", json={"status": "done"}, headers={"If-Match": "1"})
+    assert stale.status_code == 409, stale.text
+    assert "2" in stale.json()["detail"], "the refusal must carry the current revision"
+    assert client.get(f"/tasks/{task}").json()["status"] == "in_progress", (
+        "a refused write must not land"
+    )
+
+
+def test_a_matching_if_match_succeeds_and_the_revision_keeps_advancing(
+    client: TestClient,
+) -> None:
+    task = _create(client, "/tasks", name="Cut", workstream_id=_seed(client))
+    first = client.patch(
+        f"/tasks/{task}", json={"status": "in_progress"}, headers={"If-Match": "1"}
+    )
+    assert first.status_code == 200, first.text
+    # The revision advanced past 1, so a second write must now state 2, not 1 again.
+    second = client.patch(f"/tasks/{task}", json={"status": "done"}, headers={"If-Match": "2"})
+    assert second.status_code == 200, second.text
+
+
+def test_a_malformed_if_match_is_refused_with_400(client: TestClient) -> None:
+    task = _create(client, "/tasks", name="Cut", workstream_id=_seed(client))
+    refused = client.patch(
+        f"/tasks/{task}", json={"status": "in_progress"}, headers={"If-Match": "not-a-number"}
+    )
+    assert refused.status_code == 400, refused.text
+
+
+def test_a_non_object_patch_body_422s_instead_of_crashing_the_frozen_fk_strip(
+    client: TestClient,
+) -> None:
+    """``_dropping_frozen_fk``'s ``_strip`` validator only removes keys off a ``dict``
+    body; a JSON array or a bare string passes straight through it unmodified rather
+    than calling ``.items()`` on something that has none, and pydantic's own type
+    check then answers the 422 — never a 500 off an un-dict-like PATCH body."""
+    business = _create(client, "/businesses", name="Back Road Creative")
+    for body in (["not", "a", "dict"], "just a string"):
+        refused = client.patch(f"/businesses/{business}", json=body)
+        assert refused.status_code == 422, refused.text
+
+
+def test_a_stale_if_match_refuses_a_delete_too(client: TestClient) -> None:
+    task = _create(client, "/tasks", name="Cut", workstream_id=_seed(client))
+    # advances to revision 2 without a header — the unconditional path still works
+    assert client.patch(f"/tasks/{task}", json={"status": "in_progress"}).status_code == 200
+
+    stale = client.delete(f"/tasks/{task}", headers={"If-Match": "1"})
+    assert stale.status_code == 409, stale.text
+    assert client.get(f"/tasks/{task}").status_code == 200, "a refused delete must not land"
+
+    current = client.delete(f"/tasks/{task}", headers={"If-Match": "2"})
+    assert current.status_code == 204, current.text
+
+
+# ---- row_revision on response models (derived, not hand-listed twice) ----------
+
+
+def _orm_classes_with_row_revision() -> set[str]:
+    """Every ORM class carrying the concurrency token, read off the mappers —
+    the same source ``crud._apply`` and ``crud._delete`` check ``If-Match`` against."""
+    found: set[str] = set()
+    for mapper in Base.registry.mappers:
+        if "row_revision" in mapper.columns:
+            found.add(mapper.class_.__name__)
+    return found
+
+
+def _out_models_carrying_row_revision() -> set[str]:
+    """Every generated ``*Out`` model naming ``row_revision`` among its own
+    fields, keyed by the ORM class its name implies (``TaskOut`` -> ``Task``)."""
+    found: set[str] = set()
+    for name in dir(s):
+        if not name.endswith("Out"):
+            continue
+        model = getattr(s, name)
+        if not (isinstance(model, type) and issubclass(model, BaseModel)):
+            continue
+        if "row_revision" in model.model_fields:
+            found.add(name[: -len("Out")])
+    return found
+
+
+def test_row_revision_is_on_every_out_model_whose_row_carries_the_column() -> None:
+    """PR #194 added the column and the ``If-Match`` check but exposed the value
+    nowhere, so a client could only ever learn a revision by first losing a race
+    and reading it out of a 409's message text. Both sides here are derived, never
+    hand-listed twice: the ORM side reads its own mappers, the schema side reads
+    the actual generated ``*Out`` models, and they are compared as an exact set —
+    a model that gains the column later, or an ``Out`` model that keeps the field
+    after its row loses it, both fail here rather than drifting quietly."""
+    has_column = _orm_classes_with_row_revision()
+    exposes_it = _out_models_carrying_row_revision()
+    assert has_column, "the mapper walk found no row_revision column — the helper is broken"
+    assert exposes_it == has_column, sorted(has_column ^ exposes_it)
+
+
+def test_row_revision_never_appears_on_a_request_or_patch_model() -> None:
+    """Server-managed: a client states one back via ``If-Match``, never sets one."""
+    checked = 0
+    for name in dir(s):
+        if not (name.endswith("In") or name.endswith("Patch")):
+            continue
+        model = getattr(s, name)
+        if not (isinstance(model, type) and issubclass(model, BaseModel)):
+            continue
+        checked += 1
+        assert "row_revision" not in model.model_fields, name
+    assert checked > 20  # sanity: something is actually being checked

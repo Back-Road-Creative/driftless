@@ -1,0 +1,71 @@
+{# Per-line delta between two approved baseline versions — dates, cost and scope,
+   computed at request time from the two baselines' own lines, never stored. Each
+   baseline's own approval record (status, approved_at) stands beside the ledger of
+   "baseline" sign-offs recorded against the later (after) version. #}
+{% extends "base.html" %}
+{% block title %}Baseline diff — {{ project.name }}{% endblock %}
+{% block content %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{% import "_empty.html" as empty %}
+{% import "_scroll.html" as scroll %}
+{% import "_signoff.html" as signoff %}
+{% if before and after %}
+{{ breadcrumbs.trail(project, "Baseline v" ~ before.version ~ " to v" ~ after.version) }}
+<h1>Baseline diff — {{ project.name }}</h1>
+<p>Comparing <strong>v{{ before.version }}</strong> to <strong>v{{ after.version }}</strong>.</p>
+
+<h2>Approval</h2>
+<ul>
+  <li>v{{ before.version }}: {{ before.status }}{% if before.approved_at %}, approved {{ before.approved_at }}{% endif %}</li>
+  <li>v{{ after.version }}: {{ after.status }}{% if after.approved_at %}, approved {{ after.approved_at }}{% endif %}
+    {% if change_request %}— from change request: {{ change_request.description }}{% endif %}</li>
+</ul>
+
+{% if rows %}
+{% call scroll.wide("Baseline line diff") %}
+<table>
+<caption class="sr-only">Every task on either baseline, its planned start, finish and cost in v{{ before.version }} against v{{ after.version }}, and whether it was added, removed, changed or unchanged</caption>
+<tr><th scope="col">Task</th><th scope="col">Start</th><th scope="col">Finish</th><th scope="col">Cost</th><th scope="col">Status</th></tr>
+{% for row in rows %}{% set d = row.diff %}
+<tr>
+<td>{{ row.name }}</td>
+<td>{% if d.start_before != d.start_after %}{{ d.start_before | default("—") }} &rarr; {{ d.start_after | default("—") }}{% else %}{{ d.start_before }}{% endif %}</td>
+<td>{% if d.finish_before != d.finish_after %}{{ d.finish_before | default("—") }} &rarr; {{ d.finish_after | default("—") }}{% else %}{{ d.finish_before }}{% endif %}</td>
+<td>{% if d.cost_before != d.cost_after %}{{ d.cost_before | default("—") }} &rarr; {{ d.cost_after | default("—") }}{% else %}{{ d.cost_before }}{% endif %}</td>
+<td>{{ d.status }}</td>
+</tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No lines on either baseline", id="baseline-diff-empty") %}
+Neither v{{ before.version }} nor v{{ after.version }} carries a <code>BaselineLine</code> yet.
+{% endcall %}
+{% endif %}
+
+<h2>Sign off v{{ after.version }}</h2>
+{% if signoffs %}
+<ul id="baseline-signoffs">
+  {% for row in signoffs %}
+  <li>{{ row.decision }}, signed by {{ row.signed_by }} ({{ row.signed_at }})</li>
+  {% endfor %}
+</ul>
+{% else %}
+<p>No sign-off recorded yet for v{{ after.version }}.</p>
+{% endif %}
+<form class="inline" method="post" action="/sign-off">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="subject_kind" value="baseline">
+  <input type="hidden" name="subject_ref" value="{{ after.id }}">
+  <input type="hidden" name="project_id" value="{{ project.id }}">
+  {{ signoff.decision("Decision for baseline v" ~ after.version) }}
+  <button type="submit" class="btn btn-secondary">Record decision</button>
+</form>
+{% else %}
+{{ breadcrumbs.trail(project, "Baseline diff") }}
+<h1>Baseline diff — {{ project.name }}</h1>
+{% call empty.state("Fewer than two approved baselines", id="baseline-diff-too-few") %}
+This project needs two approved baselines to compare; approve another with <code>PATCH /baselines/&lt;id&gt;</code> and its diff appears here.
+{% endcall %}
+{% endif %}
+{% endblock %}

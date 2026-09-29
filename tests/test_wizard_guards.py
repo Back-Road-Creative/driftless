@@ -52,10 +52,10 @@ def _project(db: Session) -> Project:
 def test_produce_refuses_while_an_approved_baseline_exists(session: Session, kind: str) -> None:
     """A second apply must not file the approved v2 that would replace the plan."""
     project = _project(session)
-    produce(session, project, kind, {"planned_cost": 250_000.0}, AS_OF)
+    produce(session, project, kind, {"planned_cost": 250_000.0}, AS_OF, "test")
 
     with pytest.raises(AlreadyBaselined, match="approved"):
-        produce(session, project, kind, {}, AS_OF)
+        produce(session, project, kind, {}, AS_OF, "test")
 
     versions = session.scalars(
         select(Baseline.version).where(Baseline.project_id == project.id)
@@ -72,7 +72,7 @@ def test_a_draft_baseline_does_not_block_onboarding(session: Session) -> None:
     session.add(Baseline(project_id=project.id, version=1, status="draft"))
     session.commit()
 
-    produce(session, project, "scope_baseline", {"planned_cost": "1000"}, AS_OF)
+    produce(session, project, "scope_baseline", {"planned_cost": "1000"}, AS_OF, "test")
     plan = plan_baseline(project)
     assert plan is not None and plan.version == 2, "the draft blocked the first real plan"
 
@@ -111,7 +111,7 @@ def test_a_mid_write_failure_commits_no_partial_baseline(
         project = _project(db)
         monkeypatch.setattr(s, "BaselineLineIn", boom)
         with pytest.raises(RuntimeError):
-            produce(db, project, "scope_baseline", {"planned_cost": "1000"}, AS_OF)
+            produce(db, project, "scope_baseline", {"planned_cost": "1000"}, AS_OF, "test")
 
     with factory() as check:
         for model in (Workstream, Task, Baseline):
@@ -132,7 +132,9 @@ def test_a_successful_baseline_lands_whole_for_a_later_session(
     """The one commit really commits: a fresh session sees all four rows, and the
     ChangeLog audited every one of them."""
     with factory() as db:
-        row_id = produce(db, _project(db), "scope_baseline", {"planned_cost": "1000"}, AS_OF)
+        row_id = produce(
+            db, _project(db), "scope_baseline", {"planned_cost": "1000"}, AS_OF, "test"
+        )
 
     with factory() as check:
         baseline = check.get(Baseline, row_id)

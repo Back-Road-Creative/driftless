@@ -64,6 +64,14 @@ def test_the_bundle_covers_every_page_route_the_app_mounts(bundles: tuple[Bundle
     )
 
 
+def test_snapshot_name_drops_the_fragment_as_well_as_the_query() -> None:
+    snapshot_name = _load().snapshot_name
+    assert snapshot_name("/techniques?as_of=2026-07-01") == "techniques.html"
+    assert snapshot_name("/techniques#family-cost") == "techniques.html"
+    assert snapshot_name("/techniques?as_of=2026-07-01#family-cost") == "techniques.html"
+    assert snapshot_name("/") == "index.html"
+
+
 def test_two_runs_at_the_same_anchor_are_byte_identical(bundles: tuple[Bundle, Bundle]) -> None:
     first, second = bundles
     assert sorted(first) == sorted(second), "the two runs captured different pages"

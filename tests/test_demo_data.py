@@ -3,6 +3,15 @@
 from datetime import timedelta
 from typing import Any
 
+from driftless.calc.network import (
+    Activity,
+    Dependency,
+    ScheduleNetwork,
+    backward_pass,
+    critical_path,
+    forward_pass,
+    total_float,
+)
 from driftless.demo.data import ANCHOR, demo_payload
 
 
@@ -45,6 +54,17 @@ def test_shape_worst_risk_and_slipped_milestone() -> None:
     # cannot quietly cost the demo the slip its threat board is built on.
     milestones = [m for p in projects for m in p["milestones"]]
     assert [m for m in milestones if m["status"] == "pending" and m["target_date"] < ANCHOR]
+
+    objectives = [o for b in payload["businesses"] for o in b["scorecard"]]
+    assert {o["perspective"] for o in objectives} == {
+        "financial",
+        "customer_stakeholder",
+        "internal_operations",
+        "people_capability",
+    }
+    assert any(
+        not metric["observations"] for objective in objectives for metric in objective["metrics"]
+    )
 
 
 def test_a_date_moves_when_the_anchor_moves() -> None:
@@ -91,3 +111,81 @@ def test_costs_spread_across_several_weeks_before_the_anchor() -> None:
         assert len(dates) >= 3
         assert all(d < ANCHOR for d in dates)
         assert (dates[-1] - dates[0]).days >= 21
+
+
+def test_exactly_one_project_runs_adaptively_and_carries_a_full_iteration_record() -> None:
+    """One adaptive project is what keeps the flow surfaces off their empty state;
+    the others stay predictive, so the predictive demo is not traded away for it."""
+    projects = _projects(demo_payload(ANCHOR))
+    (adaptive,) = [p for p in projects if p.get("delivery_mode")]
+    assert adaptive["delivery_mode"] == "hybrid"
+    assert len([p for p in projects if not p.get("delivery_mode")]) == 3
+
+    sprints = adaptive["sprints"]
+    assert len([s for s in sprints if s["end_offset"] < 0]) >= 3, "a velocity band needs three"
+    assert [s for s in sprints if s["start_offset"] <= 0 <= s["end_offset"]], "one in flight"
+    statuses = {i["status"] for i in adaptive["backlog_items"]}
+    assert statuses == {"proposed", "ready", "in_progress", "done"}
+    assert [i for i in adaptive["impediments"] if i["resolved_offset"] is None]
+
+
+def _rollout(payload: dict[str, Any]) -> dict[str, Any]:
+    """The predictive project the gantt page is demonstrated on, by name."""
+    return next(p for p in _projects(payload) if p["name"] == "Season 4 Rollout")
+
+
+def _rollout_network(payload: dict[str, Any]) -> ScheduleNetwork:
+    """The predictive project's plan as ``calc.network`` reads it: one activity per
+    baseline line, its duration the planned window, one edge per seeded dependency --
+    the same two inputs ``pmbok.schedule_facts`` builds the live network from."""
+    project = _rollout(payload)
+    lines = project["baseline"]["lines"]
+    return ScheduleNetwork(
+        activities=tuple(
+            Activity(
+                id=line["task"], duration=(line["planned_finish"] - line["planned_start"]).days
+            )
+            for line in lines
+        ),
+        dependencies=tuple(
+            Dependency(d["predecessor"], d["successor"], d["kind"], d["lag_days"])
+            for d in project["dependencies"]
+        ),
+    )
+
+
+def test_the_predictive_plan_is_a_chained_network_not_a_flat_list() -> None:
+    """Every edge names a task the baseline covers, and at least one task is both
+    somebody's predecessor and somebody else's successor -- a chain, not a star."""
+    network = _rollout_network(demo_payload(ANCHOR))
+    ids = {activity.id for activity in network.activities}
+    predecessors = {dep.predecessor for dep in network.dependencies}
+    successors = {dep.successor for dep in network.dependencies}
+    assert predecessors <= ids and successors <= ids
+    assert predecessors & successors, "no task both follows one task and leads another"
+
+
+def test_the_predictive_plan_computes_a_multi_task_critical_path_and_real_float() -> None:
+    """The two figures the schedule assistant exists to show. Asserted as
+    properties of the computed network, never as a row count: a longer flat list
+    of tasks would still leave the critical path one task long and nothing slack."""
+    network = _rollout_network(demo_payload(ANCHOR))
+    early = forward_pass(network)
+    late = backward_pass(network, early)
+    longest = max(critical_path(network, early, late), key=len)
+    assert len(longest) > 2, f"critical path is not a chain: {longest}"
+    floats = total_float(early, late)
+    assert [aid for aid, days in floats.items() if days > 0], "no task carries any float"
+    assert [aid for aid, days in floats.items() if days == 0], "nothing is critical"
+
+
+def test_the_predictive_plan_spans_the_project_rather_than_one_corner() -> None:
+    """The gantt draws one bar per baseline line over a single scale, so a plan
+    whose windows all sit in one place draws a corner. Distinct starts spread on
+    both sides of the as-of are what make it read as a schedule."""
+    lines = _rollout(demo_payload(ANCHOR))["baseline"]["lines"]
+    starts = sorted({line["planned_start"] for line in lines})
+    assert len(starts) >= 5, "too few distinct start dates to read as a timeline"
+    assert starts[0] < ANCHOR < max(line["planned_finish"] for line in lines)
+    milestones = _rollout(demo_payload(ANCHOR))["milestones"]
+    assert len(milestones) >= 4, "a schedule marks more than a couple of commitments"

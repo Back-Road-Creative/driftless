@@ -105,6 +105,42 @@ def test_the_folder_refuses_the_fragment_rather_than_folding_it(tmp_path: Path) 
         ac.read_fragments(tmp_path)
 
 
+def test_release_refuses_a_section_over_githubs_release_body_limit(tmp_path: Path) -> None:
+    huge = _fragment("50.added.md", "- " + ("x" * 130_000), tmp_path)
+    with pytest.raises(ValueError, match=r"130,0\d\d bytes"):
+        ac.render_release(CHANGELOG, [huge], "0.3.0", "2026-07-28")
+
+
+def test_release_allow_oversize_bypasses_the_size_check(tmp_path: Path) -> None:
+    huge = _fragment("50.added.md", "- " + ("x" * 130_000), tmp_path)
+    out = ac.render_release(CHANGELOG, [huge], "0.3.0", "2026-07-28", allow_oversize=True)
+    assert "## [0.3.0] - 2026-07-28" in out
+
+
+def test_release_flag_warns_and_exits_nonzero_when_oversize(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (tmp_path / "CHANGELOG.md").write_text(CHANGELOG, encoding="utf-8")
+    (tmp_path / "changelog.d").mkdir()
+    (tmp_path / "changelog.d" / "50.added.md").write_text("- " + ("x" * 130_000), encoding="utf-8")
+    assert ac.main(["--release", "0.3.0", "--date", "2026-07-28"], root=tmp_path) == 1
+    err = capsys.readouterr().err
+    assert "bytes" in err and "0.3.0" in err
+    assert (tmp_path / "changelog.d" / "50.added.md").exists()  # nothing unlinked on refusal
+    assert "0.3.0" not in (tmp_path / "CHANGELOG.md").read_text(encoding="utf-8")
+
+
+def test_release_flag_allow_oversize_succeeds(tmp_path: Path) -> None:
+    (tmp_path / "CHANGELOG.md").write_text(CHANGELOG, encoding="utf-8")
+    (tmp_path / "changelog.d").mkdir()
+    (tmp_path / "changelog.d" / "50.added.md").write_text("- " + ("x" * 130_000), encoding="utf-8")
+    assert (
+        ac.main(["--release", "0.3.0", "--date", "2026-07-28", "--allow-oversize"], root=tmp_path)
+        == 0
+    )
+    assert "## [0.3.0] - 2026-07-28" in (tmp_path / "CHANGELOG.md").read_text(encoding="utf-8")
+
+
 def test_check_reports_the_offending_fragment_and_exits_nonzero(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

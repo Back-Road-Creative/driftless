@@ -88,7 +88,20 @@ def test_the_row_carries_what_the_browser_typed(
         follow_redirects=True,
     )
     assert resp.status_code == 200, resp.text
-    assert getattr(db.scalars(select(model)).one(), column) == expected
+    # The shared ``db`` fixture seeds one Risk of its own (test_web_pages._seed, for the
+    # risk-response planner's own coverage) -- the wizard's row is the LATEST one, never
+    # "the only one", so this reads what the browser just posted, not whichever row a
+    # sibling fixture happened to add first.
+    row = db.scalars(select(model).order_by(model.id.desc())).first()  # type: ignore[attr-defined]
+    assert row is not None
+    assert getattr(row, column) == expected
+
+
+def test_process_query_param_404s_on_an_unknown_id(client: TestClient) -> None:
+    """``?process=`` is client-controlled bytes like any other address segment: an
+    id the live catalog does not name 404s — same as ``/pmbok/{process_id}`` —
+    never a 500 from ``catalog.get``'s own ``KeyError``."""
+    assert client.get(f"/projects/1/wizard{Q}&process=99.9").status_code == 404
 
 
 def test_a_refusal_hands_the_typed_fields_back(client: TestClient, db: Session) -> None:

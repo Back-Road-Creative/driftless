@@ -16,6 +16,7 @@ from driftless import models as m
 from driftless.db import Base, new_engine, new_session_factory
 from driftless.report import cli
 from driftless.report import engine as report_engine
+from driftless.report import receipt as report_receipt
 
 AS_OF = date(2026, 3, 31)  # matches the seeded baseline finish
 JAN = date(2026, 1, 31)
@@ -137,7 +138,10 @@ def test_business_scoped_document_renders_once_not_per_project(
     assert calls == [AS_OF]  # once for the whole store, not once per project
     assert list(out.rglob("fake-rollup.md")) == [out / "2026-03-31" / "fake-rollup.md"]
     body = (out / "2026-03-31" / "fake-rollup.md").read_text(encoding="utf-8")
-    assert body == "# Fake Rollup\n"
+    assert body.startswith("# Fake Rollup\n")
+    assert report_receipt.verify_receipt(
+        body
+    )  # the trailing receipt, see test_report_receipt_cli.py
 
 
 def test_report_all_scans_cost_entries_once(tmp_path: Path) -> None:

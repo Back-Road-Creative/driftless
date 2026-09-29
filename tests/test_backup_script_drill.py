@@ -27,6 +27,17 @@ SCRIPT = ROOT / "bin" / "driftless-backup.sh"
 STUBS: dict[str, str] = {
     "sops": "#!/bin/sh\nexit 0\n",
     "pg_dump": '#!/bin/sh\nprintf %s "$DRILL_MODE"\n',
+    # age stands in for the real binary the same way pg_dump does, but it TRANSFORMS rather
+    # than returning a canned answer: prefixing on encrypt and stripping on decrypt is what
+    # makes "the dump never reaches disk in the clear" an assertion instead of a hope. A stub
+    # that passed bytes through unchanged would keep every test below green with the pipeline
+    # wired backwards.
+    "age-keygen": '#!/bin/sh\nfor a; do [ "$a" = -y ] && { echo age1stubrecipient; exit 0; }; done\n',
+    "age": """#!/bin/sh
+for a; do [ "$a" = -d ] && { sed 's/^AGE://'; exit 0; }; done
+printf 'AGE:'
+cat
+""",
     "createdb": '#!/bin/sh\nfor db; do :; done\n: >"$DRILL_STATE/$db.rows"\n',
     "dropdb": '#!/bin/sh\nfor db; do :; done\nrm -f "$DRILL_STATE/$db.rows"\n',
     "pg_restore": """#!/bin/sh
@@ -38,6 +49,9 @@ while [ $# -gt 0 ]; do
     *) dump="$1"; shift ;;
   esac
 done
+# No file argument means the dump arrives on stdin, which is how it reaches pg_restore once
+# it is decrypted in flight rather than staged in the clear next to the ciphertext.
+[ -n "$dump" ] || { dump="$(mktemp)"; cat >"$dump"; }
 if [ "$(cat "$dump")" = full ]; then
   cp "$DRILL_STATE/$DRILL_SOURCE.rows" "$DRILL_STATE/$db.rows"
 else
@@ -67,7 +81,8 @@ esac
 }
 SOURCE_ROWS = "alembic_version|1\napp_user|3\ntask|17\n"  # 3 tables, 21 rows
 STAMP = "2026-07-22T09-00-00"
-SET = [f"driftless-{STAMP}{suffix}" for suffix in (".dump", ".manifest", ".secrets.enc.env")]
+SUFFIXES = (".dump.age", ".manifest", ".secrets.enc.env")
+SET = [f"driftless-{STAMP}{suffix}" for suffix in SUFFIXES]
 
 
 def drill(tmp_path: Path, stamp: str, mode: str = "full") -> subprocess.CompletedProcess[str]:
@@ -115,6 +130,34 @@ def test_a_full_dump_restore_verifies_and_leaves_the_whole_set(tmp_path: Path) -
     assert "3 tables / 21 rows" in manifest, manifest
 
 
+def test_the_dump_is_encrypted_and_no_plaintext_copy_is_left_behind(tmp_path: Path) -> None:
+    """The dump is the whole database, and `chmod 0600` only protects it while it sits on a
+    host that is still yours: a stolen disk, a copied backup directory, or the off-host replica
+    this set is supposed to grow all read a plaintext `.dump` straight out. So it is encrypted
+    to the age key that is *already* escrowed for the overlay — no second secret to lose — and
+    encrypted **in flight**, because a script that writes the dump and encrypts it afterwards
+    leaves the cleartext on disk for exactly as long as the encryption takes, and forever if
+    the run dies in between.
+    """
+    done = drill(tmp_path, STAMP)
+    assert done.returncode == 0, f"{done.stdout}\n{done.stderr}"
+    backups = tmp_path / "backups"
+
+    dump = backups / f"driftless-{STAMP}.dump.age"
+    body = dump.read_bytes()
+    assert body.startswith(b"AGE:"), (
+        f"{dump.name} is not the output of `age`: {body[:40]!r}. The dump must be piped through "
+        "encryption on the way to disk."
+    )
+    assert body != b"full", "the dump reached disk as the raw pg_dump output"
+
+    leftovers = [p.name for p in backups.iterdir() if p.name.endswith(".dump")]
+    assert not leftovers, (
+        f"{leftovers} — a cleartext dump survived the run beside its ciphertext, which hands an "
+        "attacker the database and makes the encryption decorative"
+    )
+
+
 def test_a_schema_only_dump_does_not_pass_restore_verify(tmp_path: Path) -> None:
     done = drill(tmp_path, STAMP, mode="schema-only")
     assert done.returncode != 0, (
@@ -152,8 +195,7 @@ def test_a_stamp_with_a_path_in_it_cannot_write_outside_the_backup_directory(
     done = drill(tmp_path, "x/../../escaped")
     assert done.returncode == 0, f"{done.stdout}\n{done.stderr}"
     assert sorted(p.name for p in backups.iterdir() if p.is_file()) == [
-        f"driftless-x_.._.._escaped{suffix}"
-        for suffix in (".dump", ".manifest", ".secrets.enc.env")
+        f"driftless-x_.._.._escaped{suffix}" for suffix in SUFFIXES
     ]
     strays = sorted(p.name for p in tmp_path.iterdir() if p.is_file() and "escaped" in p.name)
     assert not strays, (

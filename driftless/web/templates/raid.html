@@ -1,0 +1,80 @@
+{# Project RAID Log page: Risks, Issues, Change Requests tabular view #}
+{% extends "base.html" %}
+{% block title %}RAID Log — {{ project.name }}{% endblock %}
+{% block content %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{% import "_empty.html" as empty %}
+{% import "_scroll.html" as scroll %}
+{{ breadcrumbs.trail(project, "RAID log", as_of) }}
+<h1>RAID log — {{ project.name }}</h1>
+<p><em>As of {{ as_of }}</em> · <a href="/projects/{{ project.id }}/hub?as_of={{ as_of }}">Project hub</a></p>
+
+<h2>Risks</h2>
+{% if risks %}
+{% call scroll.wide("Project risks") %}
+<table>
+<caption class="sr-only">Risks for {{ project.name }}</caption>
+<tr><th scope="col">Description</th><th scope="col">Probability</th><th scope="col">Impact</th><th scope="col">Exposure</th><th scope="col">Response</th><th scope="col">Owner</th><th scope="col">Status</th></tr>
+{% for r in risks %}
+<tr>
+<td>{{ r.description }}</td>
+<td>{{ "%.0f"|format(r.probability * 100) }}%</td>
+<td>{{ r.impact | money }}</td>
+<td>{{ r.exposure | money }}</td>
+<td>{{ r.response }}</td>
+<td>{{ r.owner or "unassigned" }}</td>
+<td class="{{ r.severity }}"><span class="badge sev-badge">{{ r.status }}</span></td>
+</tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No risks registered for this project yet", id="risks-empty") %}
+Register one with <code>POST /risks</code> with <code>{"project_id": {{ project.id }}}</code>.
+{% endcall %}
+{% endif %}
+
+<h2>Issues</h2>
+{% if issues %}
+{% call scroll.wide("Project issues") %}
+<table>
+<caption class="sr-only">Issues for {{ project.name }}</caption>
+<tr><th scope="col">Description</th><th scope="col">Raised on</th><th scope="col">Resolved on</th><th scope="col">Status</th></tr>
+{% for i in issues %}
+<tr>
+<td>{{ i.description }}</td>
+<td>{{ i.raised_on }}</td>
+<td>{{ i.resolved_on or "-" }}</td>
+<td class="{{ 'sev-red' if i.status == 'open' else 'sev-green' }}"><span class="badge sev-badge">{{ i.status }}</span></td>
+</tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No issues recorded for this project yet", id="issues-empty") %}
+Record an issue with <code>POST /issues</code> with <code>{"project_id": {{ project.id }}}</code>.
+{% endcall %}
+{% endif %}
+
+<h2 id="changes">Change Requests</h2>
+{% if changes %}
+{% call scroll.wide("Project change requests") %}
+<table>
+<caption class="sr-only">Change requests for {{ project.name }}</caption>
+<tr><th scope="col">Title / Description</th><th scope="col">Status</th></tr>
+{% for c in changes %}
+<tr>
+<td>{{ c.description }}</td>
+<td class="{{ 'sev-amber' if c.status == 'proposed' else ('sev-green' if c.status == 'approved' else 'sev-red') }}"><span class="badge sev-badge">{{ c.status }}</span></td>
+</tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No change requests recorded for this project yet", id="changes-empty") %}
+Submit a proposal with <code>POST /change-requests</code> with <code>{"project_id": {{ project.id }}}</code>.
+{% endcall %}
+{% endif %}
+
+<p><a href="/projects/{{ project.id }}/hub?as_of={{ as_of }}">&larr; Back to {{ project.name }} hub</a></p>
+{% endblock %}

@@ -1,11 +1,20 @@
 """The Forecast Report: where a project is heading. A predictive project gets the
 EVM completion forecast (EAC/ETC/VAC) and milestone slip against baseline; an agile
-one gets the velocity-band completion forecast from its sprint history; a hybrid one
-gets both. All share the risk exposure weighed against the held contingency, from
-``driftless.assess.exposure`` — the one engine the Risk evaluator reads too, never
-re-derived here. Figures come from ``driftless.calc``; the template formats, this
-does no maths. Every queried collection is ORDER BY-sorted (the template sorts the
-sprint history) for byte-identical regeneration."""
+one gets the velocity-band completion forecast from its sprint history plus a seeded
+Monte Carlo simulation (p50/p80/p90) over the same history — schedule forecasting,
+not risk analysis; a hybrid one gets both. All share the risk exposure weighed
+against the held contingency, from ``driftless.assess.exposure`` — the one engine
+the Risk evaluator reads too, never re-derived here. Figures come from
+``driftless.calc``; the template formats, this does no maths. Every queried
+collection is ORDER BY-sorted (the template sorts the sprint history) for
+byte-identical regeneration. The simulation's seed is the project id, never a wall
+clock or unseeded random draw, so two renders of the same project are byte-identical.
+
+Sprint history and remaining points are read through ``pmbok.flow_facts`` —
+moved there so this document and the flow page/hub tile can never print two
+different bands for the same project; see that module for the two functions'
+original docstrings, unchanged here.
+"""
 
 from datetime import date
 from typing import Any
@@ -16,6 +25,7 @@ from driftless.assess import adapters
 from driftless.assess.exposure import contingency_assessment
 from driftless.calc import forecast as fc
 from driftless.models import Milestone, Project
+from driftless.pmbok import flow_facts
 from driftless.report import engine, gather
 
 SLUG = "forecast"
@@ -42,39 +52,16 @@ def _milestone_slips(session: Session, project: Project) -> list[dict[str, Any]]
     ]
 
 
-def _sprint_history(project: Project, as_of: date) -> list[fc.Sprint]:
-    """Completed sprints — those ended on or before ``as_of`` — as calc value objects.
-    An in-flight or future sprint is not history (see ``driftless.calc.forecast``); keying
-    "completed" off ``as_of`` keeps the report free of the wall clock. Length counts
-    BOTH endpoints — 01-01 to 01-14 is a fourteen-day sprint, the same inclusive window
-    ``calc.evm`` measures a baseline task over and the fortnight ``fc.Sprint`` defaults
-    to; the exclusive difference ran every band date a day early per sprint needed. A
-    same-day sprint (``end_date <= start_date``) is skipped: a single day carries no
-    velocity information, and the API refuses to create one — this only guards a legacy
-    row that predates that refusal. Sorted by ``(end_date, id)`` — the relationship
-    carries no order_by, and database row order must never pick which sprint enters
-    the velocity window."""
-    return [
-        fc.Sprint(
-            s.name,
-            ended_on=s.end_date,
-            completed_points=s.completed_points,
-            length_days=(s.end_date - s.start_date).days + 1,
-        )
-        for s in sorted(project.sprints, key=lambda s: (s.end_date, s.id))
-        if s.end_date <= as_of and s.end_date > s.start_date
-    ]
-
-
-def _remaining_points(project: Project) -> float:
-    """Story points still open: not-done, point-estimated tasks. Hours-estimated
-    (predictive) work and unestimated tasks contribute nothing."""
-    return sum(
-        t.estimate
-        for w in project.workstreams
-        for t in w.tasks
-        if t.estimate_unit == "points" and t.status != "done" and t.estimate is not None
-    )
+def simulate_completion(
+    history: list[fc.Sprint], remaining: float, as_of: date, seed: int
+) -> fc.MonteCarloForecast:
+    """Run the seeded Monte Carlo completion simulation for the "Simulated completion"
+    block. The only call site for ``calc.forecast.monte_carlo_completion`` outside
+    ``driftless/calc/`` — ``pmbok.proof_checks`` reruns the same simulation for its
+    ``forecast`` proof check through this function rather than a second direct call,
+    so the wedge claim that the schedule forecast is the sole Monte Carlo caller stays
+    true (see ``tests/test_risk_report_names_what_renders.py``)."""
+    return fc.monte_carlo_completion(history, remaining, as_of, seed=seed)
 
 
 def render(session: Session, project: Project, as_of: date) -> str:
@@ -83,8 +70,12 @@ def render(session: Session, project: Project, as_of: date) -> str:
     agile = project.delivery_mode in ("agile", "hybrid")
     costs = gather.project_costs(session).get(project.id, [])
     snapshot = gather.project_evm(project, costs, as_of)
-    history = _sprint_history(project, as_of) if agile else []
-    band = fc.forecast_completion(history, _remaining_points(project), as_of) if history else None
+    history = flow_facts.sprint_history(project, as_of) if agile else []
+    band = simulation = None
+    if history:
+        remaining = flow_facts.remaining_points(project)
+        band = flow_facts.release_forecast(project, as_of)
+        simulation = simulate_completion(history, remaining, as_of, seed=project.id)
     return engine.render(
         "forecast.md",
         {
@@ -96,6 +87,7 @@ def render(session: Session, project: Project, as_of: date) -> str:
             "s": snapshot,
             "milestones": _milestone_slips(session, project) if predictive else [],
             "band": band,
+            "simulation": simulation,
             "sprints": history,
             "c": contingency_assessment(session, project, snapshot, as_of),
         },

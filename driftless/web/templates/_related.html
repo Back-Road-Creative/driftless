@@ -1,0 +1,26 @@
+{# The ONE "Related" block every Method page renders — a process, technique,
+   artifact, method practice or glossary term — built from
+   ``driftless.web.related``'s pure functions over the frozen registries, never
+   a hand-written list of links on the page itself. ``related`` is a
+   ``driftless.web.related.Related`` with its (already non-empty) ``groups``;
+   a caller with an empty ``Related`` renders nothing rather than an empty
+   shell, so a page missing every kind of related fact never shows a heading
+   over nothing. ``id_prefix`` makes the section and heading ids unique when a
+   page renders more than one block (e.g. one per method practice). #}
+{% macro related(related, id_prefix="related") %}
+{% if related.groups %}
+<section class="related" aria-labelledby="{{ id_prefix }}-heading">
+  <h2 id="{{ id_prefix }}-heading">Related</h2>
+  {% for group in related.groups %}
+  <div class="related-group">
+    <h3 id="{{ id_prefix }}-{{ loop.index0 }}">{{ group.title }}</h3>
+    <ul aria-labelledby="{{ id_prefix }}-{{ loop.index0 }}">
+      {% for link in group.links %}
+      <li><a href="{{ link.href }}">{{ link.label }}</a></li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+{% endmacro %}

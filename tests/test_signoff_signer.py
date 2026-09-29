@@ -33,12 +33,12 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from driftless.api import app as app_module
 from driftless.api.app import app
 from driftless.api.secure import TokenGate
 from driftless.auth import sessions
 from driftless.auth.passwords import hash_password
 from driftless.db import Base, new_engine, new_session_factory
+from driftless.db import session as db_session
 from driftless.db.changelog import register_changelog
 from driftless.models import SignOff, User
 from driftless.web import csrf
@@ -53,22 +53,24 @@ SUBJECT = "cost:project:1"
 
 @pytest.fixture
 def store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[sessionmaker[Session]]:
-    """A throwaway store wired in as the app's OWN lazy factory, holding one contributor.
+    """A throwaway store wired in as the app's OWN lazy factory, holding one admin.
 
-    Same shape as ``tests/test_audit_actor.py``: the gate's default session scope is the
-    API's own factory, so a user who exists only here proves the gate and the routes share
-    one factory. A file rather than in-memory, because ``TestClient`` serves each request
-    on another thread.
+    ``admin``, not ``contributor``: the sign-off ledger is gated to admin alone
+    (``secure._PRIVILEGED_PATHS``) since a sign-off is a governance act, and every
+    test below writes one. Same shape as ``tests/test_audit_actor.py``: the gate's
+    default session scope is the API's own factory, so a user who exists only here
+    proves the gate and the routes share one factory. A file rather than
+    in-memory, because ``TestClient`` serves each request on another thread.
     """
     engine = new_engine(f"sqlite:///{tmp_path / 'signoff.db'}")
     Base.metadata.create_all(engine)
     factory = new_session_factory(engine)
     register_changelog(factory)
-    monkeypatch.setattr(app_module, "_factory", factory)
+    monkeypatch.setattr(db_session, "_factory", factory)
     monkeypatch.setenv(sessions.SECRET_ENV, SECRET)
     monkeypatch.setenv(sessions.SECURE_ENV, "0")  # a plain-http TestClient keeps the cookie
     with factory() as db:
-        db.add(User(username=USERNAME, password_hash=hash_password(PASSWORD), role="contributor"))
+        db.add(User(username=USERNAME, password_hash=hash_password(PASSWORD), role="admin"))
         db.commit()
     yield factory
 

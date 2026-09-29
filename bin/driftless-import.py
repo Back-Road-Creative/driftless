@@ -9,10 +9,10 @@ as everything else — never a direct database write.
 
     bin/driftless-import.py data.json --base-url http://127.0.0.1:8000 --token "$DRIFTLESS_API_TOKEN"
 
-``--csv KIND`` reads one flat record per row instead, for the four bulk kinds
+``--csv KIND`` reads one flat record per row instead, for the six bulk kinds
 people already keep in spreadsheets (see ``bin/sample-tasks.csv``):
 
-    bin/driftless-import.py rows.csv --csv tasks   # or risks / costs / milestones
+    bin/driftless-import.py rows.csv --csv tasks   # or risks / costs / milestones / risk_responses / technique_runs
 
 Each kind's columns are declared once in ``CSV_KINDS`` below — path, required
 columns, optional columns and the coercion for every non-string cell — so a
@@ -24,9 +24,13 @@ Both importers are pure functions over an injected ``post`` callable, so either
 can be driven against a live API or a fake in a test.
 
 Nothing here can roll a batch back — one POST is one row — so a POST that fails
-partway raises :class:`PartialImport` naming what landed, and ``--skip N`` re-runs
-a CSV from row ``N`` without duplicating it. Every refusal is rc 2 and one line on
-stderr, the contract the ``driftless`` subcommands follow, never a traceback.
+partway raises :class:`PartialImport` naming what landed. Recovery no longer depends
+on the operator counting correctly: every row carries an ``Idempotency-Key`` derived
+from the import's id and the row's position, so **re-running the same file is safe**
+and the rows already created are recognised rather than duplicated. ``--skip N``
+survives as an optimisation — it saves re-sending rows, where it used to be the only
+thing standing between a crash and a duplicated store. Every refusal is rc 2 and one
+line on stderr, the contract the ``driftless`` subcommands follow, never a traceback.
 """
 
 from __future__ import annotations
@@ -37,6 +41,8 @@ import json
 import os
 import sys
 import urllib.request
+import hashlib
+import itertools
 from collections.abc import Callable, Iterable, Mapping
 from datetime import date
 from pathlib import Path
@@ -88,13 +94,15 @@ CSV_KINDS: dict[str, CsvKind] = {
             "estimate_unit": str,
             "actual_effort": float,
             "percent_complete": int,
+            "actual_finish": _iso_date,
+            "forecast_finish": _iso_date,
             "assignee_id": int,
         },
     ),
     "risks": CsvKind(
         "/risks",
         {"project_id": int, "description": str, "probability": float, "impact": float},
-        {"response": str, "owner": str, "status": str},
+        {"response": str, "owner": str, "status": str, "kind": str},
     ),
     "costs": CsvKind(
         "/cost-entries",
@@ -105,6 +113,34 @@ CSV_KINDS: dict[str, CsvKind] = {
         "/milestones",
         {"project_id": int, "name": str, "target_date": _iso_date},
         {"baseline_date": _iso_date, "status": str},
+    ),
+    "risk_responses": CsvKind(
+        "/risk-responses",
+        {
+            "project_id": int,
+            "risk_id": int,
+            "strategy": str,
+            "owner_id": int,
+            "trigger": str,
+            "planned_action": str,
+            "residual_probability": float,
+            "residual_impact": float,
+            "actor": str,
+            "as_of": _iso_date,
+        },
+        {"cost_of_response": float, "schedule_days": int, "status": str},
+    ),
+    "technique_runs": CsvKind(
+        "/technique-runs",
+        {
+            "project_id": int,
+            "technique_key": str,
+            "process_id": str,
+            "actor": str,
+            "as_of": _iso_date,
+            "method": str,
+        },
+        {"source_version": str, "inputs_snapshot": str, "outputs_produced": str},
     ),
 }
 
@@ -230,14 +266,39 @@ def import_data(post: Post, data: dict[str, Any]) -> dict[str, int]:
     return counts
 
 
-def _http_poster(base_url: str, token: str) -> Post:
-    """A ``post`` that calls the real API with a bearer token."""
+def import_id_for(path: Path) -> str:
+    """A stable name for "this import of this file", derived from the file's CONTENT.
+
+    Re-running an unchanged file reproduces the same keys, so the rows that already
+    landed are recognised rather than duplicated. Editing the file makes it a different
+    import, which is the honest reading: its rows are no longer the ones already sent.
+    """
+    return hashlib.sha256(path.read_bytes()).hexdigest()[:16]
+
+
+def _http_poster(base_url: str, token: str, import_id: str, first_index: int = 0) -> Post:
+    """A ``post`` that calls the real API with a bearer token and an ``Idempotency-Key``.
+
+    The key is the import's id and the row's POSITION, counted here rather than passed in
+    so every existing caller is unchanged. Position, never payload content: two
+    legitimately identical rows -- say two equal cost entries -- must stay two rows, and a
+    content-derived key would silently swallow the second as a retry.
+
+    ``first_index`` is what ``--skip N`` seeds, so a resumed run numbers its rows the same
+    way the interrupted one did and lands on the same keys.
+    """
+    seq = itertools.count(first_index)
 
     def post(path: str, payload: dict[str, Any]) -> int:
+        key = hashlib.sha256(f"{import_id}:{next(seq)}".encode()).hexdigest()[:32]
         request = urllib.request.Request(
             base_url.rstrip("/") + path,
             data=json.dumps(payload).encode(),
-            headers={"content-type": "application/json", "authorization": f"Bearer {token}"},
+            headers={
+                "content-type": "application/json",
+                "authorization": f"Bearer {token}",
+                "idempotency-key": key,
+            },
             method="POST",
         )
         with urllib.request.urlopen(request) as response:  # noqa: S310 - operator-supplied URL
@@ -260,10 +321,21 @@ def main(argv: list[str] | None = None, post: Post | None = None) -> int:
     parser.add_argument(
         "--skip", type=int, default=0, metavar="N", help="with --csv, skip the first N rows"
     )
+    parser.add_argument(
+        "--import-id",
+        default=None,
+        metavar="ID",
+        help="name this import; defaults to a hash of the file's contents. Rows carry "
+        "Idempotency-Key derived from it, so re-running an unchanged file cannot duplicate "
+        "them. Pass a fresh id to import the same file again ON PURPOSE.",
+    )
     args = parser.parse_args(argv)
 
-    post = post or _http_poster(args.base_url, args.token)
     path = Path(args.data)
+    if post is None:
+        post = _http_poster(
+            args.base_url, args.token, args.import_id or import_id_for(path), args.skip
+        )
     try:
         if args.csv:
             with path.open(newline="", encoding="utf-8") as handle:
@@ -298,8 +370,11 @@ def _read_json(path: Path) -> dict[str, Any]:
 def _resume_hint(partial: PartialImport, kind: str | None) -> str:
     """How to re-run without duplicating the rows ``partial`` says already landed."""
     if kind is not None:
-        return f"re-run the same file with --skip {partial.counts[kind]} to import only the rest"
-    return "those rows are already in the store; trim the JSON to what is left before re-running"
+        return (
+            f"re-run the same file -- rows already created carry an Idempotency-Key and are "
+            f"not duplicated; --skip {partial.counts[kind]} skips re-sending them"
+        )
+    return "re-run the same file; rows already created are recognised by their Idempotency-Key"
 
 
 if __name__ == "__main__":  # pragma: no cover

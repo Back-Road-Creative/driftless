@@ -21,6 +21,7 @@ from sqlalchemy.pool import QueuePool
 import driftless.db.changelog  # noqa: F401  -- registers change_log on Base.metadata
 import driftless.models  # noqa: F401  -- registers the other tables
 from driftless.db import Base, new_engine
+from driftless.db.base import _enable_sqlite_foreign_keys
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -44,6 +45,13 @@ def test_a_real_engine_pool_covers_the_starlette_threadpool() -> None:
         assert 0 < pool._recycle, "recycle -1: connections outlive every idle-timeout between here"
     finally:
         engine.dispose()
+
+
+def test_the_fk_pragma_listener_is_a_noop_on_a_non_sqlite_connection() -> None:
+    """Every other dialect enforces foreign keys itself; the listener must step aside
+    rather than run a SQLite pragma against a connection that has no ``cursor()`` in
+    this shape — a plain object is close enough to prove the early ``return`` fires."""
+    assert _enable_sqlite_foreign_keys(object(), None) is None
 
 
 def test_sqlite_engines_still_construct_and_answer(tmp_path: Path) -> None:

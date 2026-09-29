@@ -29,12 +29,12 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from driftless.api import app as app_module
 from driftless.api.app import app, get_session
 from driftless.api.secure import TokenGate
 from driftless.auth import sessions
 from driftless.auth.passwords import hash_password
 from driftless.db import Base, new_engine, new_session_factory
+from driftless.db import session as db_session
 from driftless.db.changelog import ChangeLog, register_changelog
 from driftless.models import User
 
@@ -59,7 +59,7 @@ def store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[sessionma
     Base.metadata.create_all(engine)
     factory = new_session_factory(engine)
     register_changelog(factory)
-    monkeypatch.setattr(app_module, "_factory", factory)
+    monkeypatch.setattr(db_session, "_factory", factory)
     monkeypatch.setenv(sessions.SECRET_ENV, SECRET)
     monkeypatch.setenv(sessions.SECURE_ENV, "0")  # a plain-http TestClient keeps the cookie
     with factory() as db:

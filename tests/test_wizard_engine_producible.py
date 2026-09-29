@@ -53,23 +53,24 @@ def test_every_kind_a_step_offers_is_one_produce_can_make(
     assert set(step.producible) <= offers
 
 
-def test_next_step_skips_a_process_with_nothing_producible(
+def test_next_step_offers_a_process_with_nothing_producible_as_derived(
     db: Session, bare: m.Project, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """A process with nothing producible is no longer a dead end that gets skipped
+    — it is the step itself, honestly labelled, so a reader learns it is derived
+    (or, with nothing tracked either, reference) rather than never seeing it."""
     first = engine.next_step(db, bare, AS_OF, ONBOARDING)
-    assert first is not None and first.producible
+    assert first is not None and first.producible and first.kind == "form"
 
-    # Take away everything that first step could make: the walk must move past it
-    # rather than hand back a form with no output on it.
+    # Take away everything the first step could make: it is still the step
+    # ``next_step`` returns, just relabelled — nothing to skip past.
     rest = tuple(k for k in wizard_cli.producible_kinds() if k not in first.outputs)
     monkeypatch.setattr(wizard_cli, "producible_kinds", lambda: rest)
-    later = engine.next_step(db, bare, AS_OF, ONBOARDING)
-    assert later is not None and later.process_id != first.process_id
-    assert later.producible
-
-    # And with nothing producible at all the walk ends cleanly instead of looping.
-    monkeypatch.setattr(wizard_cli, "producible_kinds", tuple)
-    assert engine.next_step(db, bare, AS_OF, ONBOARDING) is None
+    still = engine.next_step(db, bare, AS_OF, ONBOARDING)
+    assert still is not None
+    assert still.process_id == first.process_id
+    assert not still.producible
+    assert still.kind == "derived"
 
 
 def test_every_producer_names_a_kind_the_store_can_resolve() -> None:
@@ -81,10 +82,15 @@ def test_every_producer_names_a_kind_the_store_can_resolve() -> None:
     assert set(wizard_cli.producible_kinds()) <= set(mapping.RESOLVERS)
     derived = set(mapping.RESOLVERS) - set(wizard_cli.producible_kinds())
     assert derived == {
+        "accepted_deliverables",
         "activity_attributes",
+        "change_requests",
         "project_communications",
         "project_management_plan",
         "project_team_assignments",
+        "risk_report",
+        "schedule_data",
+        "verified_deliverables",
         "work_performance_information",
         "work_performance_reports",
     }, (

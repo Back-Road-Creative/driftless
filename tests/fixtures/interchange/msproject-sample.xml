@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Hand-authored MSPDI subset for tests/docs — not exported from a licensed
+     copy of Microsoft Project. Three tasks in a chain (Design -> Build ->
+     Test) plus one parallel, unrelated task (Docs) with no predecessor, so
+     the only critical path is Design -> Build -> Test. -->
+<Project xmlns="http://schemas.microsoft.com/project">
+  <Name>Sample Migration</Name>
+  <Tasks>
+    <Task>
+      <UID>1</UID>
+      <ID>1</ID>
+      <Name>Design</Name>
+      <Duration>PT24H0M0S</Duration>
+    </Task>
+    <Task>
+      <UID>2</UID>
+      <ID>2</ID>
+      <Name>Build</Name>
+      <Duration>PT40H0M0S</Duration>
+      <PredecessorLink>
+        <PredecessorUID>1</PredecessorUID>
+        <Type>1</Type>
+        <LinkLag>0</LinkLag>
+      </PredecessorLink>
+    </Task>
+    <Task>
+      <UID>3</UID>
+      <ID>3</ID>
+      <Name>Test</Name>
+      <Duration>PT16H0M0S</Duration>
+      <PredecessorLink>
+        <PredecessorUID>2</PredecessorUID>
+        <Type>1</Type>
+        <LinkLag>0</LinkLag>
+      </PredecessorLink>
+    </Task>
+    <Task>
+      <UID>4</UID>
+      <ID>4</ID>
+      <Name>Docs</Name>
+      <Duration>PT8H0M0S</Duration>
+    </Task>
+  </Tasks>
+</Project>

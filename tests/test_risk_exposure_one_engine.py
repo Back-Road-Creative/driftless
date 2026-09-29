@@ -92,8 +92,12 @@ def _evaluator_figures(session: Session, project: m.Project) -> Figures:
     """The evaluator's threat string — what board, Assessment Report and RAG render."""
     threats = risk_evaluator.evaluate(session, project, AS_OF).threats
     assert threats, "the seeded exposure is uncovered, so a threat must be raised"
+    # An optional trailing sentence flags an open risk with no filed response --
+    # a ranking tie-break only (see ``Threat.open_no_response``), never a change
+    # to the exposure/contingency/top-risk figures this pattern parses.
     found = re.fullmatch(
-        r"Open-risk exposure ([\d,]+) against contingency ([\d,]+) \(top risk: (.+)\)\.",
+        r"Open-risk exposure ([\d,]+) against contingency ([\d,]+) \(top risk: (.+)\)\."
+        r"(?: No response planned for at least one open risk\.)?",
         threats[0].description,
     )
     assert found is not None, f"unparsable threat: {threats[0].description!r}"

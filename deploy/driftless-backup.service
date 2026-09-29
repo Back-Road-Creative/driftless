@@ -1,0 +1,26 @@
+[Unit]
+Description=driftless database backup with restore-verify
+Documentation=file:/opt/driftless/OPERATIONS.md
+# The dump runs against the database container's published port, so a manual `systemctl start`
+# orders behind Docker rather than failing on a refused connection.
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+
+# Both paths assume the checkout is at /opt/driftless; elsewhere, edit these two lines only.
+WorkingDirectory=/opt/driftless
+ExecStart=/opt/driftless/bin/driftless-backup-run.sh
+# Holds DRIFTLESS_AGE_KEY, DRIFTLESS_KEY_ESCROW, DRIFTLESS_BACKUP_DIR, DRIFTLESS_BACKUP_LOG.
+# It names where the age key is; the key itself is never in it.
+EnvironmentFile=/etc/driftless/backup.env
+# The script sets umask 077 for the set it writes; this covers the log, which carries row
+# counts and the manifest's escrow line.
+UMask=0077
+# Restore-verify can take minutes on a large store; the default 90s would kill it partway and
+# leave the throwaway verify database behind.
+TimeoutStartSec=30min
+
+[Install]
+WantedBy=multi-user.target

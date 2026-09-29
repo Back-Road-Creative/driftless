@@ -32,7 +32,7 @@ from sqlalchemy.orm import Session
 
 from driftless.models import StatusSnapshot
 
-# ``driftless.web.pages`` must not be the first web module imported here — it and
+# A web route module must not be the first web import here — they and
 # ``api.app`` import each other — so the seeded https client is reached through the
 # module that already imported the app, exactly as ``test_web_evm_series`` does.
 import test_web_pages

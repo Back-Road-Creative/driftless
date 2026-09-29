@@ -31,7 +31,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from driftless.api.app import get_session
+from driftless.api.deps import get_session
 from driftless.auth import sessions
 from driftless.auth.passwords import hash_password, verify_password
 from driftless.models import User
@@ -119,7 +119,13 @@ def create_login_router(
         csrf.remint(request)  # a fresh pair per render, never the browser's
         # Every refusal keeps the username the user just typed (escaped data, never
         # markup) and refocuses the field; ``StrictUndefined`` makes omitting it a crash.
-        page: dict[str, Any] = {"error": error, "username": username}
+        # ``field_errors`` is always empty here: every refusal below ("wrong password",
+        # "no such user", throttled, expired form) is deliberately form-level, never
+        # naming a field — pinning the blame to username or password would tell an
+        # attacker which half was right. It rides the context so login.html can share
+        # the SAME summary macro wizard.html uses, rather than its own copy that would
+        # drift the moment one of the two changed.
+        page: dict[str, Any] = {"error": error, "username": username, "field_errors": {}}
         return TEMPLATES.TemplateResponse(request, "login.html", page, status_code=status)
 
     @router.get("/login", response_class=HTMLResponse)

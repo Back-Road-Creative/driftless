@@ -1,0 +1,193 @@
+{# The requirements/WBS worksheet: every figure comes straight off the Requirement,
+   RequirementTrace, Deliverable and AcceptanceRecord rows — nothing here is a second
+   computation, matching what driftless.pmbok.mapping's scope resolvers read. #}
+{% extends "base.html" %}
+{% block title %}Requirements & WBS — {{ project.name }}{% endblock %}
+{% block content %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{% import "_scroll.html" as scroll %}
+{% import "_empty.html" as empty %}
+{% import "_assist.html" as assist %}
+{{ breadcrumbs.trail(project, "Requirements & WBS", as_of) }}
+<h1>Requirements & WBS — {{ project.name }}</h1>
+<p><em>As of {{ as_of }}</em> ·
+   <a href="/projects/{{ project.id }}/hub?as_of={{ as_of }}">Project hub</a> ·
+   <a href="/projects/{{ project.id }}/raid?as_of={{ as_of }}">RAID log</a></p>
+
+{{ assist.summary_strip([
+  {"label": "Requirements traced", "value": matrix|length},
+  {"label": "WBS nodes", "value": wbs_rows|length},
+  {"label": "Acceptance entries", "value": ledger|length},
+  {"label": "Untraced requirements", "value": untraced|length},
+]) }}
+
+{% call assist.section("Traceability matrix") %}
+{% if matrix %}
+{% call scroll.wide(project.name ~ " requirements traceability matrix") %}
+<table>
+<caption class="sr-only">Requirements traced to their deliverable, task or backlog item</caption>
+<tr><th scope="col">Requirement</th><th scope="col">Statement</th><th scope="col">Traced to</th></tr>
+{% for row in matrix %}
+<tr><td>{{ row.requirement.code }}</td><td>{{ row.requirement.statement }}</td><td>{{ row.target }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No traces filed yet", id="matrix-empty") %}
+File one below once a requirement and a WBS node both exist.
+{% endcall %}
+{% endif %}
+
+{% if untraced %}
+<p id="untraced-requirements">Untraced requirements: {% for r in untraced %}{{ r.code }}{% if not loop.last %}, {% endif %}{% endfor %}.</p>
+{% endif %}
+{% if orphan_deliverables %}
+<p id="orphan-deliverables">Deliverables no requirement traces to: {% for d in orphan_deliverables %}{{ d.wbs_code }} {{ d.name }}{% if not loop.last %}, {% endif %}{% endfor %}.</p>
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Work breakdown structure") %}
+{% if wbs_rows %}
+{% call scroll.wide(project.name ~ " work breakdown structure") %}
+<table>
+<caption class="sr-only">The WBS as an indented tree, with each node's status</caption>
+<tr><th scope="col">WBS code</th><th scope="col">Name</th><th scope="col">Status</th></tr>
+{% for row in wbs_rows %}
+<tr><td>{{ ("&nbsp;&nbsp;" * row.depth) | safe }}{{ row.node.wbs_code }}</td><td>{{ row.node.name }}</td><td>{{ row.node.status }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+<p>Plain-text twin:</p>
+<pre id="wbs-text">{{ wbs_text }}</pre>
+{% else %}
+{% call empty.state("No WBS nodes yet", id="wbs-empty") %}
+Add one with <code>POST /deliverables</code> (this project's id, a <code>wbs_code</code>).
+{% endcall %}
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Acceptance ledger") %}
+{% if ledger %}
+{% call scroll.wide(project.name ~ " acceptance ledger") %}
+<table>
+<caption class="sr-only">Every verify/accept entry filed against a deliverable, append-only</caption>
+<tr><th scope="col">Deliverable</th><th scope="col">Verified</th><th scope="col">Accepted</th><th scope="col">Actor</th><th scope="col">Note</th></tr>
+{% for entry in ledger %}
+<tr><td>{{ entry.deliverable.wbs_code }} {{ entry.deliverable.name }}</td>
+<td>{{ entry.verified_on if entry.verified_on else "—" }}</td>
+<td>{{ entry.accepted_on if entry.accepted_on else "—" }}</td>
+<td>{{ entry.actor }}</td><td>{{ entry.note if entry.note else "—" }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No acceptance entries yet", id="ledger-empty") %}
+Record one below once a WBS node exists.
+{% endcall %}
+{% endif %}
+{% endcall %}
+
+{% call assist.section("File a requirement") %}
+<form method="post" action="/projects/{{ project.id }}/assist/requirements/requirement">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label for="req-code">Code</label>
+  <input type="text" id="req-code" name="code" maxlength="50" value="REQ-{{ requirements|length + 1 }}" required>
+  <p><label for="req-statement">Statement</label><br>
+     <textarea id="req-statement" name="statement" rows="2" cols="50" required></textarea></p>
+  <label for="req-category">Category</label>
+  <select id="req-category" name="category">
+    <option value="business">business</option>
+    <option value="stakeholder">stakeholder</option>
+    <option value="functional" selected>functional</option>
+    <option value="nonfunctional">nonfunctional</option>
+    <option value="quality">quality</option>
+    <option value="transition">transition</option>
+  </select>
+  <label for="req-priority">Priority</label>
+  <select id="req-priority" name="priority">
+    <option value="must_have">must_have</option>
+    <option value="should_have" selected>should_have</option>
+    <option value="could_have">could_have</option>
+    <option value="wont_have">wont_have</option>
+  </select>
+  <label for="req-stakeholder">Source stakeholder</label>
+  <select id="req-stakeholder" name="source_stakeholder_id">
+    <option value="">—</option>
+    {% for holder in stakeholders %}<option value="{{ holder.id }}">{{ holder.name }}</option>{% endfor %}
+  </select>
+  <label for="req-actor">Filed by</label>
+  <input type="text" id="req-actor" name="actor" value="web">
+  <button type="submit" class="btn btn-primary">File requirement</button>
+</form>
+{% endcall %}
+
+{% call assist.section("File a trace") %}
+{% if requirements %}
+<form method="post" action="/projects/{{ project.id }}/assist/requirements/trace">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label for="trace-requirement">Requirement</label>
+  <select id="trace-requirement" name="requirement_id">
+    {% for r in requirements %}<option value="{{ r.id }}">{{ r.code }}</option>{% endfor %}
+  </select>
+  <p>Trace to exactly one of the three — the deliverable field defaults to the
+     first WBS node when any exist, so the other two default to unset:</p>
+  <label for="trace-deliverable">Deliverable</label>
+  <select id="trace-deliverable" name="deliverable_id">
+    {% if not deliverables %}<option value="">—</option>{% endif %}
+    {% for d in deliverables %}<option value="{{ d.id }}">{{ d.wbs_code }} {{ d.name }}</option>{% endfor %}
+  </select>
+  <label for="trace-task">Task</label>
+  <select id="trace-task" name="task_id">
+    <option value="">—</option>
+    {% for t in tasks %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
+  </select>
+  <label for="trace-backlog-item">Backlog item</label>
+  <select id="trace-backlog-item" name="backlog_item_id">
+    <option value="">—</option>
+    {% for b in backlog_items %}<option value="{{ b.id }}">{{ b.title }}</option>{% endfor %}
+  </select>
+  <button type="submit" class="btn btn-primary">File trace</button>
+</form>
+{% else %}
+{% call empty.state("No requirements filed yet", id="trace-empty") %}
+File one above first.
+{% endcall %}
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Record acceptance") %}
+{% if deliverables %}
+<form method="post" action="/projects/{{ project.id }}/assist/requirements/acceptance">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="as_of" value="{{ as_of }}">
+  <label for="acc-deliverable">Deliverable</label>
+  <select id="acc-deliverable" name="deliverable_id">
+    {% for d in deliverables %}<option value="{{ d.id }}">{{ d.wbs_code }} {{ d.name }}</option>{% endfor %}
+  </select>
+  <label for="acc-verified">Verified on</label>
+  <input type="date" id="acc-verified" name="verified_on" value="{{ as_of }}">
+  <label for="acc-accepted">Accepted on</label>
+  <input type="date" id="acc-accepted" name="accepted_on">
+  <label for="acc-actor">Filed by</label>
+  <input type="text" id="acc-actor" name="actor" value="web">
+  <p><label for="acc-note">Note</label><br>
+     <textarea id="acc-note" name="note" rows="2" cols="50"></textarea></p>
+  <button type="submit" class="btn btn-primary">Record acceptance</button>
+</form>
+{% else %}
+{% call empty.state("No WBS nodes to accept yet", id="acceptance-empty") %}
+Add one with <code>POST /deliverables</code> first.
+{% endcall %}
+{% endif %}
+{% endcall %}
+
+{% call assist.section("Where this comes from", collapsed=True) %}
+<p>Technique: <strong>{{ provenance.technique }}</strong> · PMBOK-6 process
+   <strong>{{ provenance.process }}</strong> (Create WBS) · as of
+   <strong>{{ provenance.as_of }}</strong>.</p>
+{% endcall %}
+
+<p><a href="/projects/{{ project.id }}/hub?as_of={{ as_of }}">&larr; Back to {{ project.name }} hub</a></p>
+{% endblock %}

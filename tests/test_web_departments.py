@@ -39,7 +39,7 @@ AS_OF = date(2026, 3, 31)
 JAN = date(2026, 1, 1)
 
 # The HTML surface lives under /org, not on the bare entity path: the API
-# module registers the Department CRUD at GET /departments before _mount_web
+# module registers the Department CRUD at GET /departments before mount_web
 # includes this router, and FastAPI matches in registration order.
 _LIST = "/org/departments"
 
@@ -77,17 +77,23 @@ _N_PEOPLE_DRILLED = 4
 # _N_DEPT x _N_PROJ_PER_DEPT = 48 projects, so measured + 6 sits well below
 # the cheaper of them and still absorbs honest drift.
 #
-# Drill page (measures 10 — was 53 while it rebuilt the whole org's
+# Drill page (measures 18 — was 53 while it rebuilt the whole org's
 # ``department_rows`` to render ONE department, the store-wide read a 24
 # ceiling could not catch at 3 departments, where the same walk cost 23).
 # Scoped, its cost is flat in _N_DEPT; every defect it names is dearer:
 # replacing the batched ``person_task_loads`` with one ``person_task_load``
-# per person shown costs 10 -> 13 (_N_PEOPLE_DRILLED = 4); un-batching the
-# department's cost read into one query per project costs 10 -> 15; and the
-# org-wide walk costs 53, scaling with departments the page never renders.
-# Re-derived at measured + 2 so the cheapest of them (13) still trips it.
+# per person shown costs 18 -> 21 (_N_PEOPLE_DRILLED = 4); un-batching the
+# department's cost read into one query per project costs 18 -> 23; and the
+# org-wide walk costs 53, scaling with departments the page never renders. The
+# seven department operations collections ``_operations_rows`` reads (services,
+# work requests, recurring work, service levels, controls, incidents,
+# improvements) are what moved the base from 10 to 18 — one statement per
+# collection, flat in how many rows each holds, since a linked service/control
+# NAME is read out of a dict built from that same collection rather than
+# through its own relationship (``web.departments`` module docstring).
+# Re-derived at measured + 2 so the cheapest of them (21) still trips it.
 _MAX_LIST_STMTS = 57  # measures 51; the cheapest regression it names costs 147
-_MAX_DETAIL_STMTS = 12  # measures 10; the cheapest defect it names costs 13
+_MAX_DETAIL_STMTS = 20  # measures 18; the cheapest defect it names costs 21
 
 
 @pytest.fixture
@@ -168,6 +174,26 @@ def test_the_list_page_agrees_with_the_department_report(client: TestClient, db:
         assert value in doc, f"{value!r} missing from the department report doc"
 
 
+def test_the_list_page_ends_with_a_totals_row_summed_from_the_same_rows(
+    client: TestClient, db: Session
+) -> None:
+    """The list's last row totals headcount and weekly capacity across every
+    department, summed in code from the SAME rows the table shows — never a
+    second query the report could disagree with."""
+    _seed(db)
+    rows = department_rows(db, AS_OF)
+    headcount = sum(row["headcount"] for row in rows)
+    capacity = sum(row["capacity_hours_value"] for row in rows)
+    page = client.get(_LIST)
+
+    assert page.status_code == 200, page.text
+    foot = page.text.split("<tfoot", 1)
+    assert len(foot) == 2, "the department list has no totals row"
+    assert f"{len(rows)} departments" in foot[1]
+    assert f"<td>{headcount}</td>" in foot[1]
+    assert f"<td>{capacity:,.0f}</td>" in foot[1]
+
+
 def test_the_list_page_links_each_department_to_its_drill_page(
     client: TestClient, db: Session
 ) -> None:
@@ -201,6 +227,48 @@ def test_the_drill_page_shows_projects_and_per_person_capacity_rows(
     assert page.text.count('<tr class="person">') == 1
     assert "Casey" not in page.text, "another department's person leaked into the roster"
     assert "HMD" not in page.text, "another department's project leaked into the table"
+
+
+def test_the_drill_page_shows_and_follows_a_linked_artifact(
+    client: TestClient, db: Session
+) -> None:
+    dept = _seed(db)
+    db.add(
+        m.ArtifactLink(
+            record_kind="department",
+            record_id=str(dept.id),
+            uri=_LIST,  # a page this same test client can actually follow
+            title="Handbook",
+            actor="sam",
+            as_of=AS_OF,
+        )
+    )
+    db.commit()
+
+    page = client.get(f"{_LIST}/{dept.id}")
+    assert page.status_code == 200, page.text
+    assert f'<a href="{_LIST}">' in page.text
+
+    followed = client.get(_LIST)  # the web test actually follows the rendered href
+    assert followed.status_code == 200
+
+
+def test_the_drill_page_shows_a_note(client: TestClient, db: Session) -> None:
+    dept = _seed(db)
+    db.add(
+        m.Note(
+            record_kind="department",
+            record_id=str(dept.id),
+            body="Handbook is out of date.",
+            actor="sam",
+            as_of=AS_OF,
+        )
+    )
+    db.commit()
+
+    page = client.get(f"{_LIST}/{dept.id}")
+    assert page.status_code == 200, page.text
+    assert "Handbook is out of date." in page.text
 
 
 def test_an_unknown_department_id_is_404(client: TestClient) -> None:

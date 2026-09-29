@@ -10,9 +10,16 @@ PR merges in one sitting, in an order that keeps overlapping branches apart.
 
 ## Service venv and tests
 
+- `bin/driftless-gates.sh` is the one command: it builds `.venv` under
+  `requirements.lock` and runs CI's gates at CI's pinned versions, which it reads
+  out of `.github/workflows/` instead of naming. Prefer it over a hand-built venv
+  — a shared or drifted interpreter answers a question CI never asked.
 - Build the venv the clone needs, per README *Development*: `python3 -m venv .venv`
   then `.venv/bin/pip install ".[dev]"`. Nothing here is committed, so a checkout
   starts without one.
+- Pass `--basetemp=/dev/shm/driftless-tmp` (or any tmpfs path): every test builds a
+  file-backed sqlite store under `tmp_path`, and on this host's disk that is ten
+  times slower than RAM. CI and `bin/driftless-gates.sh` do the same.
 - Invoke through `.venv/bin/python -m pytest`, never the console scripts in the
   venv's `bin/`: a moved or copied venv leaves their shebangs pointing at a path
   that no longer exists and they exit 127. A `pytest` found on `PATH` outside the
@@ -24,9 +31,6 @@ PR merges in one sitting, in an order that keeps overlapping branches apart.
   and a stale floor reads as a green suite that is not.
 - The passing-test count moves every merge — measure it fresh, never hardcode
   it in a doc, check, or PR description.
-- Diff cap ≤300 SUM (insertions+deletions): `git diff --numstat
-  origin/master...HEAD | awk '{i+=$1;d+=$2} END {print i+d}'` — never
-  `--shortstat`.
 
 ## Compose-gate
 

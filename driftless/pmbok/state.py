@@ -16,6 +16,17 @@ A process is:
 
 Everything takes an explicit as-of date and reads no wall clock, so a state map
 regenerates identically from the same store.
+
+A Monitoring & Controlling process's *tracked outputs* is a rule this module
+never bends, but WHICH rows count as evidence for one of them is tailored:
+``_allow_crosswalk`` reads the process's own ``tailoring.ControlMode`` for
+``project.delivery_mode`` and only lets ``mapping.resolve`` fall back to
+``driftless.pmbok.crosswalk`` (agile or operations evidence, decided there by
+``project.delivery_mode``) when that control's mode is not
+``PREDICTIVE_BASELINE`` — a hybrid project's cost control still reads its
+native baseline alone even though the same project's scope control reads
+agile evidence. Every other process is unaffected: the fallback is allowed
+unconditionally, exactly as before this module read tailoring at all.
 """
 
 from __future__ import annotations
@@ -28,9 +39,9 @@ from enum import Enum
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from driftless.models import Project, SignOff
-from driftless.pmbok import catalog, mapping
-from driftless.pmbok.model import Process
+from driftless.models import Gate, Project, SignOff
+from driftless.pmbok import catalog, mapping, tailoring
+from driftless.pmbok.model import Process, ProcessGroup
 
 #: Process sign-off decisions that mean "approved as done", distinct from waived.
 _DONE_DECISIONS = ("accepted", "resolved")
@@ -98,6 +109,46 @@ def threat_subject_ref(kind: str, project_id: int) -> str:
     return f"{kind}:project:{project_id}"
 
 
+#: Process states a required process must reach for a gate that names it to count
+#: as met. WAIVED counts: a process tailored out was never meant to block a gate
+#: (mirrors ``excluded_from_completeness``'s own treatment of a waived process).
+_GATE_READY_STATES = (ProcessState.PRODUCED, ProcessState.SIGNED_OFF, ProcessState.WAIVED)
+
+
+def gate_subject_ref(gate: Gate) -> str:
+    """The severity-independent sign-off subject for a gate: its own row id, the
+    same convention ``sign_offs._validate_baseline_subject`` already uses for a
+    ``Baseline`` — a gate is already project-scoped by its own row, so the ref
+    needs no compound ``"gate:<id>"`` form the way a process's or a threat's does."""
+    return str(gate.id)
+
+
+def gate_readiness(
+    gate: Gate, project: Project, session: Session, as_of: date
+) -> tuple[bool, tuple[str, ...]]:
+    """Whether ``gate`` is ready to pass, and which required processes still block it.
+
+    Computed, never stored — the same rule every other figure in this module
+    follows. Ready iff every process named in ``gate.required_processes`` is
+    in one of ``_GATE_READY_STATES`` for ``project`` as of ``as_of``. A gate
+    naming no required processes is vacuously ready.
+    """
+    missing = tuple(
+        process_id
+        for process_id in gate.process_ids()
+        if process_state(catalog.get(process_id), project, session, as_of) not in _GATE_READY_STATES
+    )
+    return not missing, missing
+
+
+def gate_passed(gate: Gate, session: Session, as_of: date | None = None) -> bool:
+    """Whether the gate's latest sign-off is a passing decision (accepted, resolved
+    or waived) — the same ``_DONE_DECISIONS``-plus-waiver shape a passed gate reads
+    as, mirroring how ``process_state`` reads SIGNED_OFF and WAIVED off the ledger."""
+    decision = latest_sign_off(session, "gate", gate_subject_ref(gate), as_of)
+    return decision is not None and decision.decision in (*_DONE_DECISIONS, "waived")
+
+
 def latest_sign_off(
     session: Session, subject_kind: str, subject_ref: str, as_of: date | None = None
 ) -> SignOff | None:
@@ -142,6 +193,30 @@ def excluded_from_completeness(process: Process, proc_state: ProcessState) -> bo
     return proc_state is ProcessState.WAIVED or not is_assessable(process)
 
 
+def _allow_crosswalk(process: Process, project: Project) -> bool:
+    """Whether ``process`` may read a kind through the crosswalk fallback for
+    ``project``, rather than off its native rows alone.
+
+    Only a Monitoring & Controlling process is tailored at all — every other
+    process reads exactly as before, crosswalk allowed unconditionally, the
+    same as before this function existed. A tailored control's own
+    ``tailoring.ControlMode`` decides, never ``project.delivery_mode`` alone:
+    a hybrid project keeps its cost control on ``PREDICTIVE_BASELINE`` (native
+    rows only) even though the SAME project's scope control reads
+    ``ADAPTIVE_COMMITMENT`` and an operations-cadence one reads
+    ``OPERATIONS_CADENCE`` — both of those allow the fallback, since which
+    evidence it reads (agile or operations) is ``mapping.resolve``'s own
+    ``project.delivery_mode`` branch, not a second choice made here. One seam
+    (``mapping.resolve``'s ``allow_crosswalk``), never a second state rule.
+    """
+    if process.group is not ProcessGroup.MONITORING:
+        return True
+    control = tailoring.control_tailoring(process.id, project.delivery_mode)
+    if control is None:
+        return True
+    return control.mode is not tailoring.ControlMode.PREDICTIVE_BASELINE
+
+
 def process_state(
     process: Process, project: Project, session: Session, as_of: date
 ) -> ProcessState:
@@ -163,7 +238,12 @@ def process_state(
     ]
     if not required:
         return ProcessState.NOT_STARTED
-    present = [kind for kind in required if mapping.resolve(kind, project, session, as_of).present]
+    allow_crosswalk = _allow_crosswalk(process, project)
+    present = [
+        kind
+        for kind in required
+        if mapping.resolve(kind, project, session, as_of, allow_crosswalk=allow_crosswalk).present
+    ]
     if len(present) == len(required):
         return ProcessState.PRODUCED
     if present:
@@ -173,7 +253,10 @@ def process_state(
         for kind in process.outputs
         if kind in process.optional_outputs and mapping.is_tracked(kind)
     )
-    if any(mapping.resolve(kind, project, session, as_of).present for kind in optional):
+    if any(
+        mapping.resolve(kind, project, session, as_of, allow_crosswalk=allow_crosswalk).present
+        for kind in optional
+    ):
         return ProcessState.IN_PROGRESS
     return ProcessState.NOT_STARTED
 

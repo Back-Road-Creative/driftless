@@ -63,9 +63,9 @@ def project(session: Session) -> Project:
 
 
 def test_untracked_kind_reports_not_tracked(session: Session, project: Project) -> None:
-    status = mapping.resolve("work_breakdown_structure", project, session, AS_OF)
+    status = mapping.resolve("business_case", project, session, AS_OF)
     assert status.present is False and status.detail == "not tracked"
-    assert not mapping.is_tracked("work_breakdown_structure")
+    assert not mapping.is_tracked("business_case")
 
 
 def test_cost_baseline_presence_follows_budget_lines(session: Session, project: Project) -> None:
@@ -107,10 +107,35 @@ def test_quality_report_health_tracks_tolerance(session: Session, project: Proje
     ).healthy  # newest is in tolerance
 
 
+def test_approved_baseline_agrees_with_the_shared_selector(
+    session: Session, project: Project
+) -> None:
+    """``mapping._approved_baseline`` reads through ``_rows``'s batched query, never
+    ``project.baselines`` — a different READ than :func:`adapters.plan_baseline` takes,
+    kept separate on purpose (see its docstring). This pins the two down to the SAME
+    RULE regardless: status filter, the null-``approved_at`` visibility policy, and the
+    newest-version pick must agree for every draft/approved/undated/dated mix, at an
+    as-of before and after the approval."""
+    from driftless.assess.adapters import plan_baseline
+    from driftless.models import Baseline
+
+    draft = Baseline(project=project, version=2, status="draft")
+    dated = Baseline(project=project, version=1, status="approved", approved_at=AS_OF)
+    undated = Baseline(project=project, version=3, status="approved", approved_at=None)
+    session.add_all([draft, dated, undated])
+    session.commit()
+
+    for as_of in (AS_OF - timedelta(days=1), AS_OF, AS_OF + timedelta(days=1)):
+        got = mapping._approved_baseline(project, session, as_of)
+        want = plan_baseline(project, as_of)
+        assert (got is None) == (want is None)
+        assert got is None or want is None or got.id == want.id
+
+
 def test_scope_and_schedule_baselines_follow_an_approved_baseline(
     session: Session, project: Project
 ) -> None:
-    from driftless.models import Baseline, BaselineLine, Task, Workstream
+    from driftless.models import Baseline, BaselineLine, Deliverable, Task, Workstream
 
     assert not mapping.resolve("scope_baseline", project, session, AS_OF).present
     assert not mapping.resolve("schedule_baseline", project, session, AS_OF).present
@@ -126,6 +151,8 @@ def test_scope_and_schedule_baselines_follow_an_approved_baseline(
         planned_finish=AS_OF,
     )
     session.add(line)
+    # scope_baseline now needs a WBS alongside the approved baseline — module docstring.
+    session.add(Deliverable(project=project, name="Grade", wbs_code="1"))
     session.commit()
 
     scope = mapping.resolve("scope_baseline", project, session, AS_OF)

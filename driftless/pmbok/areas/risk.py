@@ -37,9 +37,11 @@ PROCESSES: tuple[Process, ...] = (
             "data_gathering",
             "data_analysis",
             "interpersonal_and_team_skills",
+            "prompt_lists",
             "meetings",
         ),
         outputs=("risk_register", "risk_report", "assumption_log"),
+        optional_outputs=("risk_report",),
     ),
     Process(
         id="11.3",
@@ -63,6 +65,7 @@ PROCESSES: tuple[Process, ...] = (
             "meetings",
         ),
         outputs=("risk_register", "risk_report", "assumption_log"),
+        optional_outputs=("risk_report",),
     ),
     Process(
         id="11.4",
@@ -85,7 +88,7 @@ PROCESSES: tuple[Process, ...] = (
             "decision_tree_analysis",
             "influence_diagrams",
         ),
-        outputs=("risk_register", "risk_report"),
+        outputs=("risk_report",),
     ),
     Process(
         id="11.5",
@@ -111,7 +114,7 @@ PROCESSES: tuple[Process, ...] = (
             "decision_making",
         ),
         outputs=("change_requests", "risk_register", "risk_report"),
-        optional_outputs=("change_requests",),
+        optional_outputs=("change_requests", "risk_report"),
     ),
     Process(
         id="11.6",
@@ -131,7 +134,7 @@ PROCESSES: tuple[Process, ...] = (
             "project_management_information_system",
         ),
         outputs=("change_requests", "risk_register", "risk_report"),
-        optional_outputs=("change_requests",),
+        optional_outputs=("change_requests", "risk_report"),
     ),
     Process(
         id="11.7",
@@ -154,6 +157,6 @@ PROCESSES: tuple[Process, ...] = (
             "risk_register",
             "risk_report",
         ),
-        optional_outputs=("change_requests",),
+        optional_outputs=("change_requests", "risk_report"),
     ),
 )

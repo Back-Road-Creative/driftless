@@ -113,11 +113,6 @@ def _project_with_evm(client: TestClient) -> int:
         ("/milestones", {"name": "Cut locked", "target_date": MAR}, {"status": "met"}),
         ("/stakeholders", {"name": "Sponsor"}, {"comms_cadence": "weekly"}),
         (
-            "/quality-measurements",
-            {"metric": "defects", "target_value": 1.0, "actual_value": 2.0, "measured_on": MAR},
-            {"actual_value": 1.0},
-        ),
-        (
             "/procurement-agreements",
             {"vendor": "DronesRUs", "amount": 1000.0, "start_date": JAN},
             {"status": "active"},
@@ -240,10 +235,33 @@ def test_no_out_model_inherits_a_business_validator() -> None:
         assert not validators, f"{name} inherited business validator(s): {list(validators)}"
 
 
-def test_status_snapshot_stamps_percent_from_calc_and_ignores_the_body(client: TestClient) -> None:
+def test_no_out_model_forbids_an_extra_field() -> None:
+    """Requests refuse an unrecognised key (``schemas._Strict``); responses must not
+    inherit that refusal, or a row carrying a column its own ``Out`` model has not
+    caught up to yet — the ordinary shape of an in-flight migration — would 500 on
+    deserialization instead of reading back with the new column simply absent from the
+    response. No base order gives a generated ``*Out`` both the field order
+    ``test_api_export`` pins and ``ignore`` over its request base's ``forbid``, so
+    ``schemas`` keeps the order and restores ``ignore`` after building each model. This
+    pins the OUTCOME, not that mechanism: any later way of arriving at it passes, and
+    dropping the restore fails here rather than the first time a migration runs ahead
+    of its response model."""
+    out_names = [name for name in dir(s) if name.endswith("Out")]
+    assert out_names  # sanity: something is actually being checked
+    for name in out_names:
+        model = getattr(s, name)
+        if not (isinstance(model, type) and issubclass(model, BaseModel)):
+            continue
+        assert model.model_config.get("extra") != "forbid", f"{name} forbids extra fields"
+
+
+def test_status_snapshot_rejects_a_percent_complete_in_the_body(client: TestClient) -> None:
+    """The schema has no ``percent_complete`` field, and ``extra=\"forbid\"`` now makes
+    that refusal happen at the boundary: a body that includes it is a 422, not a 201
+    that quietly threw the value away. A caller who believed a hand-typed percent would
+    stick used to get a success response with no evidence anything was wrong; now the
+    request never lands at all, which is the only way to actually tell them."""
     project = _project_with_evm(client)
-    # Even a hand-typed percent in the body is ignored — the schema has no such
-    # field, and the endpoint stamps EV/BAC = 50%.
     response = client.post(
         "/status-snapshots",
         json={
@@ -253,23 +271,51 @@ def test_status_snapshot_stamps_percent_from_calc_and_ignores_the_body(client: T
             "percent_complete": 99,
         },
     )
+    assert response.status_code == 422, response.text
+
+
+def test_status_snapshot_stamps_percent_from_calc(client: TestClient) -> None:
+    project = _project_with_evm(client)
+    # No percent in the body at all — the endpoint stamps EV/BAC = 50%.
+    response = client.post(
+        "/status-snapshots",
+        json={"project_id": project, "taken_on": MAR, "rag_status": "amber"},
+    )
     assert response.status_code == 201, response.text
     body = response.json()
     assert body["percent_complete"] == 50, "percent is stamped from calc, never accepted"
     assert body["rag_status"] == "amber"
 
 
-def test_status_snapshot_patch_touches_only_rag_and_note(client: TestClient) -> None:
+def test_status_snapshot_is_append_only(client: TestClient) -> None:
     project = _project_with_evm(client)
     snap = _create(
         client, "/status-snapshots", project_id=project, taken_on=MAR, rag_status="green"
     )
-    patched = client.patch(
-        f"/status-snapshots/{snap}", json={"rag_status": "red", "percent_complete": 12}
-    )
-    assert patched.status_code == 200, patched.text
-    assert patched.json()["rag_status"] == "red"
-    assert patched.json()["percent_complete"] == 50, "the stamped percent is not patchable"
+    # No mutation surface — the trend line is the whole history.
+    assert client.patch(f"/status-snapshots/{snap}", json={"rag_status": "red"}).status_code == 405
+    assert client.delete(f"/status-snapshots/{snap}").status_code == 405
+
+
+@pytest.mark.parametrize(
+    ("path", "body"),
+    [
+        ("/cost-entries", {"category": "labour", "incurred_on": JAN, "amount": 400.0}),
+        (
+            "/quality-measurements",
+            {"metric": "defects", "target_value": 1.0, "actual_value": 2.0, "measured_on": MAR},
+        ),
+    ],
+)
+def test_cost_entries_and_quality_measurements_are_append_only(
+    client: TestClient, path: str, body: dict[str, Any]
+) -> None:
+    project = _project(client)
+    row_id = _create(client, path, project_id=project, **body)
+
+    assert client.get(f"{path}/{row_id}").status_code == 200
+    assert client.patch(f"{path}/{row_id}", json={}).status_code == 405
+    assert client.delete(f"{path}/{row_id}").status_code == 405
 
 
 def test_sign_off_is_append_only(client: TestClient) -> None:
@@ -281,7 +327,6 @@ def test_sign_off_is_append_only(client: TestClient) -> None:
         subject_kind="threat",
         subject_ref="cost:project:1",
         decision="deferred",
-        signal=1.4,
         signed_by="jp",
     )
     _create(
@@ -291,7 +336,6 @@ def test_sign_off_is_append_only(client: TestClient) -> None:
         subject_kind="threat",
         subject_ref="cost:project:1",
         decision="rejected",
-        signal=1.4,
         signed_by="jp",
     )
     ledger = client.get("/sign-offs").json()

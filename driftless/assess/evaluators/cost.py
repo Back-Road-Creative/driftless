@@ -31,7 +31,7 @@ def evaluate(session: Session, project: Project, as_of: date) -> Assessment:
     """Assess the project's cost health as of ``as_of``."""
     snap = adapters.project_snapshot(session, project, as_of)
     if snap.bac == 0:
-        return Assessment(KIND, as_of, 0.0, "green")
+        return Assessment(KIND, as_of, 0.0, "green", coverage="missing")
 
     cpi, vac = snap.cpi, snap.vac
     overrun = max(0.0, -vac) / snap.bac if vac is not None else 0.0

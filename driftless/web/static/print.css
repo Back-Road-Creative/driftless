@@ -1,0 +1,42 @@
+/* Print (gap G9): the browser's own print, no PDF engine, no new dependency. Loaded
+   under media="print" only (base.html), so it never touches the screen. Named/system
+   colours only — black on white — since this sheet sits outside driftless.css's
+   token contract and a printed page has no theme to re-point. */
+@media print {
+  body {
+    color: black;
+    background: white;
+  }
+  /* Chrome a printed report does not need: the primary nav, the skip link, the
+     mobile nav toggle, any form control a reader cannot act on with paper, and the
+     Print link itself — printing the page that says "Print" is the one thing this
+     sheet exists to avoid. */
+  nav[aria-label="Primary"],
+  .skip,
+  .masthead-utility,
+  form,
+  button,
+  #print-link {
+    display: none;
+  }
+  a {
+    color: black;
+    text-decoration: none;
+  }
+  /* Citation-style links still say where they go once the underline is gone. */
+  main a[href^="http"]::after {
+    content: " (" attr(href) ")";
+  }
+  table {
+    border-collapse: collapse;
+  }
+  /* A row split across a page break is unreadable; a whole table splitting across
+     pages is fine and expected for a long report. */
+  tr {
+    page-break-inside: avoid;
+  }
+  th,
+  td {
+    border: 1px solid black;
+  }
+}

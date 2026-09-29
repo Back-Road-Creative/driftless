@@ -41,7 +41,14 @@ concurrency:
 # extension.
 on:
   pull_request:
-    branches: [master]
+    branches: [master, staging]
+  # `staging` is the integration barrier the autolander (workspaces
+  # bin/autoland.py, driftless instance) reads: it will not merge onto staging
+  # without a full run bound to staging's exact head SHA, and a pull_request run
+  # only ever sees the merge-preview commit. So staging is the ONE branch whose
+  # pushes run CI; master stays off, per the rejection note in the header.
+  push:
+    branches: [staging]
   workflow_dispatch:
   schedule:
     - cron: '7 9 * * *'  # 05:07 EDT — off the hour, where GitHub queues scheduled runs hardest
@@ -55,6 +62,11 @@ permissions:
 
 env:
   RUFF_VERSION: '0.15.22'
+  # The org leak scanner (Back-Road-Creative/.github scripts/leak_scan.py) at a
+  # reviewed commit, never its moving `main`: release.yml runs the same code in the
+  # job that holds the public push token, and tests/test_leak_scan_gate.py holds
+  # both pins equal.
+  LEAK_SCAN_REF: '7fd71700189a491ed7b33298caa436e918aaa5a9'  # pragma: allowlist secret  (a git commit id, not a credential)
   DETECT_SECRETS_VERSION: '1.5.0'
 
 # Actions are pinned to the full commit SHA of the tag named beside them. A
@@ -65,13 +77,36 @@ env:
 jobs:
   quality:
     name: Quality (ruff, secrets, mypy)
-    runs-on: ubuntu-latest
+    # The public repository reaches no self-hosted runner (no org runner group
+    # admits a public repository), so there it runs GitHub-hosted, which is free
+    # for a public repository; here, the self-hosted pool. See
+    # docs/testing-and-quality-gates.md.
+    runs-on: ${{ github.repository == 'Back-Road-Creative/driftless' && 'ubuntu-latest' || fromJSON('["self-hosted", "heavy"]') }}
     # The point of a bound is that a wedged step ends in minutes instead of
     # burning GitHub's 6-hour default.
     timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      # Every archive PR is checked here by exactly the rules the public repository
+      # applies at its own leak-scan.yml. Caught here it costs an edit to this branch;
+      # caught only at release it costs a new tag. `--self-name` is the name this tree
+      # publishes AS, not `github.repository` (which is this private repo) -- the
+      # reusable workflow trusts whatever name it is given, and the public one runs
+      # unguarded because its checkout already IS that repository.
+      - name: Leak scan as the public repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TOOL="$RUNNER_TEMP/leak-scan-tool"
+          rm -rf "$TOOL"
+          git init -q "$TOOL"
+          git -C "$TOOL" fetch -q --depth 1 https://github.com/Back-Road-Creative/.github.git "$LEAK_SCAN_REF"
+          git -C "$TOOL" checkout -q FETCH_HEAD
+          python3 "$TOOL/scripts/leak_scan.py" \
+            --repo-root . --self-name Back-Road-Creative/driftless
 
       - name: Setup Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
@@ -123,6 +158,7 @@ jobs:
             --exclude-files '.*\.(lock|baseline|backup|enc)$' \
             --exclude-files '.*/\.?venv/.*' \
             --exclude-files '.*/node_modules/.*' \
+            --exclude-files '^\.data/.*' \
             > /tmp/driftless-secrets.json
           COUNT=$(python3 -c "import json; d=json.load(open('/tmp/driftless-secrets.json')); print(sum(len(v) for v in d.get('results',{}).values()))" 2>/dev/null || echo "0")
           if [ "$COUNT" -gt "0" ]; then
@@ -153,15 +189,44 @@ jobs:
 
   test:
     name: Tests (py3.12)
-    runs-on: ubuntu-latest
+    # The public repository reaches no self-hosted runner (no org runner group
+    # admits a public repository), so there it runs GitHub-hosted, which is free
+    # for a public repository; here, the self-hosted pool. See
+    # docs/testing-and-quality-gates.md.
+    runs-on: ${{ github.repository == 'Back-Road-Creative/driftless' && 'ubuntu-latest' || fromJSON('["self-hosted", "heavy"]') }}
     # No `needs: quality`. Lint and tests share no artifact and answer different
     # questions, so the dependency only bought a serial prefix — ~1-4 min added to
     # every one of ~38 PR runs a week, for a signal the test job would have given
     # anyway. Both jobs still have to be green for the PR to be.
-    timeout-minutes: 30
+    #
+    # The budget, and NOT a concurrency group. Several self-hosted runners share
+    # one workstation, so test jobs overlap and each gets a fraction of the box:
+    # measured 2026-08-30, the job takes 20m48s and 21m04s alone and does not
+    # finish inside 30 minutes while sharing. Five PRs were cancelled at
+    # 30m16-19s for that and nothing in their own diffs.
+    #
+    # #377 tried to remove the overlap with `concurrency: {group: driftless-tests,
+    # cancel-in-progress: false}`. Do not restore it. A group holds exactly ONE
+    # pending job: every further arrival EVICTS the one waiting. On 2026-08-31,
+    # with six PRs open, #370 ran and passed while #371, #373 and #374 were
+    # cancelled after 1-3 seconds with zero steps — a queue of N>2 turns into
+    # N-2 instant cancellations, which is worse than the overlap it replaced.
+    # `cancel-in-progress: false` governs the RUNNING job, never the pending one.
+    #
+    # So the overlap is tolerated and paid for instead: 60 minutes is comfortably
+    # above the ~21 solo and ~30-40 shared. Passing runs since: 23m56s, 25m57s.
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # One commit more than the default, and only this job takes it: the sample
+          # drift step below reads HEAD^1 to see whether a committed sample LEFT the
+          # tree. On a pull request that parent is the base branch the merge commit
+          # was built from; on the nightly it is the previous master. Not
+          # fetch-depth: 0 — the whole history costs minutes here for one commit's
+          # worth of answer (the reason pip-audit was moved out of this file).
+          fetch-depth: 2
 
       - name: Setup Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
@@ -194,25 +259,115 @@ jobs:
           fi
 
       - name: Run tests
-        # `-n auto` takes the runner's own core count. There is no worker cap
-        # any more: the cap existed because a shared host ran two of these at
-        # once, and a hosted runner is a machine of its own. The suite was
-        # checked for order- and shared-state dependence before the flag went
-        # in — the serial and parallel runs give the same count at the same
-        # coverage (pytest-cov combines the per-worker data files).
+        # Worker cap: the three self-hosted runners share one 12-core host, so
+        # `-n auto` on three concurrent jobs meant 36 xdist workers in disk wait
+        # (2026-09-02, load 39). `-n 4` per job keeps the three of them inside
+        # the box. The suite was checked for order- and shared-state
+        # dependence before xdist went in — serial and parallel runs give the
+        # same count at the same coverage (pytest-cov combines the per-worker
+        # data files). Mirrors the workspaces GMS suite's cap.
+        # Coverage stays on for every run (the 99.2 floor in pyproject.toml is a
+        # PR gate, not a post-merge one), but its per-worker sqlite data files
+        # are written to RAM instead of the rotational WSL2 disk: with three
+        # runners on one host those writes were the dominant IO (40% iowait,
+        # 2026-09-02). COVERAGE_FILE moves every worker's .coverage.* file and
+        # the combined result; --cov-report reads them from the same place.
+        # The tests' own scratch goes the same way: over a hundred test files
+        # build a file-backed sqlite store under pytest's tmp_path, and on the
+        # rotational disk that held the 3000-test run at 40–54 min and, with two
+        # staging barrier runs alongside, past the 60-min job timeout (#402,
+        # 2026-09-04). --basetemp puts every tmp_path in RAM; xdist gives each
+        # worker its own subdirectory under it.
+        env:
+          COVERAGE_FILE: /dev/shm/driftless-cov-${{ github.run_id }}/.coverage
+          PYTEST_BASETEMP: /dev/shm/driftless-tmp-${{ github.run_id }}
         run: |
           set +e
-          .venv/bin/pytest -n auto
+          mkdir -p "$(dirname "$COVERAGE_FILE")"
+          .venv/bin/pytest -n 4 --basetemp="$PYTEST_BASETEMP"
           rc=$?
           if [ $rc -eq 5 ]; then
             echo "::error::no tests collected — likely import failure"
             exit 1
           fi
+          rm -rf "$(dirname "$COVERAGE_FILE")" "$PYTEST_BASETEMP"
           exit $rc
+
+      - name: Committed sample reports have not drifted
+        # docs/samples/ is generated output that IS committed, against this repo's
+        # rule for `reports/` and docs/page-snapshots/ — the rest of the generated
+        # output is git-ignored precisely because output nobody diffs only rots.
+        # These are diffed, and this is where. The step reruns the generator into a
+        # scratch directory and compares every tracked sample byte for byte, so a
+        # template or figure change either refreshes the bundle in the same pull
+        # request or fails here; the reason to carry that cost is that nothing else
+        # in the repository shows a reader what driftless actually produces.
+        #
+        # A step in this job rather than a job of its own: it needs exactly the venv
+        # the step above already built, and `report all` is proven byte-stable for a
+        # fixed as-of by tests/test_report_cli.py's
+        # test_report_all_is_byte_identical_across_runs, which this job just ran —
+        # so the question here is only whether the committed bytes are still that
+        # output, not whether the generator is deterministic.
+        #
+        # The scope is read off the tracked tree, never written down, so the
+        # per-project sets still to land are covered the moment they are committed.
+        # It cuts both ways: a scope read off the tree can also shrink, and both
+        # ways it shrinks are refused here rather than only the loud one. An empty
+        # scope fails, because a gate whose file list can go to zero passes
+        # vacuously. `git rm` of SOME samples used to narrow this step silently and
+        # still exit green, which is the likelier move — deleting the file is one
+        # way to make a confusing drift failure go away.
+        #
+        # What tells that from a document the report engine legitimately stopped
+        # emitting is the rerun this step already does: the parent commit says which
+        # samples were committed, the rerun says which the generator still writes,
+        # and a sample that left while the generator still writes it was deleted.
+        # Nothing is counted or written down on either side — both move on their
+        # own, which is the point of reading the scope off the tree at all.
+        run: |
+          .venv/bin/python bin/driftless-sample-reports.py --out "$RUNNER_TEMP/samples"
+          tracked=$(git ls-files -- docs/samples)
+          if [ -z "$tracked" ]; then
+            echo "::error::no committed samples under docs/samples — this gate proves nothing"
+            exit 1
+          fi
+          if ! before=$(git ls-tree -r --name-only HEAD^1 -- docs/samples); then
+            echo "::error::HEAD^1 is not in this checkout, so a sample that left" \
+                 "docs/samples cannot be seen — the Checkout step needs fetch-depth: 2"
+            exit 1
+          fi
+          dropped=
+          for path in $before; do
+            if ! git ls-files --error-unmatch -- "$path" >/dev/null 2>&1 &&
+               [ -e "$RUNNER_TEMP/samples/${path#docs/samples/}" ]; then
+              dropped="$dropped $path"
+            fi
+          done
+          if [ -n "$dropped" ]; then
+            echo "::error::bin/driftless-sample-reports.py still writes these and they left" \
+                 "docs/samples:$dropped — deleting a sample narrows this gate instead of" \
+                 "answering it. Rerun the generator and commit the bundle it produces."
+            exit 1
+          fi
+          rc=0
+          for path in $tracked; do
+            diff -u "$path" "$RUNNER_TEMP/samples/${path#docs/samples/}" || rc=1
+          done
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::docs/samples no longer matches bin/driftless-sample-reports.py —" \
+                 "rerun it and commit the result in this PR"
+            exit 1
+          fi
+          echo "$(echo "$tracked" | wc -l) committed sample(s) regenerate byte-identically"
 
   migrations:
     name: Migrations (Postgres 16)
-    runs-on: ubuntu-latest
+    # The public repository reaches no self-hosted runner (no org runner group
+    # admits a public repository), so there it runs GitHub-hosted, which is free
+    # for a public repository; here, the self-hosted pool. See
+    # docs/testing-and-quality-gates.md.
+    runs-on: ${{ github.repository == 'Back-Road-Creative/driftless' && 'ubuntu-latest' || fromJSON('["self-hosted", "heavy"]') }}
     # The Tests job proves the migration chain on SQLite, which takes every
     # schema change through Alembic's copy-and-swap batch mode
     # (alembic/env.py: `render_as_batch` is on for SQLite only). Postgres alters
@@ -277,6 +432,55 @@ jobs:
         # question, not this one's.
         run: .venv/bin/pytest tests/test_migrations.py -o "addopts=" -q
 
+  docker-build:
+    name: Docker image builds
+    # The public repository reaches no self-hosted runner (no org runner group
+    # admits a public repository), so there it runs GitHub-hosted, which is free
+    # for a public repository; here, the self-hosted pool. See
+    # docs/testing-and-quality-gates.md.
+    runs-on: ${{ github.repository == 'Back-Road-Creative/driftless' && 'ubuntu-latest' || fromJSON('["self-hosted", "heavy"]') }}
+    # The Dockerfile is the most carefully pinned file in the repository — base
+    # image by digest, sops checked against a committed sha256 before it is made
+    # executable, dependencies installed --require-hashes, a non-root UID — and
+    # nothing ever built it. Every gate that mentions it reasons about the text:
+    # tests/test_docker_build_context.py parses its COPY lines,
+    # tests/test_image_dependency_parity.py compares its requirements file to the
+    # lock, pip-audit.yml installs the set it names. All of that is static
+    # reasoning about a build no run here performed, so a Dockerfile that cannot
+    # build — a base digest withdrawn upstream, a sops release re-cut under the
+    # same version, a hash requirements-runtime.txt no longer matches — stayed
+    # green in CI and failed first on a deployment.
+    #
+    # Nothing is pushed and no registry is contacted. The question is whether the
+    # image builds; an image that only has to build needs no login, no secret and
+    # no tag anybody will pull. Publishing is a different decision on a different
+    # trigger.
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Build the image
+        # `docker build`, not docker/build-push-action + docker/setup-buildx-action.
+        # ubuntu-latest already ships Docker with BuildKit, so those two would add
+        # two more third-party actions to a file whose entire pinning discipline
+        # exists to keep somebody else's code off the runner — to run a command
+        # that is on it. They earn that when a build pushes, caches to a registry
+        # or goes multi-platform, and this one does none of the three.
+        #
+        # No layer cache either — this step reuses nothing from a previous run.
+        # The one cache-shaped thing in the file is the quality job's TOOLS_DIR
+        # marker, and its own comment above records that the marker never
+        # survives an ephemeral hosted runner, so no step here has yet been able
+        # to skip work on the strength of an earlier run. A layer cache would be
+        # the first that could, and reporting a layer the build did not execute
+        # is the exact failure this job exists to catch. A cold build is minutes,
+        # and it is the honest answer.
+        #
+        # The tag is a local name so the log and any later step can refer to the
+        # image. It is not a scheme: it is never pushed and dies with the runner.
+        run: docker build --tag driftless:ci .
+
   alert:
     name: Alert on a red nightly
     # A pull request that goes red has an author watching it. A scheduled run has
@@ -284,7 +488,10 @@ jobs:
     # is how the audit job stayed broken from extraction until an audit went
     # looking for it. Only scheduled runs alert; a manual dispatch is watched by
     # whoever dispatched it.
-    needs: [quality, test, migrations]
+    # docker-build is in this list for the reason above rather than as
+    # bookkeeping: a job left out of it is a job whose nightly failure reaches
+    # nobody, which is precisely how the audit job stayed broken.
+    needs: [quality, test, migrations, docker-build]
     if: failure() && github.event_name == 'schedule'
     permissions:
       contents: read
@@ -294,5 +501,5 @@ jobs:
       # Stable — this string is the dedupe key, so a week of red nights is one
       # thread rather than seven issues. Changing it starts a new thread.
       issue_title: 'nightly: driftless CI is red on master'
-      what_failed: 'The nightly Quality, Tests and/or Migrations job failed on master.'
+      what_failed: 'The nightly Quality, Tests, Migrations and/or Docker image build job failed on master.'
 

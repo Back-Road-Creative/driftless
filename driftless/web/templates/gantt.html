@@ -9,19 +9,22 @@
 {% extends "base.html" %}
 {% block title %}Schedule — {{ project.name }}{% endblock %}
 {% block content %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
 {% import "_empty.html" as empty %}
 {% import "_scroll.html" as scroll %}
+{{ breadcrumbs.trail(project, "Schedule", as_of | default(None)) }}
 <h1>Schedule — {{ project.name }}</h1>
 <p><em>As of {{ as_of }}</em> · <a href="/projects/{{ project.id }}/hub?as_of={{ as_of }}">Project hub</a> ·
-   <a href="/projects/{{ project.id }}/status?as_of={{ as_of }}">Weekly status</a></p>
+   <a href="/projects/{{ project.id }}/status?as_of={{ as_of }}">Weekly status</a> ·
+   <a href="/projects/{{ project.id }}/schedule-health?as_of={{ as_of }}">Schedule health checks</a></p>
 {% if view %}
-<figure style="margin:0 0 1rem">
-  <svg viewBox="0 0 320 {{ view.height }}" width="320" height="{{ view.height }}" font-size="9" role="img"
+<figure>
+  <svg class="scurve" viewBox="0 0 320 {{ view.height }}" font-size="9" role="img"
        aria-label="Schedule of the approved baseline: one bar per task, sized by its planned window and filled by its progress, milestones marked at their target dates, the as-of rule at {{ as_of }}. The table below carries the same rows as text.">
     <line data-today="{{ as_of }}" x1="{{ view.today }}" x2="{{ view.today }}" y1="12" y2="{{ view.height }}" stroke="var(--gridline)" stroke-width="1" stroke-dasharray="4 3"/>
     <text x="{{ view.today }}" y="9" fill="var(--muted-ink)" text-anchor="middle">{{ as_of }}</text>
     {% for bar in view.bars %}{% set done = (bar.width * bar.line.task.percent_complete / 100)|round(1) %}
-    <text x="0" y="{{ bar.y + 9 }}" fill="var(--ink)">{{ bar.line.task.name|truncate(15, true, "…") }}</text>
+    <text x="0" y="{{ bar.y + 9 }}" fill="var(--ink)">{{ bar.line.task.name|truncate(24, true, "…") }}</text>
     <rect data-task="{{ bar.line.task.name }}" data-bar="planned" x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.width }}" height="11" fill="var(--muted-bg)" stroke="var(--gridline)"/>
     <rect data-task="{{ bar.line.task.name }}" data-bar="progress" x="{{ bar.x }}" y="{{ bar.y }}" width="{{ done }}" height="11" fill="var(--muted-ink)"/>
     <text x="{{ bar.x + bar.width + 4 }}" y="{{ bar.y + 9 }}" fill="var(--muted-ink)">{{ bar.line.task.percent_complete }}%</text>
@@ -43,6 +46,25 @@
 {% endfor %}
 </table>
 {% endcall %}
+{% if calendar_note %}
+<p>Calendar: {{ calendar_note }}</p>
+{% endif %}
+{% if risk_schedule_days %}
+<p id="risk-schedule-note">Filed risk responses carry <strong>{{ risk_schedule_days }}</strong>
+   day{{ risk_schedule_days | s }} of schedule impact across the open register — see the
+   <a href="/projects/{{ project.id }}/assist/risk-responses?as_of={{ as_of }}">risk-response planner</a>.</p>
+{% endif %}
+{% if dependencies %}
+{% call scroll.wide("Task dependencies") %}
+<table>
+<caption class="sr-only">Every dependency edge in this project's network: which task waits on which, its type, and any lag or lead in days</caption>
+<tr><th scope="col">Task</th><th scope="col">Depends on</th></tr>
+{% for dep in dependencies %}
+<tr><td>{{ dep.successor }}</td><td>{{ dep.predecessor }} ({{ dep.kind }} {{ "+" if dep.lag_days >= 0 else "" }}{{ dep.lag_days }}d)</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% endif %}
 {% else %}
 {% call empty.state("No approved baseline yet — there is no schedule to draw", id="gantt-empty") %}
 Draft a baseline, add its lines, then approve it (<code>POST /baselines</code>, <code>POST /baseline-lines</code>, <code>PATCH /baselines/&lt;id&gt;</code> — approval freezes the plan, so the lines go in first); the <a href="/projects/{{ project.id }}/wizard?as_of={{ as_of }}">wizard</a> can produce the approved plan for you, and the bars appear here as soon as the approved version has lines.

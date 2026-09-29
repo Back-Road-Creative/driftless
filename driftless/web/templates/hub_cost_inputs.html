@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Cost entries — {{ project.name }}{% endblock %}
+{% block content %}
+{% import "_breadcrumbs.html" as breadcrumbs %}
+{% import "_scroll.html" as scroll %}
+{% import "_empty.html" as empty %}
+{{ breadcrumbs.trail(project, "Cost entries", as_of) }}
+<h1>Cost entries — {{ project.name }}</h1>
+<p><em>As of {{ as_of }}</em> — every cost entry posted on or before this as-of, the
+   rows the earned-value figures on this project's
+   <a href="/projects/{{ project.id }}/hub?as_of={{ as_of }}">hub</a> and
+   <a href="/projects/{{ project.id }}/status?as_of={{ as_of }}">weekly status</a>
+   pages are swept from.</p>
+{% if costs %}
+{% call scroll.wide("Cost entries") %}
+<table>
+<caption class="sr-only">Cost entries for {{ project.name }} posted on or before {{ as_of }}</caption>
+<tr><th scope="col">Id</th><th scope="col">Posted</th><th scope="col">Category</th><th scope="col">Amount</th></tr>
+{% for c in costs %}
+<tr><td>{{ c.id }}</td><td>{{ c.incurred_on }}</td><td>{{ c.category }}</td><td>{{ c.amount | money }}</td></tr>
+{% endfor %}
+</table>
+{% endcall %}
+{% else %}
+{% call empty.state("No cost entries yet — there is nothing behind the earned-value figures", id="costs-empty") %}
+Record spend with <code>POST /cost-entries</code>.
+{% endcall %}
+{% endif %}
+{% endblock %}
