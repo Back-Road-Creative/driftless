@@ -19,7 +19,7 @@ CONTENT: dict[str, ArtifactContent] = {
     "verified_deliverables": ArtifactContent(
         plain_summary="Deliverables that have actually been checked to make sure they meet requirements.",
         why_it_matters="Checking a deliverable before calling it done catches problems while they're still cheap to fix.",
-        what_it_looks_like_here="Not tracked: verification isn't recorded — read task status and completion percentage instead.",
+        what_it_looks_like_here="Recorded as the verified date on a deliverable's entry in the project's sign-off ledger.",
     ),
     "accepted_deliverables": ArtifactContent(
         plain_summary="Deliverables the customer or sponsor has formally signed off as satisfactory.",

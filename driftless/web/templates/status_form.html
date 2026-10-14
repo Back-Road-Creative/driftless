@@ -60,7 +60,7 @@
 </figure>
 {% else %}
 {% call empty.state("No status history yet — there is no dated series to draw a trend through", id="trend-empty") %}
-Save this week's RAG in the <a href="#save-snapshot">form at the foot of this page</a> (or <code>POST /status-snapshots</code>) and it becomes the first point; the line gains a slope from the second reading, since a rate needs two dates to be read between.
+<span data-showcase="write">Save this week's RAG in the <a href="#save-snapshot">form at the foot of this page</a> (or <code>POST /status-snapshots</code>) and it becomes the first point; the line gains a slope from the second reading, since a rate needs two dates to be read between.</span>
 {% endcall %}
 {% endif %}
 
@@ -121,7 +121,7 @@ Save this week's RAG in the <a href="#save-snapshot">form at the foot of this pa
 </figure>
 {% else %}
 {% call empty.state("No cost baseline yet — there is no planned curve to draw the spend against", id="evm-empty") %}
-Draft a baseline, add its lines, then approve it (<code>POST /baselines</code>, <code>POST /baseline-lines</code>, <code>PATCH /baselines/&lt;id&gt;</code> — approval freezes the plan, so the lines go in first), then record spend (<code>POST /cost-entries</code>); the <a href="/projects/{{ project.id }}/wizard?as_of={{ as_of }}">wizard</a> can produce the approved plan for you, and both curves appear here as soon as the approved version has lines.
+<span data-showcase="write">Draft a baseline, add its lines, then approve it (<code>POST /baselines</code>, <code>POST /baseline-lines</code>, <code>PATCH /baselines/&lt;id&gt;</code> — approval freezes the plan, so the lines go in first), then record spend (<code>POST /cost-entries</code>); the <a href="/projects/{{ project.id }}/wizard?as_of={{ as_of }}">wizard</a> can produce the approved plan for you, and both curves appear here as soon as the approved version has lines.</span>
 {% endcall %}
 {% endif %}
 

@@ -86,7 +86,8 @@ can produce one); the network appears here as soon as the approved plan has line
 {% endcall %}
 
 {% call assist.section("Preview a scenario") %}
-<p>A preview is read-only — nothing here changes the stored plan. Try a crash (shorten one
+<p>A preview is read-only — nothing here changes the stored plan.</p>
+<p data-showcase="write">Try a crash (shorten one
    critical task, at its cost per day) or a fast-track (overlap one critical finish-to-start
    pair) and see how the network's dates and float would move.</p>
 <form method="get" action="/projects/{{ project.id }}/assist/schedule">
@@ -146,7 +147,7 @@ can produce one); the network appears here as soon as the approved plan has line
 {% endcall %}
 
 {% call assist.section("Propose this as a baseline change") %}
-<p>This writes nothing to the plan itself: it files a draft baseline carrying the preview
+<p data-showcase="write">This writes nothing to the plan itself: it files a draft baseline carrying the preview
    above and a change request describing it. Approving the change and promoting the draft
    to the live plan is a separate, existing step (<code>PATCH /baselines/&lt;id&gt;</code>,
    then <code>PATCH /change-requests/&lt;id&gt;</code>) — never done here.</p>

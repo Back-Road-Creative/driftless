@@ -4,6 +4,7 @@ walked over every practice of every profile rather than sampled."""
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 from driftless.pmbok import catalog
 from driftless.pmbok.methods import METHODS, MethodProfile, Practice, PracticeKind
@@ -87,3 +88,27 @@ def test_every_method_names_its_source_and_a_pinned_edition() -> None:
         assert isinstance(method, MethodProfile)
         assert method.source.strip()
         assert method.source_version.strip()
+
+
+def test_the_methods_page_calls_the_crosswalk_driftlesss_own_reading() -> None:
+    """ "Fully crosswalked" is Driftless's mapping, never equivalence to or
+    certification against the standard; the page and the route docstring say so."""
+    root = Path(__file__).resolve().parents[1] / "driftless" / "web"
+    page = " ".join((root / "templates" / "methods.html").read_text(encoding="utf-8").split())
+    source = " ".join((root / "methods.py").read_text(encoding="utf-8").split())
+    assert "Driftless's own crosswalk" in page
+    assert "not identity with, or certification against" in page
+    assert "Driftless's own mapping" in source
+    assert "not identity with, or certification against" in source
+
+
+def test_scrum_content_never_allows_exceptions_to_the_definition_of_done() -> None:
+    """The Scrum Guide (2020, the edition ``methods.py`` cites) makes the Definition of
+    Done binding: an item that does not meet it cannot be released or even presented
+    at the Sprint Review. An agenda line inviting "exceptions" to it says the opposite."""
+    from driftless.pmbok.method_content import CONTENT
+
+    for block in CONTENT["scrum"]:
+        for item in block.items:
+            if "Definition of Done" in item:
+                assert "exception" not in item.lower(), item

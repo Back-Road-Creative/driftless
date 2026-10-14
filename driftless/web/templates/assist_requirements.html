@@ -34,7 +34,7 @@
 {% endcall %}
 {% else %}
 {% call empty.state("No traces filed yet", id="matrix-empty") %}
-File one below once a requirement and a WBS node both exist.
+<span data-showcase="write">File one below once a requirement and a WBS node both exist.</span>
 {% endcall %}
 {% endif %}
 
@@ -61,7 +61,7 @@ File one below once a requirement and a WBS node both exist.
 <pre id="wbs-text">{{ wbs_text }}</pre>
 {% else %}
 {% call empty.state("No WBS nodes yet", id="wbs-empty") %}
-Add one with <code>POST /deliverables</code> (this project's id, a <code>wbs_code</code>).
+<span data-showcase="write">Add one with <code>POST /deliverables</code> (this project's id, a <code>wbs_code</code>).</span>
 {% endcall %}
 {% endif %}
 {% endcall %}
@@ -82,7 +82,7 @@ Add one with <code>POST /deliverables</code> (this project's id, a <code>wbs_cod
 {% endcall %}
 {% else %}
 {% call empty.state("No acceptance entries yet", id="ledger-empty") %}
-Record one below once a WBS node exists.
+<span data-showcase="write">Record one below once a WBS node exists.</span>
 {% endcall %}
 {% endif %}
 {% endcall %}
@@ -178,7 +178,7 @@ File one above first.
 </form>
 {% else %}
 {% call empty.state("No WBS nodes to accept yet", id="acceptance-empty") %}
-Add one with <code>POST /deliverables</code> first.
+<span data-showcase="write">Add one with <code>POST /deliverables</code> first.</span>
 {% endcall %}
 {% endif %}
 {% endcall %}

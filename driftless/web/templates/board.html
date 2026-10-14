@@ -38,7 +38,7 @@
 </div>
 {% else %}
 {% call empty.state("No tasks yet — a board has nothing to lay out", id="board-empty") %}
-Add a workstream and its tasks (<code>POST /workstreams</code>, <code>POST /tasks</code>); the <a href="/projects/{{ project.id }}/wizard">wizard</a> walks that order, and each task appears here in the column its <code>status</code> names.
+<span data-showcase="write">Add a workstream and its tasks (<code>POST /workstreams</code>, <code>POST /tasks</code>); the <a href="/projects/{{ project.id }}/wizard">wizard</a> walks that order, and each task appears here in the column its <code>status</code> names.</span>
 {% endcall %}
 {% endif %}
 {% endblock %}

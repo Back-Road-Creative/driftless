@@ -20,7 +20,7 @@
 {% endcall %}
 {% else %}
 {% call empty.state("No departments yet — a department owns the people, capacity and cost rates a project draws on") %}
-Create one with <code>POST /departments</code> (it belongs to a business), then staff it with <code>POST /people</code>.
+<span data-showcase="write">Create one with <code>POST /departments</code> (it belongs to a business), then staff it with <code>POST /people</code>.</span>
 {% endcall %}
 {% endif %}
 {% endblock %}

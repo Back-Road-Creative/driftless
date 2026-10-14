@@ -5,6 +5,14 @@ version's planned-cost total — so scope and cost growth are visible. The one
 subtraction (the cost delta) is done here; the template only formats. Every
 collection is ordered for byte-identical output.
 
+As-of contract: only baselines whose ``approved_at`` falls on or before ``as_of``
+(inclusive of the whole day) and change requests raised on or before it appear, so
+a later approval or request never repaints an earlier date. A legacy approved row
+with no ``approved_at`` stays visible — the same null policy as
+``adapters.plan_baseline`` — but is listed as "not recorded" with a note, never
+presented as a dated fact. A change request's own status has no history, so its
+status column is the current one; only the produced version is gated.
+
 A project with no approved baseline has nothing to compare, so ``render`` returns
 a short placeholder document (the template's empty-``versions`` branch) instead of
 indexing an empty list — this keeps ``report all`` completing for every project."""
@@ -15,6 +23,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from driftless.assess.adapters import approved_as_of
 from driftless.models import Baseline, BaselineLine, ChangeRequest, Project
 from driftless.report import engine
 
@@ -57,12 +66,18 @@ def render(session: Session, project: Project, as_of: date) -> str:
     """Render the Scope & Baseline document for ``project`` as of ``as_of``."""
     baselines = session.scalars(
         select(Baseline)
-        .where(Baseline.project_id == project.id, Baseline.status == "approved")
+        .where(
+            Baseline.project_id == project.id,
+            Baseline.status == "approved",
+            approved_as_of(as_of),
+        )
         .order_by(Baseline.version)
     ).all()
     versions = [
         {"version": b.version, "status": b.status, "approved_at": b.approved_at} for b in baselines
     ]
+    undated = [f"v{b.version}" for b in baselines if b.approved_at is None]
+    visible_ids = {b.id for b in baselines}
     if not baselines:
         return engine.render(
             "scope_baseline.md",
@@ -75,11 +90,15 @@ def render(session: Session, project: Project, as_of: date) -> str:
             "raised_on": cr.raised_on,
             "description": cr.description,
             "status": cr.status,
-            "version": cr.resulting_baseline.version if cr.resulting_baseline is not None else None,
+            "version": (
+                cr.resulting_baseline.version
+                if cr.resulting_baseline is not None and cr.resulting_baseline.id in visible_ids
+                else None
+            ),
         }
         for cr in session.scalars(
             select(ChangeRequest)
-            .where(ChangeRequest.project_id == project.id)
+            .where(ChangeRequest.project_id == project.id, ChangeRequest.raised_on <= as_of)
             .order_by(ChangeRequest.raised_on, ChangeRequest.id)
         )
     ]
@@ -88,6 +107,7 @@ def render(session: Session, project: Project, as_of: date) -> str:
         "project": project.name,
         "as_of": as_of,
         "versions": versions,
+        "undated": undated,
         "original": original,
         "current": current,
         "changed": len(baselines) > 1,

@@ -40,7 +40,8 @@ CONTENT: dict[str, tuple[MethodContentBlock, ...]] = {
                 "Walk the top of the Product Backlog and confirm each item is ready to pull.",
                 "The Developers select the work they believe they can finish this Sprint.",
                 "Break selected items into a plan of concrete tasks for the Sprint Backlog.",
-                "Confirm the Definition of Done applies unchanged, or note any exceptions.",
+                "Confirm the Definition of Done every selected item must meet; an item that misses it "
+                "goes back to the Product Backlog.",
                 "Restate the finished Sprint Goal and the Sprint Backlog back to the room.",
             ),
         ),

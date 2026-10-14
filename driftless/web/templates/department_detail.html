@@ -23,7 +23,7 @@
 {% endcall %}
 {% else %}
 {% call empty.state("No project is delivered here yet — the budget, actual and CPI above read from them", id="projects-empty") %}
-Point one at it: <code>PATCH /projects/&lt;id&gt;</code> with <code>{"responsible_department_id": {{ department.id }}}</code>.
+<span data-showcase="write">Point one at it: <code>PATCH /projects/&lt;id&gt;</code> with <code>{"responsible_department_id": {{ department.id }}}</code>.</span>
 {% endcall %}
 {% endif %}
 <h2>People</h2>
@@ -39,7 +39,7 @@ Point one at it: <code>PATCH /projects/&lt;id&gt;</code> with <code>{"responsibl
 {% endcall %}
 {% else %}
 {% call empty.state("Nobody works here yet — headcount, capacity and task load all read from this roster", id="people-empty") %}
-Add someone: <code>POST /people</code> with <code>{"department_id": {{ department.id }}}</code>, and their open tasks and remaining hours appear here.
+<span data-showcase="write">Add someone: <code>POST /people</code> with <code>{"department_id": {{ department.id }}}</code>, and their open tasks and remaining hours appear here.</span>
 {% endcall %}
 {% endif %}
 {% call chart.figures("Operations: services, work queue, recurring work, service levels, operating controls, incidents and improvements") %}
@@ -56,7 +56,7 @@ Add someone: <code>POST /people</code> with <code>{"department_id": {{ departmen
 {% endcall %}
 {% else %}
 {% call empty.state("No service is catalogued yet", id="services-empty") %}
-Add one: <code>POST /department-services</code> with <code>{"department_id": {{ department.id }}}</code>.
+<span data-showcase="write">Add one: <code>POST /department-services</code> with <code>{"department_id": {{ department.id }}}</code>.</span>
 {% endcall %}
 {% endif %}
 <h2>Work queue</h2>
@@ -72,7 +72,7 @@ Add one: <code>POST /department-services</code> with <code>{"department_id": {{ 
 {% endcall %}
 {% else %}
 {% call empty.state("No work has been requested yet", id="work-requests-empty") %}
-Raise one: <code>POST /work-requests</code> with <code>{"department_id": {{ department.id }}}</code>.
+<span data-showcase="write">Raise one: <code>POST /work-requests</code> with <code>{"department_id": {{ department.id }}}</code>.</span>
 {% endcall %}
 {% endif %}
 <h2>Recurring work</h2>
@@ -88,7 +88,7 @@ Raise one: <code>POST /work-requests</code> with <code>{"department_id": {{ depa
 {% endcall %}
 {% else %}
 {% call empty.state("No recurring work is tracked yet", id="recurring-work-empty") %}
-Add one: <code>POST /recurring-work</code> with <code>{"department_id": {{ department.id }}}</code>.
+<span data-showcase="write">Add one: <code>POST /recurring-work</code> with <code>{"department_id": {{ department.id }}}</code>.</span>
 {% endcall %}
 {% endif %}
 <h2>Service levels</h2>
@@ -104,7 +104,7 @@ Add one: <code>POST /recurring-work</code> with <code>{"department_id": {{ depar
 {% endcall %}
 {% else %}
 {% call empty.state("No service level is set yet", id="service-levels-empty") %}
-Add one: <code>POST /service-levels</code> with <code>{"department_id": {{ department.id }}}</code>.
+<span data-showcase="write">Add one: <code>POST /service-levels</code> with <code>{"department_id": {{ department.id }}}</code>.</span>
 {% endcall %}
 {% endif %}
 <h2>Operating controls</h2>
@@ -120,7 +120,7 @@ Add one: <code>POST /service-levels</code> with <code>{"department_id": {{ depar
 {% endcall %}
 {% else %}
 {% call empty.state("No operating control is recorded yet", id="controls-empty") %}
-Add one: <code>POST /operating-controls</code> with <code>{"department_id": {{ department.id }}}</code>.
+<span data-showcase="write">Add one: <code>POST /operating-controls</code> with <code>{"department_id": {{ department.id }}}</code>.</span>
 {% endcall %}
 {% endif %}
 <h2>Incidents</h2>
@@ -136,7 +136,7 @@ Add one: <code>POST /operating-controls</code> with <code>{"department_id": {{ d
 {% endcall %}
 {% else %}
 {% call empty.state("No incident has been raised yet", id="incidents-empty") %}
-Raise one: <code>POST /incidents</code> with <code>{"department_id": {{ department.id }}}</code>.
+<span data-showcase="write">Raise one: <code>POST /incidents</code> with <code>{"department_id": {{ department.id }}}</code>.</span>
 {% endcall %}
 {% endif %}
 <h2>Improvements</h2>
@@ -152,7 +152,7 @@ Raise one: <code>POST /incidents</code> with <code>{"department_id": {{ departme
 {% endcall %}
 {% else %}
 {% call empty.state("No improvement is proposed yet", id="improvements-empty") %}
-Propose one: <code>POST /improvements</code> with <code>{"department_id": {{ department.id }}}</code>.
+<span data-showcase="write">Propose one: <code>POST /improvements</code> with <code>{"department_id": {{ department.id }}}</code>.</span>
 {% endcall %}
 {% endif %}
 {% endcall %}
@@ -169,7 +169,7 @@ Propose one: <code>POST /improvements</code> with <code>{"department_id": {{ dep
 {% endcall %}
 {% else %}
 {% call empty.state("No artifact is linked here yet", id="artifact-links-empty") %}
-Link one: <code>POST /artifact-links</code> with <code>{"record_kind": "department", "record_id": "{{ department.id }}"}</code>.
+<span data-showcase="write">Link one: <code>POST /artifact-links</code> with <code>{"record_kind": "department", "record_id": "{{ department.id }}"}</code>.</span>
 {% endcall %}
 {% endif %}
 <h2>Notes</h2>
@@ -185,7 +185,7 @@ Link one: <code>POST /artifact-links</code> with <code>{"record_kind": "departme
 {% endcall %}
 {% else %}
 {% call empty.state("No note has been filed here yet", id="notes-empty") %}
-File one: <code>POST /notes</code> with <code>{"record_kind": "department", "record_id": "{{ department.id }}"}</code>.
+<span data-showcase="write">File one: <code>POST /notes</code> with <code>{"record_kind": "department", "record_id": "{{ department.id }}"}</code>.</span>
 {% endcall %}
 {% endif %}
 <p><a href="/org/departments">&larr; All departments</a></p>

@@ -414,8 +414,15 @@ jobs:
           # guard is kept: the tag, the release and the asset below do not need
           # master, so the site sees the release as soon as this step ends. The
           # `+` lets a re-dispatch replace the branch; nothing else writes to it.
+          # The runner's global pre-push hook caps a pushed branch at 1000
+          # lines because a branch becomes a PR a person reads. This snapshot
+          # is not authored work: v0.8.0 was 64857 lines against the public
+          # master (run 36429780866, 2026-09-28) and the hook refused it, so
+          # nothing reached the public repository. The override is the hook's
+          # own, per push, the same one bin/quiet-corners-refresh.sh and
+          # bin/gms-journal-cron.sh already use for their pipeline pushes.
           BRANCH="release/$TAG"
-          git push origin "+HEAD:refs/heads/$BRANCH"
+          DIFF_CAP_OVERRIDE=1 git push origin "+HEAD:refs/heads/$BRANCH"
           # A tag already on the public repository is never moved: a re-dispatch
           # reuses it, and its tree is the same `git archive` of the same tag.
           if [ -z "$(git ls-remote --tags origin "refs/tags/$TAG")" ]; then

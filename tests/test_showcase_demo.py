@@ -102,10 +102,7 @@ def test_transform_makes_the_real_pages_portable_and_read_only() -> None:
     assert '<meta name="robots" content="noindex, nofollow">' in index
     assert "Fixed fictional demo" in index
     assert "2026-07-01" in index
-    assert (
-        '<a href="https://headlessmode.com/driftless/">&larr; Back to headlessmode.com/driftless</a>'
-        in index
-    )
+    assert 'class="showcase-product" href="https://headlessmode.com/driftless/"' in index
     assert not any(line.endswith((" ", "\t")) for line in index.splitlines())
     assert 'href="./"' in transformed["threats.html"], "the index link must be extensionless"
 
@@ -582,20 +579,62 @@ def test_the_map_page_promises_only_what_the_static_bundle_delivers(
     assert '<span class="showcase-unavailable">Open ' not in map_page
 
 
-def test_the_notice_links_back_to_the_site_with_a_configurable_url() -> None:
+def test_the_notice_is_a_return_bar_to_the_studio_and_the_product() -> None:
     pages = {"index.html": "<html><head></head><body></body></html>"}
-    transformed = _load().transform_bundle(pages, anchor="2026-07-01", source="v0")
-    index = transformed["index.html"]
+    demo = _load()
+    index = demo.transform_bundle(pages, anchor="2026-07-01", source="v0")["index.html"]
+    assert index.count('<aside class="showcase-notice"') == 1
     assert (
-        '<a href="https://headlessmode.com/driftless/">&larr; Back to headlessmode.com/driftless</a>'
+        '<a class="showcase-home" href="https://headlessmode.com/">&larr; Headless Mode</a>'
         in index
     )
-    assert "&middot; <strong>Fixed fictional demo</strong> &middot; as of 2026-07-01" in index
+    assert (
+        '<a class="showcase-product" href="https://headlessmode.com/driftless/">'
+        "Product details</a>" in index
+    )
+    assert "<strong>Fixed fictional demo</strong> &middot; as of 2026-07-01" in index
+    assert "Read-only demo" in index
+    assert '<details class="showcase-about"><summary>About this demo</summary>' in index
+    assert "source v0" in index.split("<details")[1]
 
-    custom = _load().transform_bundle(
-        pages, anchor="2026-07-01", source="v0", site_url="https://example.test/x/"
+    custom = demo.transform_bundle(
+        pages,
+        anchor="2026-07-01",
+        source="v0",
+        site_url="https://example.test/x/",
+        home_url="https://example.test/",
     )["index.html"]
-    assert 'href="https://example.test/x/"' in custom
+    assert 'class="showcase-product" href="https://example.test/x/"' in custom
+    assert 'class="showcase-home" href="https://example.test/"' in custom
+
+
+def test_the_return_bar_is_sticky_and_clears_fragment_targets() -> None:
+    pages = {"index.html": "<html><head></head><body></body></html>"}
+    index = _load().transform_bundle(pages, anchor="2026-07-01", source="v0")["index.html"]
+    assert "position:sticky" in index
+    assert "top:0" in index
+    assert "scroll-margin-top" in index
+    assert "flex-wrap:wrap" in index
+
+
+def test_the_static_anchor_keeps_the_absolute_return_links() -> None:
+    demo = _load()
+    for url in ("https://headlessmode.com/", "https://headlessmode.com/driftless/"):
+        tag = f'<a class="x" href="{url}">t</a>'
+        out = demo.ANCHOR_TAG.sub(
+            lambda m: demo._static_anchor(m, {}, demo._snapshot_module()), tag
+        )
+        assert out == tag
+
+
+def test_the_showcase_never_links_the_root(transformed_showcase: dict[str, str]) -> None:
+    for name, body in transformed_showcase.items():
+        assert 'href="/"' not in body, name
+        assert not re.search(r'href="/(?!driftless/)', body), name
+
+
+def test_home_url_option_defaults_to_the_studio_root() -> None:
+    assert _load().DEFAULT_HOME_URL == "https://headlessmode.com/"
 
 
 def test_index_opens_as_a_landing_page_that_routes_into_the_demo(
@@ -717,3 +756,51 @@ def test_every_on_the_map_link_in_the_bundle_names_the_node_it_pins(
         assert found, f"vacuous: {name} carries no 'on the map' link at all"
         strays = sorted({href for href in found if not href.startswith("map-all#node-")})
         assert not strays, f"{name} links {strays}"
+
+
+#: Prose that only makes sense beside a form or the write API.
+_DEAD_INSTRUCTIONS = (
+    "Use the form below",
+    "Try a crash",
+    "POST /",
+    "PATCH /",
+    "form below",
+    "File one below",
+    "Record one below",
+    "resources named below",
+    "change_boundary.instruction",
+)
+_WRITE_MARKER = re.compile(
+    r'<(span|p|li|ol|h2|th|td)\b[^>]*\bdata-showcase="write"[^>]*>.*?</\1>', re.DOTALL
+)
+_TEMPLATES = Path(__file__).resolve().parents[1] / "driftless" / "web" / "templates"
+
+
+def test_the_export_carries_no_dead_write_instruction(
+    transformed_showcase: dict[str, str],
+) -> None:
+    for name, body in transformed_showcase.items():
+        assert 'data-showcase="write"' not in body, name
+        for phrase in _DEAD_INSTRUCTIONS:
+            assert phrase not in body, (name, phrase)
+
+
+def test_write_marked_elements_are_never_nested() -> None:
+    for path in sorted(_TEMPLATES.glob("*.html")):
+        text = path.read_text(encoding="utf-8")
+        for match in _WRITE_MARKER.finditer(text):
+            inner = match.group(0).split(">", 1)[1]
+            assert 'data-showcase="write"' not in inner, path.name
+
+
+def test_every_write_instruction_in_a_template_is_marked() -> None:
+    for path in sorted(_TEMPLATES.glob("*.html")):
+        text = path.read_text(encoding="utf-8")
+        covered = [m.span() for m in _WRITE_MARKER.finditer(text)]
+        for phrase in _DEAD_INSTRUCTIONS:
+            for hit in re.finditer(re.escape(phrase), text):
+                assert any(a <= hit.start() < b for a, b in covered), (
+                    path.name,
+                    text.count("\n", 0, hit.start()) + 1,
+                    phrase,
+                )

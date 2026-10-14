@@ -13,6 +13,30 @@ fragments into this file at release time.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-08
+
+### Changed
+- `requirements.lock` follows the grouped pip bump it constrains: alembic to
+  1.20.0, psycopg and psycopg-binary to 3.3.6, sqlalchemy to 2.0.54 and uvicorn
+  to 0.53.0. Dependabot compiles `requirements-runtime.txt` and leaves the
+  constraint file behind, so the two named different versions and
+  `tests/test_image_dependency_parity.py` failed on the bump.
+- The static showcase's notice is now a sticky return bar on every demo page:
+  a link back to headlessmode.com, the "Fixed fictional demo" label, a link to
+  the driftless product page, and an "About this demo" disclosure holding the
+  source commit and export date. Both links are absolute, so the bar works
+  wherever the bundle is hosted, and headings keep a scroll margin so fragment
+  links are not hidden under it. `--home-url` sets the studio link.
+
+### Fixed
+- The receipt footer's 64-character sha256 now wraps, so the project hub and status pages no longer scroll sideways at 390px.
+- The Scope & Baseline document now honours its as-of date: baselines approved and change requests raised after it no longer appear, and an approved baseline with no recorded approval date is flagged "not recorded" instead of shown as dated history.
+- The read-only showcase export no longer shows instructions that only make sense beside a form or the write API ("Use the form below", `POST /...`, `PATCH /...`, "Try a crash"); templates mark them with `data-showcase="write"` and a contract test keeps new ones marked.
+- The artifact reference no longer says task links, requirement traces, the resource tree, calendars, equipment/material resources or deliverable verification are "not tracked" when the product records them.
+- The methods page labels "fully crosswalked" as Driftless's own mapping, not identity with or certification against the standard.
+- The read-only showcase export no longer shows the dashboard's empty-state API calls or the organization configuration's "Next action" column; both are marked `data-showcase="write"`, and the marker now covers table cells.
+- The Scrum sprint-planning agenda no longer invites exceptions to the Definition of Done (The Scrum Guide, 2020: an item that misses it returns to the Product Backlog).
+
 ## [0.8.0] - 2026-09-27
 
 ### Added

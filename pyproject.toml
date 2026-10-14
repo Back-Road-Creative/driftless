@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "svc-driftless"
-version = "0.8.0"
+version = "0.9.0"
 description = "Business / portfolio / program / project management hub — one store, computed views"
 # 3.12 is the only version CI runs anywhere (ci.yml, pip-audit.yml: python-version: '3.12')
 # and the only one the image ships (Dockerfile: python:3.12-slim, pinned by digest). The

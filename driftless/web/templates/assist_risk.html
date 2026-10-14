@@ -46,7 +46,7 @@
 {% endcall %}
 {% else %}
 {% call empty.state("No open risks for this project", id="register-empty") %}
-Register one with <code>POST /risks</code> with <code>{"project_id": {{ project.id }}}</code>.
+<span data-showcase="write">Register one with <code>POST /risks</code> with <code>{"project_id": {{ project.id }}}</code>.</span>
 {% endcall %}
 {% endif %}
 

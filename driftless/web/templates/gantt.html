@@ -67,7 +67,7 @@
 {% endif %}
 {% else %}
 {% call empty.state("No approved baseline yet — there is no schedule to draw", id="gantt-empty") %}
-Draft a baseline, add its lines, then approve it (<code>POST /baselines</code>, <code>POST /baseline-lines</code>, <code>PATCH /baselines/&lt;id&gt;</code> — approval freezes the plan, so the lines go in first); the <a href="/projects/{{ project.id }}/wizard?as_of={{ as_of }}">wizard</a> can produce the approved plan for you, and the bars appear here as soon as the approved version has lines.
+<span data-showcase="write">Draft a baseline, add its lines, then approve it (<code>POST /baselines</code>, <code>POST /baseline-lines</code>, <code>PATCH /baselines/&lt;id&gt;</code> — approval freezes the plan, so the lines go in first); the <a href="/projects/{{ project.id }}/wizard?as_of={{ as_of }}">wizard</a> can produce the approved plan for you, and the bars appear here as soon as the approved version has lines.</span>
 {% endcall %}
 {% endif %}
 {% endblock %}

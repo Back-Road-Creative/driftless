@@ -17,8 +17,11 @@ No approved baseline recorded.
 | Version | Status | Approved |
 | --- | --- | --- |
 {% for v in versions %}
-| v{{ v.version }} | {{ v.status }} | {{ v.approved_at if v.approved_at is not none else "—" }} |
+| v{{ v.version }} | {{ v.status }} | {{ v.approved_at if v.approved_at is not none else "not recorded" }} |
 {% endfor %}
+{% if undated %}
+_Approval date not recorded for {{ undated|join(", ") }}; treated as in force at every as-of, not confirmed as history._
+{% endif %}
 
 {% if changed %}
 ## Original (v{{ original.version }}) — planned cost {{ "%.2f"|format(original.total) }}
