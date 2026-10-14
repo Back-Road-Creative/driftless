@@ -65,7 +65,7 @@ Neither v{{ before.version }} nor v{{ after.version }} carries a <code>BaselineL
 {{ breadcrumbs.trail(project, "Baseline diff") }}
 <h1>Baseline diff — {{ project.name }}</h1>
 {% call empty.state("Fewer than two approved baselines", id="baseline-diff-too-few") %}
-This project needs two approved baselines to compare; approve another with <code>PATCH /baselines/&lt;id&gt;</code> and its diff appears here.
+<span data-showcase="write">This project needs two approved baselines to compare; approve another with <code>PATCH /baselines/&lt;id&gt;</code> and its diff appears here.</span>
 {% endcall %}
 {% endif %}
 {% endblock %}

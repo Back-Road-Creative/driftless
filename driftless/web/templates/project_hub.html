@@ -55,7 +55,7 @@
 <p><a href="/projects/{{ project.id }}/hub/costs?as_of={{ as_of }}">See the cost entries these figures are computed from</a>.</p>
 {% else %}
 {% call empty.state("No cost baseline yet — earned value has nothing to measure", id="evm-empty") %}
-Baseline the plan (<code>POST /baselines</code>, <code>POST /baseline-lines</code>) and record spend (<code>POST /cost-entries</code>); the <a href="/projects/{{ project.id }}/wizard?as_of={{ as_of }}">wizard</a> walks that order.
+<span data-showcase="write">Baseline the plan (<code>POST /baselines</code>, <code>POST /baseline-lines</code>) and record spend (<code>POST /cost-entries</code>); the <a href="/projects/{{ project.id }}/wizard?as_of={{ as_of }}">wizard</a> walks that order.</span>
 {% endcall %}
 {% endif %}
 <h2>Flow</h2>
@@ -75,7 +75,7 @@ Baseline the plan (<code>POST /baselines</code>, <code>POST /baseline-lines</cod
 {% endfor %}
 {% else %}
 {% call empty.state("No scorecard contribution linked yet — unknown", id="scorecard-lens-empty") %}
-Link this project to an objective (<code>POST /scorecard-contributions</code>), or <a href="/scorecard">view the balanced scorecard</a>.
+<span data-showcase="write">Link this project to an objective (<code>POST /scorecard-contributions</code>), or <a href="/scorecard">view the balanced scorecard</a>.</span>
 {% endcall %}
 {% endif %}
 <h2>Live threats</h2>
@@ -108,7 +108,7 @@ Link this project to an objective (<code>POST /scorecard-contributions</code>), 
 {% endcall %}
 {% else %}
 {% call empty.state("No milestones yet — these are the dates this project is judged against", id="milestones-empty") %}
-Add one with <code>POST /milestones</code> (this project's id, a target date); a slipped one then shows here and on the <a href="/threats">threat board</a>.
+<span data-showcase="write">Add one with <code>POST /milestones</code> (this project's id, a target date); a slipped one then shows here and on the <a href="/threats">threat board</a>.</span>
 {% endcall %}
 {% endif %}
 {% endblock %}

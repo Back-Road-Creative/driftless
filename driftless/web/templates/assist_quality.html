@@ -29,8 +29,8 @@
    shift even while every point stays inside the limits.</p>
 {% if not charts %}
 {% call empty.state("No quality measurements recorded yet", id="charts-empty") %}
-Record a dated reading (<code>POST /quality-measurements</code>) against a target and it
-becomes this metric's first point; a chart draws once there are two.
+<span data-showcase="write">Record a dated reading (<code>POST /quality-measurements</code>) against a target and it
+becomes this metric's first point; a chart draws once there are two.</span>
 {% endcall %}
 {% else %}
 {% for entry in charts %}

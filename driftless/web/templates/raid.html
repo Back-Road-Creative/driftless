@@ -30,7 +30,7 @@
 {% endcall %}
 {% else %}
 {% call empty.state("No risks registered for this project yet", id="risks-empty") %}
-Register one with <code>POST /risks</code> with <code>{"project_id": {{ project.id }}}</code>.
+<span data-showcase="write">Register one with <code>POST /risks</code> with <code>{"project_id": {{ project.id }}}</code>.</span>
 {% endcall %}
 {% endif %}
 
@@ -52,7 +52,7 @@ Register one with <code>POST /risks</code> with <code>{"project_id": {{ project.
 {% endcall %}
 {% else %}
 {% call empty.state("No issues recorded for this project yet", id="issues-empty") %}
-Record an issue with <code>POST /issues</code> with <code>{"project_id": {{ project.id }}}</code>.
+<span data-showcase="write">Record an issue with <code>POST /issues</code> with <code>{"project_id": {{ project.id }}}</code>.</span>
 {% endcall %}
 {% endif %}
 
@@ -72,7 +72,7 @@ Record an issue with <code>POST /issues</code> with <code>{"project_id": {{ proj
 {% endcall %}
 {% else %}
 {% call empty.state("No change requests recorded for this project yet", id="changes-empty") %}
-Submit a proposal with <code>POST /change-requests</code> with <code>{"project_id": {{ project.id }}}</code>.
+<span data-showcase="write">Submit a proposal with <code>POST /change-requests</code> with <code>{"project_id": {{ project.id }}}</code>.</span>
 {% endcall %}
 {% endif %}
 

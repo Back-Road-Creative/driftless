@@ -140,7 +140,7 @@
 {% endif %}
 {% else %}
 {% call empty.state("No active sprint as of " ~ as_of ~ " — there is no window to draw burndown, burnup or cumulative flow over", id="flow-empty") %}
-Add a sprint whose window contains this date (<code>POST /sprints</code>) to see the flow charts here; work in progress, throughput and the release forecast above still read every recorded backlog item.
+<span data-showcase="write">Add a sprint whose window contains this date (<code>POST /sprints</code>) to see the flow charts here; work in progress, throughput and the release forecast above still read every recorded backlog item.</span>
 {% endcall %}
 {% endif %}
 {% endblock %}

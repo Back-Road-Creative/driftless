@@ -141,11 +141,9 @@ def test_a_later_approved_baseline_does_not_change_an_earlier_as_of_process_map(
     """``pmbok.mapping._approved_baseline`` -- the resolver 5.4 Create Scope
     Baseline and 6.6's baselined-schedule read through -- already gates on
     ``approved_at <= as_of``: a v2 approved after the render's as-of must not
-    pre-empt v1 as the plan of record. This is deliberately NOT the
-    ``scope-baseline`` document, which still selects the newest APPROVED
-    baseline with no ``approved_at`` gate at all -- a known break left for a
-    later PR. ``adapters.plan_baseline`` is pinned separately below, now that
-    it gates on ``approved_at`` too."""
+    pre-empt v1 as the plan of record. This is ``scope-baseline``
+    document and ``adapters.plan_baseline`` are pinned separately below; both
+    gate on ``approved_at`` too."""
 
     def render() -> str:
         return render_document("process-map", db, project, AS_OF)
@@ -323,3 +321,88 @@ def test_report_all_at_an_early_as_of_survives_a_later_dated_quality_measurement
         "a store-wide `report all` at a fixed as-of must not change when a "
         "later-dated quality measurement lands through the API in between",
     )
+
+
+def _post_baseline(client: TestClient, project: m.Project, approved_at: datetime) -> None:
+    response = client.post(
+        "/baselines",
+        json={
+            "project_id": project.id,
+            "version": 2,
+            "status": "approved",
+            "approved_at": approved_at.isoformat(),
+        },
+    )
+    assert response.status_code == 201, response.text
+
+
+def test_a_later_approved_baseline_does_not_change_an_earlier_as_of_scope_baseline(
+    db: Session, project: m.Project, client: TestClient
+) -> None:
+    """The ``scope-baseline`` document gates its baselines on ``approved_at``: a v2
+    approved after the render's as-of must neither appear in the version table nor
+    turn "scope unchanged since v1" into a v1-to-v2 comparison."""
+
+    def render() -> str:
+        return render_document("scope-baseline", db, project, AS_OF)
+
+    assert_history_survives(
+        render,
+        lambda: _post_baseline(client, project, datetime(2026, 4, 15, 9, 0)),
+        "a baseline approved after the as-of must not appear on the Scope & Baseline document",
+    )
+    assert "Scope is unchanged since v1." in render()
+
+
+def test_a_later_change_request_does_not_change_an_earlier_as_of_scope_baseline(
+    db: Session, project: m.Project, client: TestClient
+) -> None:
+    """A change request raised after the as-of is not history yet, and a request
+    raised before it stays listed."""
+    _post_baseline(client, project, datetime(2026, 3, 1, 9, 0))
+    db.add(m.ChangeRequest(project_id=project.id, description="early ask", raised_on=AS_OF))
+    db.commit()
+
+    def render() -> str:
+        return render_document("scope-baseline", db, project, AS_OF)
+
+    def mutate() -> None:
+        db.add(
+            m.ChangeRequest(
+                project_id=project.id,
+                description="late ask",
+                raised_on=AS_OF + timedelta(days=1),
+            )
+        )
+        db.commit()
+
+    assert_history_survives(
+        render, mutate, "a change request raised after the as-of must not appear"
+    )
+    text = render()
+    assert "early ask" in text
+    assert "late ask" not in text
+
+
+def test_scope_baseline_approval_boundary_is_inclusive_of_the_as_of_day(
+    db: Session, project: m.Project, client: TestClient
+) -> None:
+    """An approval at 23:59:59 on the as-of day is visible; one at 00:00 the next
+    day is not."""
+    _post_baseline(client, project, datetime.combine(AS_OF, datetime.max.time()))
+    assert "v2" in render_document("scope-baseline", db, project, AS_OF)
+    approved = db.scalars(select(m.Baseline).where(m.Baseline.version == 2)).one()
+    approved.approved_at = datetime.combine(AS_OF + timedelta(days=1), datetime.min.time())
+    db.commit()
+    assert "v2" not in render_document("scope-baseline", db, project, AS_OF)
+
+
+def test_scope_baseline_flags_an_undated_approval_instead_of_asserting_it(
+    db: Session, project: m.Project
+) -> None:
+    """A legacy approved row with no ``approved_at`` stays visible (it is not
+    evidence of a later approval, and the same rule as ``plan_baseline``), but the
+    document says the date is unrecorded rather than presenting it as history."""
+    text = render_document("scope-baseline", db, project, AS_OF)
+    assert "| v1 | approved | not recorded |" in text
+    assert "approval date not recorded" in text.lower()

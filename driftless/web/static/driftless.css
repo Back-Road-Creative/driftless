@@ -101,8 +101,11 @@ dl.legend dd { margin: 0 1rem 0 0.15rem; }
 .wordmark { text-decoration: none; font-weight: 600; letter-spacing: .06em; font-size: var(--fs-lg); }
 .masthead-project { color: var(--muted-ink); }
 /* _breadcrumbs.html's trail: reads smaller and quieter than body text, the way a
-   nav trail should sit under the title it leads to rather than compete with it. */
-.breadcrumbs { font-size: var(--fs-sm); color: var(--muted-ink); }
+   nav trail should sit under the title it leads to rather than compete with it.
+   overflow-wrap:anywhere is for the receipt footer (web/receipt.py), which reuses this
+   class and ends in a 64-character sha256 with no space to break at: at 390px that one
+   token was 539px wide and dragged the whole document sideways. */
+.breadcrumbs { font-size: var(--fs-sm); color: var(--muted-ink); overflow-wrap: anywhere; }
 /* _empty.html's ONE empty-state shape: a dashed box (never a solid --card border,
    so it never reads as a populated card at a glance) around the title and the
    next-step body every caller supplies. */

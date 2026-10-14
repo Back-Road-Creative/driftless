@@ -7,7 +7,7 @@
 
 {% if not has_objectives %}
 {% call empty.state("No strategic objectives configured", id="scorecard-empty") %}
-Start the balanced scorecard with the validated <code>POST /strategic-objectives</code> resource, then define metrics and record dated observations. <a href="/org/configuration">Review organization configuration</a>.
+<span data-showcase="write">Start the balanced scorecard with the validated <code>POST /strategic-objectives</code> resource, then define metrics and record dated observations. <a href="/org/configuration">Review organization configuration</a>.</span>
 {% endcall %}
 {% endif %}
 

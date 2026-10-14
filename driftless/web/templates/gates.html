@@ -49,7 +49,7 @@
 {% endfor %}
 {% else %}
 {% call empty.state("No gates defined", id="gates-empty") %}
-This project has no gates yet; create one with <code>POST /gates</code>.
+<span data-showcase="write">This project has no gates yet; create one with <code>POST /gates</code>.</span>
 {% endcall %}
 {% endif %}
 {% endblock %}

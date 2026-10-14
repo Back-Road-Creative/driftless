@@ -32,7 +32,7 @@
 {% endcall %}
 {% else %}
 {% call empty.state("No project this department is accountable for contributes to an objective yet", id="objectives-empty") %}
-Link one: <code>POST /scorecard-contributions</code> naming one of this department's projects.
+<span data-showcase="write">Link one: <code>POST /scorecard-contributions</code> naming one of this department's projects.</span>
 {% endcall %}
 {% endif %}
 {% endcall %}
@@ -51,7 +51,7 @@ Link one: <code>POST /scorecard-contributions</code> naming one of this departme
 {% endcall %}
 {% else %}
 {% call empty.state("No service is catalogued yet", id="operating-plan-services-empty") %}
-Add one: <code>POST /department-services</code> with <code>{"department_id": {{ department.id }}}</code>.
+<span data-showcase="write">Add one: <code>POST /department-services</code> with <code>{"department_id": {{ department.id }}}</code>.</span>
 {% endcall %}
 {% endif %}
 {% if operations.recurring_work_items %}
@@ -66,7 +66,7 @@ Add one: <code>POST /department-services</code> with <code>{"department_id": {{ 
 {% endcall %}
 {% else %}
 {% call empty.state("No recurring work is tracked yet", id="operating-plan-recurring-empty") %}
-Add one: <code>POST /recurring-work</code> with <code>{"department_id": {{ department.id }}}</code>.
+<span data-showcase="write">Add one: <code>POST /recurring-work</code> with <code>{"department_id": {{ department.id }}}</code>.</span>
 {% endcall %}
 {% endif %}
 {% endcall %}
@@ -88,7 +88,7 @@ Add one: <code>POST /recurring-work</code> with <code>{"department_id": {{ depar
 {% endcall %}
 {% else %}
 {% call empty.state("No service is catalogued yet, so there is nothing to hold a RACI row", id="raci-empty") %}
-Add one: <code>POST /department-services</code> with <code>{"department_id": {{ department.id }}}</code>.
+<span data-showcase="write">Add one: <code>POST /department-services</code> with <code>{"department_id": {{ department.id }}}</code>.</span>
 {% endcall %}
 {% endif %}
 {% endcall %}
@@ -111,7 +111,7 @@ Add one: <code>POST /department-services</code> with <code>{"department_id": {{ 
 {% endcall %}
 {% else %}
 {% call empty.state("Nobody works here yet — capacity has nothing to weigh demand against", id="demand-capacity-empty") %}
-Add someone: <code>POST /people</code> with <code>{"department_id": {{ department.id }}}</code>.
+<span data-showcase="write">Add someone: <code>POST /people</code> with <code>{"department_id": {{ department.id }}}</code>.</span>
 {% endcall %}
 {% endif %}
 {% endcall %}
@@ -132,7 +132,7 @@ Add someone: <code>POST /people</code> with <code>{"department_id": {{ departmen
 {% endcall %}
 {% else %}
 {% call empty.state("No service level is set yet", id="service-levels-empty") %}
-Add one: <code>POST /service-levels</code> with <code>{"department_id": {{ department.id }}}</code>.
+<span data-showcase="write">Add one: <code>POST /service-levels</code> with <code>{"department_id": {{ department.id }}}</code>.</span>
 {% endcall %}
 {% endif %}
 {% endcall %}
@@ -153,7 +153,7 @@ Add one: <code>POST /service-levels</code> with <code>{"department_id": {{ depar
 {% endcall %}
 {% else %}
 {% call empty.state("No operating control is recorded yet", id="controls-empty") %}
-Add one: <code>POST /operating-controls</code> with <code>{"department_id": {{ department.id }}}</code>.
+<span data-showcase="write">Add one: <code>POST /operating-controls</code> with <code>{"department_id": {{ department.id }}}</code>.</span>
 {% endcall %}
 {% endif %}
 {% endcall %}
@@ -173,7 +173,7 @@ Add one: <code>POST /operating-controls</code> with <code>{"department_id": {{ d
 {% endcall %}
 {% else %}
 {% call empty.state("No improvement is proposed yet", id="improvements-empty") %}
-Propose one: <code>POST /improvements</code> with <code>{"department_id": {{ department.id }}}</code>.
+<span data-showcase="write">Propose one: <code>POST /improvements</code> with <code>{"department_id": {{ department.id }}}</code>.</span>
 {% endcall %}
 {% endif %}
 {% endcall %}
@@ -196,14 +196,14 @@ Propose one: <code>POST /improvements</code> with <code>{"department_id": {{ dep
 {% endcall %}
 {% else %}
 {% call empty.state("No budget line is held by this department yet", id="budget-empty") %}
-Add one: <code>POST /budget-lines</code> with <code>{"department_id": {{ department.id }}}</code>.
+<span data-showcase="write">Add one: <code>POST /budget-lines</code> with <code>{"department_id": {{ department.id }}}</code>.</span>
 {% endcall %}
 {% endif %}
 {% if budget.run_rate is not none %}
 <p>Run rate over the last {{ budget.window }} month{{ budget.window | s }}: <strong id="run-rate">{{ "{:,.2f}".format(budget.run_rate) }}</strong> per month.</p>
 {% else %}
 {% call empty.state("No recorded spend on this department's projects yet — there is no run rate to compute", id="run-rate-empty") %}
-Record some: <code>POST /cost-entries</code> naming one of this department's projects.
+<span data-showcase="write">Record some: <code>POST /cost-entries</code> naming one of this department's projects.</span>
 {% endcall %}
 {% endif %}
 {% endcall %}
@@ -223,7 +223,7 @@ Record some: <code>POST /cost-entries</code> naming one of this department's pro
 {% endcall %}
 {% else %}
 {% call empty.state("No vendor agreement touches a project this department is accountable for", id="vendors-empty") %}
-Add one: <code>POST /procurement-agreements</code> naming one of this department's projects.
+<span data-showcase="write">Add one: <code>POST /procurement-agreements</code> naming one of this department's projects.</span>
 {% endcall %}
 {% endif %}
 {% endcall %}
@@ -244,7 +244,7 @@ Add one: <code>POST /procurement-agreements</code> naming one of this department
 {% endcall %}
 {% else %}
 {% call empty.state("No stakeholder is recorded on a project this department is accountable for", id="stakeholders-empty") %}
-Add one: <code>POST /stakeholders</code> naming one of this department's projects.
+<span data-showcase="write">Add one: <code>POST /stakeholders</code> naming one of this department's projects.</span>
 {% endcall %}
 {% endif %}
 {% endcall %}

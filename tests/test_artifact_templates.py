@@ -124,3 +124,24 @@ def test_the_detail_page_prints_the_template_as_a_scriptless_bound_form(
     for label_id in labels:
         assert label_id in ids, f"label points at {label_id!r}, which no control carries"
     assert "<script" not in printed and "onclick" not in printed and "<form" not in printed
+
+
+def test_reference_text_does_not_deny_what_the_product_records() -> None:
+    """Each statement below once said "Not tracked" about something a model and a
+    page already carry (TaskDependency, RequirementTrace, ResourceBreakdown,
+    ProjectCalendar, equipment/material ResourceType, AcceptanceRecord.verified_on)."""
+    from driftless.pmbok.artifact_content import collect_content
+
+    content = collect_content()
+    expected = {
+        "project_schedule_network_diagram": "dependencies between tasks",
+        "requirements_traceability_matrix": "each trace links it",
+        "resource_breakdown_structure": "tree of resource-type quantities",
+        "resource_calendars": "working-day calendar",
+        "physical_resource_assignments": "Equipment and material",
+        "verified_deliverables": "verified date",
+    }
+    for kind, phrase in expected.items():
+        text = content[kind].what_it_looks_like_here
+        assert not text.startswith("Not tracked"), kind
+        assert phrase in text, kind

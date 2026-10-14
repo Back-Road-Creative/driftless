@@ -39,7 +39,7 @@
 <pre id="rbs-text">{{ rbs_text }}</pre>
 {% else %}
 {% call empty.state("No RBS nodes yet", id="rbs-empty") %}
-Add one with <code>POST /resource-breakdowns</code> (this project's id and a resource type).
+<span data-showcase="write">Add one with <code>POST /resource-breakdowns</code> (this project's id and a resource type).</span>
 {% endcall %}
 {% endif %}
 {% endcall %}
@@ -57,7 +57,7 @@ Add one with <code>POST /resource-breakdowns</code> (this project's id and a res
 {% endcall %}
 {% else %}
 {% call empty.state("No assignments filed yet", id="matrix-empty") %}
-File one below once a deliverable or task and a person both exist.
+<span data-showcase="write">File one below once a deliverable or task and a person both exist.</span>
 {% endcall %}
 {% endif %}
 {% endcall %}
@@ -89,7 +89,7 @@ Every acquisition is fulfilled and everybody has at least one training record.
 {% endcall %}
 {% else %}
 {% call empty.state("No assessments filed yet", id="assessments-empty") %}
-Record one below.
+<span data-showcase="write">Record one below.</span>
 {% endcall %}
 {% endif %}
 {% endcall %}

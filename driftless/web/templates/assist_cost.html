@@ -42,7 +42,7 @@
 {% endcall %}
 {% else %}
 {% call empty.state("No budget lines yet — nothing to aggregate", id="aggregation-empty") %}
-File a budget line (<code>POST /budget-lines</code>) for this project first.
+<span data-showcase="write">File a budget line (<code>POST /budget-lines</code>) for this project first.</span>
 {% endcall %}
 {% endif %}
 {% endcall %}
@@ -189,7 +189,7 @@ Approve a baseline for this project first; the S-curve appears once it has lines
 {% endcall %}
 {% else %}
 {% call empty.state("No recorded spend yet — there is no run rate to compute", id="run-rate-empty") %}
-Record a cost entry (<code>POST /cost-entries</code>) for this project first.
+<span data-showcase="write">Record a cost entry (<code>POST /cost-entries</code>) for this project first.</span>
 {% endcall %}
 {% endif %}
 {% endcall %}
@@ -352,7 +352,7 @@ Historical figures appear here once the store holds more than one project.
 {% endcall %}
 {% else %}
 {% call empty.state("No estimate scenario filed yet", id="stored-estimates-empty") %}
-File the last what-if computed above with the form below, or <code>POST /estimate-scenarios</code> with <code>{"project_id": {{ project.id }}, "target": "cost"}</code>.
+<span data-showcase="write">File the last what-if computed above with the form below, or <code>POST /estimate-scenarios</code> with <code>{"project_id": {{ project.id }}, "target": "cost"}</code>.</span>
 {% endcall %}
 {% endif %}
 
@@ -379,7 +379,7 @@ File the last what-if computed above with the form below, or <code>POST /estimat
 
 <p>If a figure above should become the real budget, it still only changes one
    way: <a href="{{ change_boundary.href }}">{{ change_boundary.label }}</a> against
-   process {{ change_boundary.origin_process_id }} — <code>{{ change_boundary.instruction }}</code></p>
+   process {{ change_boundary.origin_process_id }}.<span data-showcase="write"> <code>{{ change_boundary.instruction }}</code></span></p>
 {% endcall %}
 
 {% call assist.section("Where this comes from", collapsed=True) %}

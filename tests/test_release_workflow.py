@@ -677,11 +677,14 @@ def test_the_mirror_file_check_still_catches_a_file_missing_from_the_checkout(
 PROTECTED_DEST = re.compile(r"(^|[:/+\s])(refs/heads/)?(main|master)(\"|'|\s|$)")
 
 
+# A push may carry env assignments in front of it (`VAR=1 git push ...`); the guard
+# below has to see those too, or a prefixed push to master would slip past it.
+_PUSH_LINE = re.compile(r"\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*git push\b")
+
+
 def _mirror_push_lines() -> list[str]:
     return [
-        line.strip()
-        for line in _step_script(MIRROR_STEP).splitlines()
-        if re.match(r"\s*git push\b", line)
+        line.strip() for line in _step_script(MIRROR_STEP).splitlines() if _PUSH_LINE.match(line)
     ]
 
 

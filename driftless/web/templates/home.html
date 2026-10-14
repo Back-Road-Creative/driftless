@@ -84,7 +84,7 @@
    section here and no table twin (test_web_scurve_table pins that absence); its title
    names the missing curve. Same answer the treemap below and gantt.html give. #}
 {% call empty.state("No approved cost baseline yet — there is no planned curve to draw", id="curve-empty") %}
-Draft each project's baseline, add its lines, then approve it (<code>POST /baselines</code>, <code>POST /baseline-lines</code>, <code>PATCH /baselines/&lt;id&gt;</code> — approval freezes the plan, so the lines go in first); planned-vs-actual sweeps from the earliest approved start as soon as one plan carries a cost.
+Draft each project's baseline, add its lines, then approve it<span data-showcase="write"> (<code>POST /baselines</code>, <code>POST /baseline-lines</code>, <code>PATCH /baselines/&lt;id&gt;</code> — approval freezes the plan, so the lines go in first)</span>; planned-vs-actual sweeps from the earliest approved start as soon as one plan carries a cost.
 {% endcall %}
 {% endif %}
 {% if treemap or portfolios %}
@@ -107,7 +107,7 @@ Draft each project's baseline, add its lines, then approve it (<code>POST /basel
 {{ chart.treemap(treemap, treemap_w, treemap_h, "Portfolio budgets, rectangle area proportional to BAC") }}
 {% else %}
 {% call empty.state("No portfolio has an approved budget yet — there is no area to draw", id="treemap-empty") %}
-Draft each project's baseline, add its lines, then approve it (<code>POST /baselines</code>, <code>POST /baseline-lines</code>, <code>PATCH /baselines/&lt;id&gt;</code>); every portfolio takes its share of the canvas as soon as one approved baseline carries a cost.
+Draft each project's baseline, add its lines, then approve it<span data-showcase="write"> (<code>POST /baselines</code>, <code>POST /baseline-lines</code>, <code>PATCH /baselines/&lt;id&gt;</code>)</span>; every portfolio takes its share of the canvas as soon as one approved baseline carries a cost.
 {% endcall %}
 {% endif %}
 </section>
@@ -150,7 +150,7 @@ Draft each project's baseline, add its lines, then approve it (<code>POST /basel
 {% endcall %}
 {% else %}
 {% call empty.state("Nothing to roll up yet — no portfolios or businesses are recorded", id="onboarding") %}
-Create your business, its portfolio and a first project (<code>POST /businesses</code>, <code>POST /portfolios</code>, <code>POST /projects</code>), then step that project through <code>/projects/&lt;id&gt;/wizard</code>.
+Create your business, its portfolio and a first project<span data-showcase="write"> (<code>POST /businesses</code>, <code>POST /portfolios</code>, <code>POST /projects</code>), then step that project through <code>/projects/&lt;id&gt;/wizard</code></span>.
 {% endcall %}
 {% endif %}
 </div>

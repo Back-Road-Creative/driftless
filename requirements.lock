@@ -52,7 +52,7 @@
 # a fresh freeze would also bump every package the bump did not propose, and the
 # hashed file would then disagree with this one again. psycopg, psycopg-binary,
 # pydantic, pydantic-core and uvicorn were moved that way for #430.
-alembic==1.19.1
+alembic==1.20.0
 annotated-doc==0.0.5
 annotated-types==0.8.0
 anyio==4.14.2
@@ -72,8 +72,8 @@ mako==1.3.12
 markupsafe==3.0.3
 packaging==26.2
 pluggy==1.6.0
-psycopg==3.3.5
-psycopg-binary==3.3.5
+psycopg==3.3.6
+psycopg-binary==3.3.6
 pydantic==2.13.5
 pydantic-core==2.46.5
 pygments==2.20.0
@@ -81,8 +81,8 @@ pytest==9.1.1
 pytest-cov==7.1.0
 pytest-xdist==3.8.0
 python-multipart==0.0.32
-sqlalchemy==2.0.52
+sqlalchemy==2.0.54
 starlette==1.3.1
 typing-extensions==4.16.0
 typing-inspection==0.4.2
-uvicorn==0.52.4
+uvicorn==0.53.0

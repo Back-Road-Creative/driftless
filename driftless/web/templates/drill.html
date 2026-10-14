@@ -44,7 +44,7 @@
 </table>{% endcall %}
 {% else %}
 {% call empty.state("Nothing sits under " ~ total.name ~ " yet — its KPIs above roll up whatever does") %}
-Create one with <code>POST /projects</code> carrying this {{ kind }}'s id, or move an existing one with <code>PATCH /projects/&lt;id&gt;</code>; every {{ kind }} is on the <a href="/">dashboard</a>.
+<span data-showcase="write">Create one with <code>POST /projects</code> carrying this {{ kind }}'s id, or move an existing one with <code>PATCH /projects/&lt;id&gt;</code>; every {{ kind }} is on the <a href="/">dashboard</a>.</span>
 {% endcall %}
 {% endif %}
 {% endblock %}

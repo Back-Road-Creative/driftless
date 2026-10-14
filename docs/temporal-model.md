@@ -98,6 +98,15 @@ runs on SQLite and a deployment runs Postgres, and the one CI job that speaks
 Postgres runs the migration tests and no application query. It also leaves the
 column bare, so an index on it stays usable.
 
+**Scope & Baseline document — closed.** `report/documents/scope_baseline.py`
+selected every approved baseline and every change request regardless of date, so a
+later approval repainted an earlier as-of. It now gates baselines with
+`adapters.approved_as_of` (inclusive of the whole as-of day) and change requests on
+`raised_on <= as_of`. An approved row with no `approved_at` stays visible, as in
+`plan_baseline`, but is rendered "not recorded" with a note, never as dated fact.
+A change request's status has no history, so it shows the current status; only the
+produced version is gated. Full status history is a separate decision.
+
 ## Effective time boundary
 
 Two kinds of date live in this schema. **Effective (business) time** is when

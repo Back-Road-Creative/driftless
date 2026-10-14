@@ -38,7 +38,9 @@ def create_methods_router() -> APIRouter:
 
         The coverage count above the list splits the same rows by the model's own
         crosswalk vocabulary: a method is "fully crosswalked" only if every one of
-        its practices names a PMBOK-6 process or technique (``Practice.crosswalk``);
+        its practices names a PMBOK-6 process or technique (``Practice.crosswalk``) --
+        Driftless's own mapping of related practices, not identity with, or
+        certification against, the standard;
         otherwise it carries at least one practice whose crosswalk is deliberately
         empty and excused by a ``crosswalk_reason`` — "guide-only" here.
         """

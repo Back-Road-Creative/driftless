@@ -28,7 +28,7 @@
 {% endfor %}</dl>
 {% else %}
 {% call empty.state("Nobody is assigned an hour-estimated task — there is no allocation to weigh", id="heatmap-empty") %}
-Assign the work and estimate it in hours (<code>PATCH /tasks/{id}</code> with <code>assignee_id</code>, <code>estimate</code> and <code>estimate_unit=hours</code>); each person's <code>capacity_hours</code> is what those hours are weighed against.
+<span data-showcase="write">Assign the work and estimate it in hours (<code>PATCH /tasks/{id}</code> with <code>assignee_id</code>, <code>estimate</code> and <code>estimate_unit=hours</code>); each person's <code>capacity_hours</code> is what those hours are weighed against.</span>
 {% endcall %}
 {% endif %}
 {% endblock %}

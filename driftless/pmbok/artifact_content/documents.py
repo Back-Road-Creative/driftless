@@ -74,7 +74,7 @@ CONTENT: dict[str, ArtifactContent] = {
     "project_schedule_network_diagram": ArtifactContent(
         plain_summary="A picture of which pieces of work have to happen before others can start.",
         why_it_matters="It shows where a delay in one place will ripple into delays somewhere else.",
-        what_it_looks_like_here="Not tracked: tasks here carry no recorded links to each other, so there is no diagram to draw.",
+        what_it_looks_like_here="Recorded as dependencies between tasks (finish-to-start and the other link kinds, with lag); the schedule assistant draws them as a network with float and the critical path.",
     ),
     "duration_estimates": ArtifactContent(
         plain_summary="How long each piece of work is expected to take.",
@@ -107,7 +107,7 @@ CONTENT: dict[str, ArtifactContent] = {
     "requirements_traceability_matrix": ArtifactContent(
         plain_summary="A table linking each need back to the piece of work that satisfies it.",
         why_it_matters="It lets anyone check that every requirement is actually covered by something, not dropped.",
-        what_it_looks_like_here="Not tracked: there is no individual requirement row to trace, so the approved scope baseline stands in for it.",
+        what_it_looks_like_here="Each requirement is a recorded row, and each trace links it to one deliverable, task or backlog item; the requirements assistant lists the untraced ones.",
     ),
     "project_scope_statement": ArtifactContent(
         plain_summary="A written description of exactly what is, and is not, included in the project.",
@@ -157,12 +157,12 @@ CONTENT: dict[str, ArtifactContent] = {
     "resource_breakdown_structure": ArtifactContent(
         plain_summary="A tree that organizes the project's people and resources into groups.",
         why_it_matters="It makes it easier to see where capacity is thin before it becomes a crisis.",
-        what_it_looks_like_here="Not tracked as its own tree: people here sit directly under departments instead.",
+        what_it_looks_like_here="Recorded as a tree of resource-type quantities per project (people, equipment and material); people also sit under departments.",
     ),
     "resource_calendars": ArtifactContent(
         plain_summary="When each specific person or resource is actually available to work.",
         why_it_matters="A plan that ignores who is actually free will keep assigning work to people who are already busy.",
-        what_it_looks_like_here="Not tracked as a calendar record: capacity here is shown as weekly hours instead.",
+        what_it_looks_like_here="No per-person calendar: each project has a working-day calendar with dated exceptions, and a person's capacity is shown as weekly hours.",
     ),
     "team_charter": ArtifactContent(
         plain_summary="A short written agreement on how the team will work together.",
@@ -179,7 +179,7 @@ CONTENT: dict[str, ArtifactContent] = {
     "physical_resource_assignments": ArtifactContent(
         plain_summary="A record of which equipment, materials or other non-person resources are assigned to the work.",
         why_it_matters="Work that needs equipment nobody has reserved tends to stall waiting for it.",
-        what_it_looks_like_here="Not tracked: people are the only kind of resource this system follows.",
+        what_it_looks_like_here="Equipment and material are resource types in the project's resource tree, and acquisitions record how each is sourced; there is no per-item assignment to a task.",
     ),
     "stakeholder_register": ArtifactContent(
         plain_summary="A list of everyone with a stake in the project, and what matters to them.",

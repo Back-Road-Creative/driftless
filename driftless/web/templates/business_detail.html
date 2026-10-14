@@ -42,7 +42,7 @@
 </ul>
 {% else %}
 {% call empty.state("No portfolios registered for this business entity", id="portfolios-empty") %}
-Register one with <code>POST /portfolios</code> with <code>{"business_id": {{ business.id }}}</code>.
+<span data-showcase="write">Register one with <code>POST /portfolios</code> with <code>{"business_id": {{ business.id }}}</code>.</span>
 {% endcall %}
 {% endif %}
 

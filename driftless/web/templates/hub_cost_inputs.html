@@ -23,7 +23,7 @@
 {% endcall %}
 {% else %}
 {% call empty.state("No cost entries yet — there is nothing behind the earned-value figures", id="costs-empty") %}
-Record spend with <code>POST /cost-entries</code>.
+<span data-showcase="write">Record spend with <code>POST /cost-entries</code>.</span>
 {% endcall %}
 {% endif %}
 {% endblock %}

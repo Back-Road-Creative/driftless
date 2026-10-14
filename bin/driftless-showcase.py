@@ -50,6 +50,15 @@ ALL_PROJECT_PAGES = frozenset(
 )
 SCRIPT = re.compile(r"<script\b[^>]*>.*?</script>", re.IGNORECASE | re.DOTALL)
 FORM = re.compile(r"<form\b[^>]*>.*?</form>", re.IGNORECASE | re.DOTALL)
+# Prose that only makes sense beside a form or the write API ("Use the form below",
+# "POST /risks ...") is dead once the controls are gone. Templates mark it with
+# ``data-showcase="write"`` on the smallest element holding it; marked elements never
+# nest (tests/test_showcase_demo.py asserts that), so the lazy match to the same
+# closing tag is exact.
+WRITE_ONLY = re.compile(
+    r'<(span|p|li|ol|h2|th|td)\b[^>]*\bdata-showcase="write"[^>]*>.*?</\1>',
+    re.IGNORECASE | re.DOTALL,
+)
 # The method map's filter strip is driven by static/map.js alone; with every script
 # stripped it would be a row of dead checkboxes and a Reset button that resets nothing.
 MAP_FILTERS = re.compile(r'<div class="map-filters">.*?</div>', re.DOTALL)
@@ -413,9 +422,16 @@ def _rewrite_anchors(body: str, files: dict[str, frozenset[str]], snapshot: Modu
 #: so the URL is not hard-coded twice between the CLI default and the notice.
 DEFAULT_SITE_URL = "https://headlessmode.com/driftless/"
 
+#: The studio home the return bar's first link points at (``--home-url``).
+DEFAULT_HOME_URL = "https://headlessmode.com/"
+
 
 def transform_bundle(
-    pages: dict[str, str], anchor: str, source: str, site_url: str = DEFAULT_SITE_URL
+    pages: dict[str, str],
+    anchor: str,
+    source: str,
+    site_url: str = DEFAULT_SITE_URL,
+    home_url: str = DEFAULT_HOME_URL,
 ) -> dict[str, str]:
     """Remove active behavior, label the fixture, and make page links portable."""
     snapshot = _snapshot_module()
@@ -425,13 +441,26 @@ def transform_bundle(
     files = {name: frozenset(ELEMENT_ID.findall(body)) for name, body in kept.items()}
     label = (
         '<aside class="showcase-notice" role="note">'
-        f'<a href="{html.escape(site_url)}">&larr; Back to headlessmode.com/driftless</a> '
-        f"&middot; <strong>Fixed fictional demo</strong> &middot; as of "
-        f"{html.escape(anchor)}</aside>"
+        f'<a class="showcase-home" href="{html.escape(home_url)}">&larr; Headless Mode</a> '
+        '<span class="showcase-title">driftless &middot; Read-only demo &middot; '
+        f"<strong>Fixed fictional demo</strong> &middot; as of {html.escape(anchor)}</span> "
+        f'<a class="showcase-product" href="{html.escape(site_url)}">Product details</a> '
+        '<details class="showcase-about"><summary>About this demo</summary>'
+        "<p>Every name, date and figure here is fictional, and nothing on these pages can be "
+        f"changed. Exported from driftless source {html.escape(source)}, "
+        f"as of {html.escape(anchor)}.</p></details></aside>"
     )
     style = (
-        "<style>.showcase-notice{border:2px solid var(--focus);padding:.65rem .8rem;"
-        "margin:0 0 1rem;background:var(--muted-bg);font-size:.85rem}"
+        "<style>.showcase-notice{position:sticky;top:0;z-index:50;display:flex;"
+        "flex-wrap:wrap;align-items:center;gap:.1rem .9rem;box-sizing:border-box;"
+        "border-bottom:2px solid var(--focus);padding:.3rem .8rem;margin:0 0 1rem;"
+        "background:var(--muted-bg);font-size:.85rem;line-height:1.4}"
+        ".showcase-title{flex:1 1 auto}"
+        ".showcase-about{position:relative}"
+        ".showcase-about p{position:absolute;right:0;top:100%;width:min(22rem,86vw);"
+        "margin:.3rem 0 0;padding:.6rem .8rem;border:2px solid var(--focus);"
+        "background:var(--muted-bg)}"
+        ":target,h1,h2,h3,h4{scroll-margin-top:3.5rem}"
         ".showcase-unavailable{color:var(--muted-ink)}"
         ".showcase-intro{border:1px solid var(--rule);border-radius:.4rem;"
         "padding:.65rem .8rem;margin:0 0 1rem;background:var(--muted-bg)}"
@@ -454,6 +483,7 @@ def transform_bundle(
         body = MANIFEST_LINK.sub("", body)
         body = PRINT_LINK.sub("", body)
         body = FORM.sub("", body)
+        body = WRITE_ONLY.sub("", body)
         body = MAP_FILTERS.sub("", body)
         body = MAP_ZOOM.sub("", body)
         body = LOGIN_LINK.sub("", body)
@@ -691,13 +721,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--source", default=None)
     parser.add_argument("--project", default="Season 4 Rollout")
     parser.add_argument("--site-url", default=DEFAULT_SITE_URL)
+    parser.add_argument("--home-url", default=DEFAULT_HOME_URL)
     args = parser.parse_args(argv)
     if args.source is None:
         args.source = _default_source(repo_root)
         print(f"--source not given; defaulting to {args.source!r} (checkout at {repo_root})")
     snapshot = _snapshot_module()
     pages = render_showcase(snapshot, args.anchor, args.project)
-    transformed = transform_bundle(pages, args.anchor.isoformat(), args.source, args.site_url)
+    transformed = transform_bundle(
+        pages, args.anchor.isoformat(), args.source, args.site_url, args.home_url
+    )
     count = write_bundle(args.out, transformed, args.anchor.isoformat(), args.source)
     print(f"Showcase: {count} read-only pages at {args.anchor} -> {args.out}")
     return 0

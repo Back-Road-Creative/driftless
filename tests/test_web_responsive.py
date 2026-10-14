@@ -157,3 +157,16 @@ def test_the_stylesheet_declares_exactly_one_width_breakpoint() -> None:
         f"driftless.css must declare exactly one width media query, ({BREAKPOINT}) — the "
         "width at which the dashboard's 36rem heatmap + 18rem rail + 1.5rem gap stops fitting"
     )
+
+
+def test_the_provenance_line_wraps_its_unbreakable_hash_rather_than_widening_the_page() -> None:
+    """The receipt footer (``driftless/web/receipt.py``) is a ``.breadcrumbs`` paragraph
+    that ends in a 64-character sha256 with no space to break at. Laid out at 390px it
+    is 539px wide and drags the whole document sideways -- the overflow the browser tier
+    caught on the project hub and status pages. The line must be allowed to wrap
+    anywhere; hiding the document's own overflow would only mask it."""
+    rule = re.search(r"(?m)^\.breadcrumbs\s*\{([^}]*)\}", _STYLESHEET)
+    assert rule is not None, "driftless.css declares no .breadcrumbs rule"
+    assert re.search(r"overflow-wrap:\s*anywhere", rule.group(1)), (
+        ".breadcrumbs must set overflow-wrap: anywhere so the receipt's sha256 wraps at 390px"
+    )
